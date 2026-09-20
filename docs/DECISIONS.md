@@ -540,3 +540,38 @@ like the charts that line was written to exclude.
 That is fine on localhost and unacceptable on the internet: anyone could mute
 every issue. Gate them (Caddy basic auth, or a shared token) before the hub is
 deployed. Multi-user auth remains out of scope; a single shared secret is not.
+
+---
+
+## 33. The idle screen reverses #19, on purpose
+
+**Decision:** add an idle screen that pages through production sites two at a
+time, every 2 minutes.
+
+#19 rejected a "tab-rotating dashboard" as something nobody asked for. This is
+asked for, so it stands, but it is scoped to be less of the thing #19 feared: it
+rotates *data pages* (two sites at a time), only on the idle screen, and never
+rotates the working console. With two or fewer sites nothing moves.
+
+It is also the first piece of the chunk 5 wall display, built in the console so
+the same components serve both. `/wall` with loopback-only access (#14) is still
+to come.
+
+---
+
+## 34. Reveal by fingerprint is simulated, and Unlock is not a lock
+
+**Decision:** the idle screen hides incident titles and commit refs (detail, per
+#13) until a reveal, which lasts 2 minutes and reverts on its own (#14). Until the
+R307 reader exists, a labelled "Simulate fingerprint" button triggers it.
+`useReveal()` in `hooks.js` is the single seam: the hub will report a match there.
+
+**What Unlock is:** it navigates to Overview. #14 says a fingerprint is
+convenience-grade and unfit for anything that changes state, and reserves the
+console for a passkey. Until the write endpoints are gated (#32), the console has
+no login at all, so Unlock protects nothing. It exists to give the flow its shape,
+not to be a security boundary. Do not treat it as one.
+
+**Rule kept:** the idle screen cannot suppress an alert. It only displays.
+Timings (`?idle=&rotate=&reveal=`) are overridable in the dev server only, so a
+production URL cannot lengthen how long detail stays revealed.

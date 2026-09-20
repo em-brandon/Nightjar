@@ -211,6 +211,16 @@ A site with no `url` is not monitored: it still reports crashes but has no ring
 or ribbon. Sites are created by `seed.py`; set `url` with SQL until the chunk 4b
 onboarding CLI exists.
 
+The **idle screen** (`#/idle`, `console/src/views/Idle.jsx`) starts by itself after 5
+minutes with no input and doubles as the wall display. Two production sites at a
+time, rotating every 2 minutes, plus active incidents and production and staging
+deploys. It hides detail, not names: incident titles and commit refs appear only
+after a fingerprint reveal (2 minutes, then it reverts by itself). Only reveal
+then *Unlock console* leaves it; stray input never does. The fingerprint is
+**simulated** until the R307 reader exists (chunk 6): `useReveal()` in `hooks.js`
+is the one seam to swap. Unlock only navigates, and gives no real protection until
+the write endpoints are gated (#32).
+
 Still not built: a real ack from the phone (needs chunk 2's Pushover callback), the
 alert-sent lines in the incident log, and the mockup's fingerprint reveal.
 
