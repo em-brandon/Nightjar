@@ -29,8 +29,14 @@ The scarce resource is **attention at inconvenient hours**, not compute.
 **Chunk 1: done.** Stack trace in, one deduplicated issue out. Verified: 200
 crashes with varying IPs and retry counts collapse to a single row.
 
-**Chunk 3: done.** React console, two read-only endpoints, 30-second polling.
-Runs locally against the dev database; needs no paid service.
+**Chunk 3: done, and grown.** React console with five tabs (Overview, Incidents,
+Requests, Deploys, Staging), an uptime probe, incident actions with an audit
+trail, client-request tickets and CI deploy reports. 30-second polling. Runs
+locally against the dev database; needs no paid service.
+
+**Not safe to expose yet:** the write endpoints (`/api/tickets`,
+`/api/issues/{id}/actions`) have no auth. Put Caddy basic auth or a token in
+front of them before the hub is reachable from the internet.
 
 **Chunk 2: not written, deferred.** Nightjar therefore cannot alert anyone yet.
 It is still the entire point of the project, but it needs a Pushover licence, and
@@ -182,16 +188,30 @@ reporter snippet, the dedupe harness.
 (`/api/sites/health`, `/api/issues`), 30-second polling, no websockets. Layout
 reference in `mockups/nightjar-console.html`.
 
-Built: verdict banner, site tiles, open-issue list, issue drawer. Site state is
-*derived* from open issues (`down` = open P1, `warn` = open P2, else `up`), never
-stored. When the hub is unreachable the console says so and never shows "All
-quiet" — silence must not read as all-clear.
+Built: verdict, odometer stat strip, per-site check cards (uptime ring, latency,
+90-day ribbon), a tile per area, and the five tabs. Site state is *derived*, never
+stored: `down` = an open P1 or two failed probes in a row, `warn` = an open P2,
+one failed probe or a silent probe, else `up`. A probe that has gone quiet is
+never `up`. When the hub is unreachable the console says so on every tab and never
+shows "All quiet": silence must not read as all-clear.
 
-Not built, because the data does not exist yet: 90-day uptime ribbons and
-"unacked" state (need an uptime probe and chunk 2's acknowledgement), and
-Resolve / Mute / Snooze (need write endpoints — the natural first follow-up).
-The mockup also shows deployments, client requests and the fingerprint reveal;
-those belong to later chunks.
+Data flows, all real tables:
+
+| Feature | In | Out |
+|---|---|---|
+| Uptime checks | `hub/probe.py` requests each `Site.url` every `PROBE_INTERVAL_S` | `/api/sites/health` |
+| Errors rising | derived from `events` (last 30 min > 2x the 30 before) | `/api/errors/rising` |
+| Incident actions | `POST /api/issues/{id}/actions` (ack, resolve, mute, snooze, reopen) | `/api/issues/{id}/log` |
+| Client requests | `POST /api/tickets` now, email intake in chunk 4 | `/api/tickets` |
+| Deploys | CI calls `POST /ingest/{key}/deploy` (same signing as crashes) | `/api/deploys` |
+| Staging | just a site with `env=staging` and a `url` | same as production |
+
+A site with no `url` is not monitored: it still reports crashes but has no ring
+or ribbon. Sites are created by `seed.py`; set `url` with SQL until the chunk 4b
+onboarding CLI exists.
+
+Still not built: a real ack from the phone (needs chunk 2's Pushover callback), the
+alert-sent lines in the incident log, and the mockup's fingerprint reveal.
 
 **Chunk 4.** Email intake (Postmark/Mailgun inbound → `/ingest/email`) and the
 07:30 digest cron.
@@ -240,7 +260,13 @@ hub/
   fingerprint.py   normalise + hash — the load-bearing file
   schemas.py       request/response models
   ingest.py        POST /ingest/{key}/event
-  main.py          app factory, lifespan, healthz
+  main.py          app factory, lifespan (starts the probe), healthz
+  api.py           read-only console feeds: issues, site health, rising errors
+  probe.py         uptime checker loop, writes checks
+  incidents.py     issue actions + audit log
+  tickets.py       client requests
+  deploys.py       CI deploy reports
+console/           Vite + React 19 UI: src/views/* is one file per tab
 client/
   reporter.py      the whole "SDK" — drop into any managed FastAPI app
   thermal_probe.py host thermals as ordinary tickets
@@ -302,6 +328,9 @@ the 200s. Two hundred separate issues means the fingerprint is broken.
 | `VERIFY_SIGNATURES` | HMAC on ingest. Off in dev, **on in prod** |
 | `SPIKE_THRESHOLD` | events in the window that constitute a spike |
 | `SPIKE_WINDOW_MIN` | the window, in minutes |
+| `PROBE_ENABLED` | run the uptime checker (default true) |
+| `PROBE_INTERVAL_S` | seconds between rounds (default 60) |
+| `PROBE_TIMEOUT_S` | per-request timeout (default 10) |
 
 ---
 

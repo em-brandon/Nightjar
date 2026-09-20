@@ -463,3 +463,80 @@ Changed on the operator's preference after seeing it running. The brand section
 in `CLAUDE.md` is updated to match; the mockups are left as the original design
 reference. Because the palette lives in CSS custom properties, this was a token
 swap, not a restyle.
+
+---
+
+## 28. The console grew past chunk 3's "two endpoints"
+
+**Decision:** five tabs (Overview, Incidents, Requests, Deploys, Staging), each
+with a tile on the homepage, backed by real tables.
+
+Asked for by the operator after seeing the first version, which was a flat
+list. The original "one page, ~300 lines, two endpoints" was a floor for the
+first cut, not a ceiling. Tickets and deploys were chunk 4 and 5+ material and
+were pulled forward because the data can be fed without paid services (a form,
+and a CI `curl`).
+
+**Rejected:** hard-coded sample rows in the UI. They would show fake numbers as
+real, against the rule that a health display must never be invented.
+
+---
+
+## 29. Uptime probe lives inside the hub
+
+**Decision:** a background task in the hub requests each `Site.url` every 60
+seconds and stores results in `checks`.
+
+**Known weakness:** the probe shares a failure domain with the hub, which #9
+warns against for the watchdog itself. It is acceptable for the ribbon and for
+console visuals; it is **not** the dead-man's switch (#10). Real uptime alerting
+still wants a second probe on a different network (#11) and the external
+heartbeat.
+
+**Rules carried in:** two failed checks in a row before `down` (one is a blip);
+a probe that has stopped is `warn`, never `up`; days with no checks are `gap`,
+never green; errors store the exception class only, since messages can carry
+URLs.
+
+---
+
+## 30. Incident actions are audited, and the row is locked
+
+**Decision:** ack, resolve, mute, snooze and reopen each write an
+`issue_actions` row and take the same `FOR UPDATE` lock as ingest.
+
+The audit trail is #17's point: answer "why is this quiet?" weeks later. The
+lock stops an action interleaving with an arriving event and leaving status and
+counts disagreeing. Acknowledgement is derived from the trail and ends at the
+next resolve or reopen, so a regression is not born already-acknowledged.
+
+**Not yet true:** the log records human actions only. "Alert sent" and "speaker
+suppressed" lines arrive with chunk 2.
+
+---
+
+## 31. Deploys arrive by webhook; staging is just a site
+
+**Decision:** CI calls `POST /ingest/{key}/deploy` with `{ref, status}`,
+authenticated like crash events. A staging environment is a site with
+`env=staging`, so it reuses the probe, the ring and the ribbon with no new code.
+
+Each status report is its own row (running, then success or failed). The console
+hides a `running` row once a newer row exists for that site and ref, but never
+hides a failure: a retry must not erase the failure it retried.
+
+**Tension noted:** `CLAUDE.md` lists "uptime percentage charts" as out of scope.
+The 90-day ribbon (#15) is the designed version of uptime display; the 24-hour
+gauge ring is a small addition beyond it. Drop the ring if it starts to feel
+like the charts that line was written to exclude.
+
+---
+
+## 32. The write endpoints have no authentication
+
+**Decision:** deferred, and recorded so it is not forgotten.
+
+`/api/tickets` and `/api/issues/{id}/actions` accept unauthenticated writes.
+That is fine on localhost and unacceptable on the internet: anyone could mute
+every issue. Gate them (Caddy basic auth, or a shared token) before the hub is
+deployed. Multi-user auth remains out of scope; a single shared secret is not.
