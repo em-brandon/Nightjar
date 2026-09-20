@@ -24,6 +24,31 @@ class EventIn(BaseModel):
     occurred_at: datetime | None = None
 
 
+class IssueOut(BaseModel):
+    id: int
+    site: str
+    env: str
+    severity: str
+    title: str
+    culprit: str
+    fingerprint: str
+    event_count: int
+    first_seen: datetime
+    last_seen: datetime
+
+
+class SiteHealthOut(BaseModel):
+    id: int
+    name: str
+    env: str
+    # down: an open P1. warn: an open P2. up: neither. Derived, never stored.
+    state: Literal["up", "warn", "down"]
+    open_p1: int
+    open_p2: int
+    open_p3: int
+    last_event: datetime | None
+
+
 class IngestOut(BaseModel):
     issue_id: int
     fingerprint: str

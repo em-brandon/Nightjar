@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from .api import router as api_router
 from .db import Base, engine
 from .ingest import router as ingest_router
 
@@ -17,6 +18,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="incident hub", lifespan=lifespan)
 app.include_router(ingest_router)
+app.include_router(api_router)
 
 
 @app.get("/healthz")
