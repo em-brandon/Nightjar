@@ -184,9 +184,10 @@ reporter snippet, the dedupe harness.
 - Test by breaking a staging route, not with a unit test. Test presence by
   tapping out and confirming the push *still arrives*.
 
-**Chunk 3 — done.** React console. One page, two endpoints
-(`/api/sites/health`, `/api/issues`), 30-second polling, no websockets. Layout
-reference in `mockups/nightjar-console.html`.
+**Chunk 3 — done.** React console, 30-second polling, no websockets. Planned as
+one page and two endpoints (`/api/sites/health`, `/api/issues`); it grew to five
+tabs at the operator's request (see `docs/DECISIONS.md` #28). Layout reference in
+`mockups/nightjar-console.html`.
 
 Built: verdict, odometer stat strip, per-site check cards (uptime ring, latency,
 90-day ribbon), a tile per area, and the five tabs. Site state is *derived*, never
