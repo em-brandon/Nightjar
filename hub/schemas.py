@@ -37,16 +37,32 @@ class IssueOut(BaseModel):
     last_seen: datetime
 
 
+DayState = Literal["ok", "deg", "out", "gap"]
+
+
 class SiteHealthOut(BaseModel):
     id: int
     name: str
     env: str
-    # down: an open P1. warn: an open P2. up: neither. Derived, never stored.
+    # down: an open P1, or 2 failed probes in a row. warn: an open P2, one
+    # failed probe, or a probe gone quiet. up: none. Derived, never stored.
     state: Literal["up", "warn", "down"]
     open_p1: int
     open_p2: int
     open_p3: int
     last_event: datetime | None
+
+    # Uptime probe. Everything below is empty/None when the site has no url.
+    monitored: bool
+    probe_stale: bool
+    last_check: datetime | None
+    uptime_24h: float | None
+    latency_ms: int | None
+    latency_avg_ms: int | None
+    # newest last; None marks a failed check
+    latency_series: list[int | None]
+    # 90 days, oldest first. gap = no checks that day (not "all good").
+    ribbon: list[DayState]
 
 
 class IngestOut(BaseModel):
