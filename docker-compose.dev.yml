@@ -1,0 +1,29 @@
+# Local development database only. The hub and console run on the host.
+#
+#   docker compose -f docker-compose.dev.yml up -d db
+#
+# Separate from docker-compose.yml on purpose: that file never publishes the
+# database port, and this one must. Keeping them apart means the prod stack
+# cannot accidentally inherit an exposed 5432.
+#
+# Credentials match .env.example (hub / hub / hub).
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: hub
+      POSTGRES_PASSWORD: hub
+      POSTGRES_DB: hub
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hub -d hub"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata_dev:
