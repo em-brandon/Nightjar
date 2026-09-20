@@ -1,0 +1,27 @@
+# Caddy fetches and renews the TLS certificate on its own. There is nothing
+# else to configure for HTTPS.
+
+{$HUB_DOMAIN} {
+	encode zstd gzip
+
+	# Ingest is the only path clients' apps need. It authenticates by
+	# per-site key plus HMAC, so it is safe to expose.
+	handle /ingest/* {
+		reverse_proxy hub:8000
+	}
+
+	handle /healthz {
+		reverse_proxy hub:8000
+	}
+
+	# Everything else — the console, once chunk 3 exists — is yours only.
+	# Until real auth is in, keep it off the public internet entirely.
+	handle {
+		reverse_proxy hub:8000
+	}
+
+	log {
+		output file /data/access.log
+		format json
+	}
+}

@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nightjar — issue detail</title>
+<style>
+  :root {
+    --ink:#0F1420; --ink-2:#1A2130; --ink-3:#262F42;
+    --bone:#F2EFE6; --muted:#7C8799; --dim:#9BA6B8;
+    --amber:#E8A33D; --red:#E05252; --green:#4FA882; --line:#232B3C;
+    --mono: ui-monospace,"SF Mono",Menlo,monospace;
+    --sans: "Inter",ui-sans-serif,-apple-system,"Segoe UI",sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--ink);color:var(--bone);font-family:var(--sans);
+       font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:860px;margin:0 auto;padding:24px}
+
+  /* ---- header ---- */
+  .hd{display:flex;align-items:flex-start;gap:12px;padding-bottom:16px;
+      border-bottom:1px solid var(--line)}
+  .sev{font-family:var(--mono);font-size:11px;font-weight:600;padding:3px 7px;
+       border-radius:3px;color:var(--red);background:rgba(224,82,82,.13);margin-top:3px}
+  .hd h1{font-size:19px;font-weight:600;letter-spacing:-.3px}
+  .hd .sub{font-family:var(--mono);font-size:12px;color:var(--muted);margin-top:4px}
+  .acts{margin-left:auto;display:flex;gap:6px}
+  .btn{font:inherit;font-size:12.5px;padding:6px 12px;border-radius:4px;cursor:pointer;
+       background:none;color:var(--dim);border:1px solid var(--line)}
+  .btn.pri{background:var(--amber);color:var(--ink);border-color:var(--amber);font-weight:500}
+
+  /* ---- stat row ---- */
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;
+         background:var(--line);border:1px solid var(--line);margin:20px 0 26px}
+  .stat{background:var(--ink-2);padding:11px 13px}
+  .stat .k{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+  .stat .v{font-size:17px;font-weight:600;margin-top:2px;letter-spacing:-.3px}
+  .stat .v.sm{font-size:13.5px;font-weight:400;font-family:var(--mono)}
+
+  h2{font-size:13.5px;font-weight:600;margin:0 0 9px}
+  .sec{display:flex;align-items:baseline;gap:9px;margin:28px 0 9px}
+  .sec .note{font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .sec a{margin-left:auto;font-size:12px;color:var(--dim);text-decoration:none;
+         border-bottom:1px solid var(--line)}
+
+  /* ---- metrics: inline sparklines, not a Grafana clone ---- */
+  .metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;
+           background:var(--line);border:1px solid var(--line)}
+  .metric{background:var(--ink-2);padding:12px 14px 14px}
+  .metric .k{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+  .metric .v{font-size:15px;font-weight:600;margin:2px 0 8px}
+  .metric svg{display:block;width:100%;height:34px}
+
+  /* ---- stack trace ---- */
+  .trace{border:1px solid var(--line);background:#0B0F19;font-family:var(--mono);
+         font-size:12px;line-height:1.7;overflow-x:auto}
+  .frame{padding:8px 13px;border-bottom:1px solid var(--line)}
+  .frame:last-child{border-bottom:0}
+  .frame.app{background:rgba(232,163,61,.05);border-left:2px solid var(--amber)}
+  .frame .loc{color:var(--dim)}
+  .frame .loc b{color:var(--bone);font-weight:500}
+  .frame .src{color:var(--muted);margin-top:3px;white-space:pre}
+  .frame .src .hit{color:var(--red)}
+  .vars{padding:9px 13px;background:#0E1421;border-top:1px solid var(--line)}
+  .vars .row{display:grid;grid-template-columns:150px 1fr;gap:10px;padding:2px 0}
+  .vars .n{color:var(--muted)}
+  .vars .val{color:var(--dim);word-break:break-all}
+
+  /* ---- incident log ---- */
+  .log{border-left:1px solid var(--line);margin-left:6px;padding-left:18px}
+  .ev{position:relative;padding:0 0 16px}
+  .ev:last-child{padding-bottom:0}
+  .ev::before{content:"";position:absolute;left:-23px;top:5px;width:7px;height:7px;
+              border-radius:50%;background:var(--ink-3);border:1px solid var(--line)}
+  .ev.hot::before{background:var(--red);border-color:var(--red)}
+  .ev.warm::before{background:var(--amber);border-color:var(--amber)}
+  .ev.cool::before{background:var(--green);border-color:var(--green)}
+  .ev .t{font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .ev .m{font-size:13.5px;margin-top:1px}
+  .ev .m em{font-style:normal;color:var(--dim)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hd">
+    <span class="sev">P1</span>
+    <div>
+      <h1>OperationalError: connection refused</h1>
+      <div class="sub">sacco-portal · db/session.py:41 · fingerprint 7c1a9f4e</div>
+    </div>
+    <div class="acts">
+      <button class="btn pri">Resolve</button>
+      <button class="btn">Mute</button>
+      <button class="btn">Snooze 24h</button>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="k">events</div><div class="v">1,284</div></div>
+    <div class="stat"><div class="k">first seen</div><div class="v sm">4m ago</div></div>
+    <div class="stat"><div class="k">last seen</div><div class="v sm">2s ago</div></div>
+    <div class="stat"><div class="k">acknowledged</div><div class="v sm" style="color:var(--red)">no</div></div>
+  </div>
+
+  <div class="sec">
+    <h2>Around the failure</h2>
+    <span class="note">15 min window</span>
+    <a href="#">Open in Grafana</a>
+  </div>
+  <div class="metrics">
+    <div class="metric">
+      <div class="k">error rate / min</div><div class="v">312</div>
+      <svg viewBox="0 0 100 34" preserveAspectRatio="none" id="m1"></svg>
+    </div>
+    <div class="metric">
+      <div class="k">p95 response</div><div class="v">timeout</div>
+      <svg viewBox="0 0 100 34" preserveAspectRatio="none" id="m2"></svg>
+    </div>
+    <div class="metric">
+      <div class="k">db connections</div><div class="v">0 / 20</div>
+      <svg viewBox="0 0 100 34" preserveAspectRatio="none" id="m3"></svg>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2>Exception</h2>
+    <span class="note">most recent event · captured by Sentry</span>
+  </div>
+  <div class="trace">
+    <div class="frame">
+      <div class="loc">routes/orders.py in <b>list_orders</b> · line 88</div>
+      <div class="src">    orders = await repo.fetch_open(session)</div>
+    </div>
+    <div class="frame">
+      <div class="loc">repositories/orders.py in <b>fetch_open</b> · line 24</div>
+      <div class="src">    async with db.session() as session:</div>
+    </div>
+    <div class="frame app">
+      <div class="loc">db/session.py in <b>connect</b> · line 41</div>
+      <div class="src">    conn = await asyncpg.connect(<span class="hit">dsn, timeout=5.0</span>)</div>
+      <div class="vars">
+        <div class="row"><span class="n">dsn</span><span class="val">postgresql://app@10.0.0.14:5432/sacco</span></div>
+        <div class="row"><span class="n">timeout</span><span class="val">5.0</span></div>
+        <div class="row"><span class="n">retries_left</span><span class="val">0</span></div>
+        <div class="row"><span class="n">request.path</span><span class="val">/api/orders</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2>Incident log</h2>
+    <span class="note">what Nightjar did, and when</span>
+  </div>
+  <div class="log">
+    <div class="ev hot">
+      <div class="t">21:43:02</div>
+      <div class="m">First occurrence. Issue opened at <em>P1</em>.</div>
+    </div>
+    <div class="ev hot">
+      <div class="t">21:43:02</div>
+      <div class="m">Pushover sent — <em>priority 2, retry 60s, expire 30m</em>.</div>
+    </div>
+    <div class="ev warm">
+      <div class="t">21:43:03</div>
+      <div class="m">Speaker suppressed — <em>presence away</em>.</div>
+    </div>
+    <div class="ev">
+      <div class="t">21:44:10</div>
+      <div class="m">Rate crossed threshold — <em>312/min, spike</em>. No second alert sent.</div>
+    </div>
+    <div class="ev warm">
+      <div class="t">21:45:30</div>
+      <div class="m">Uptime check failed from both probes — <em>VPS and home</em>.</div>
+    </div>
+    <div class="ev">
+      <div class="t">21:46:02</div>
+      <div class="m">Pushover retry 3 of 30. Still unacknowledged.</div>
+    </div>
+    <div class="ev cool">
+      <div class="t">21:47:11</div>
+      <div class="m">Last deploy correlated — <em>main@a3f21c9, 2h ago</em>. Not a recent change.</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // Sparklines: shape only. The numbers live above them.
+  function spark(id, pts, colour, fill) {
+    const svg = document.getElementById(id);
+    const max = Math.max(...pts) || 1;
+    const step = 100 / (pts.length - 1);
+    const d = pts.map((p, i) => `${i ? 'L' : 'M'}${(i * step).toFixed(1)} ${(32 - (p / max) * 29).toFixed(1)}`).join(' ');
+    svg.innerHTML =
+      `<path d="${d} L100 34 L0 34 Z" fill="${fill}" stroke="none"/>` +
+      `<path d="${d}" fill="none" stroke="${colour}" stroke-width="1.4"/>`;
+  }
+  const flat = n => Array.from({length: 30}, (_, i) => n + Math.random() * n * .25);
+  spark('m1', [...flat(6).slice(0, 20), 40, 120, 260, 300, 312, 308, 315, 310, 312, 309],
+        '#E05252', 'rgba(224,82,82,.10)');
+  spark('m2', [...flat(40).slice(0, 20), 90, 400, 900, 1400, 1800, 1900, 1950, 1980, 1990, 2000],
+        '#E8A33D', 'rgba(232,163,61,.10)');
+  spark('m3', [...flat(14).slice(0, 20), 12, 8, 4, 2, 1, 0, 0, 0, 0, 0],
+        '#4FA882', 'rgba(79,168,130,.10)');
+</script>
+</body>
+</html>

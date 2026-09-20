@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nightjar · wall</title>
+<style>
+  :root{
+    --ink:#0F1420; --ink-2:#161C29; --ink-3:#212938;
+    --bone:#F2EFE6; --muted:#6B7688; --dim:#98A3B5;
+    --amber:#E8A33D; --red:#E05252; --green:#4FA882; --line:#212938;
+    --mono: ui-monospace,"SF Mono",Menlo,monospace;
+    --sans: "Inter",ui-sans-serif,-apple-system,"Segoe UI",sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{background:var(--ink);color:var(--bone);font-family:var(--sans);
+       -webkit-font-smoothing:antialiased;overflow:hidden}
+  .wall{height:100%;display:flex;flex-direction:column;padding:34px 40px 0}
+
+  /* ---------- masthead ---------- */
+  .top{display:flex;align-items:baseline;gap:16px;margin-bottom:26px}
+  .brand{font-size:15px;font-weight:600;letter-spacing:.2px;color:var(--muted)}
+  .brand span{color:var(--amber)}
+  .presence{font-family:var(--mono);font-size:13px;color:var(--muted);
+            display:flex;align-items:center;gap:7px}
+  .presence i{width:7px;height:7px;border-radius:50%;background:var(--green)}
+  .clock{margin-left:auto;font-family:var(--mono);font-size:15px;color:var(--dim)}
+
+  /* ---------- verdict: the one thing readable from the doorway ---------- */
+  .verdict{margin-bottom:30px}
+  .verdict h1{font-size:54px;font-weight:600;letter-spacing:-1.6px;line-height:1.05}
+  .verdict h1.ok{color:var(--green)} .verdict h1.warn{color:var(--amber)} .verdict h1.bad{color:var(--red)}
+  .verdict p{font-family:var(--mono);font-size:15px;color:var(--muted);margin-top:12px}
+
+  /* ---------- uptime: one ribbon per site, 90 days ---------- */
+  .sites{display:flex;flex-direction:column;gap:0;
+         border-top:1px solid var(--line)}
+  .site{display:grid;grid-template-columns:230px 1fr 118px;gap:22px;
+        align-items:center;padding:17px 0;border-bottom:1px solid var(--line)}
+  .nm{display:flex;align-items:center;gap:11px;font-size:20px;font-weight:500}
+  .dot{width:9px;height:9px;border-radius:50%;flex:none}
+  .dot.up{background:var(--green)} .dot.warn{background:var(--amber)} .dot.down{background:var(--red)}
+
+  .ribbon{display:flex;gap:2px;height:32px;align-items:stretch}
+  .ribbon i{flex:1;border-radius:1.5px;background:var(--green);opacity:.62;
+            min-width:2px;transition:opacity .2s}
+  .ribbon i.deg{background:var(--amber);opacity:.92}
+  .ribbon i.out{background:var(--red);opacity:.95}
+  .ribbon i.gap{background:var(--ink-3);opacity:.5}
+
+  .pct{text-align:right;font-family:var(--mono)}
+  .pct .v{font-size:21px;font-weight:600;letter-spacing:-.4px}
+  .pct .l{font-size:11.5px;color:var(--muted);margin-top:2px}
+
+  .scale{display:flex;font-family:var(--mono);font-size:11px;color:var(--muted);
+         padding:11px 0 0;grid-column:2}
+  .scale span:last-child{margin-left:auto}
+
+  /* ---------- tier 2: revealed by fingerprint ---------- */
+  .detail{
+    margin-top:auto;border-top:1px solid var(--line);
+    max-height:0;opacity:0;overflow:hidden;
+    transition:max-height .42s cubic-bezier(.22,.61,.36,1), opacity .3s ease;
+  }
+  .detail.open{max-height:340px;opacity:1}
+  .detail .hd{display:flex;align-items:baseline;gap:12px;padding:18px 0 12px}
+  .detail .hd h2{font-size:15px;font-weight:600}
+  .detail .hd .c{font-family:var(--mono);font-size:12.5px;color:var(--muted)}
+  .detail .hd .timer{margin-left:auto;font-family:var(--mono);font-size:12.5px;color:var(--amber)}
+
+  .row{display:grid;grid-template-columns:44px 1fr 150px;gap:18px;
+       align-items:baseline;padding:9px 0;border-bottom:1px solid var(--line)}
+  .row:last-child{border-bottom:0}
+  .sev{font-family:var(--mono);font-size:12px;font-weight:600;padding:3px 0;
+       text-align:center;border-radius:3px}
+  .sev.p1{color:var(--red);background:rgba(224,82,82,.14)}
+  .sev.p2{color:var(--amber);background:rgba(232,163,61,.14)}
+  .sev.p3{color:var(--muted);background:rgba(107,118,136,.16)}
+  .row .t{font-size:17px}
+  .row .t small{display:block;font-family:var(--mono);font-size:12px;
+                color:var(--muted);margin-top:2px}
+  .row .r{text-align:right;font-family:var(--mono);font-size:13px;color:var(--muted)}
+  .row .r b{color:var(--bone);font-weight:500}
+  .row .r .un{color:var(--red)}
+
+  /* ---------- footer ---------- */
+  .foot{display:flex;align-items:center;gap:14px;padding:16px 0 20px;
+        font-family:var(--mono);font-size:12.5px;color:var(--muted)}
+  .foot .r{margin-left:auto;display:flex;gap:10px}
+  .tap{background:none;border:1px solid var(--line);color:var(--dim);
+       padding:7px 15px;border-radius:5px;cursor:pointer;font:inherit;font-size:12.5px}
+  .tap.on{border-color:var(--amber);color:var(--amber)}
+
+  .legend{display:flex;gap:16px}
+  .legend span{display:flex;align-items:center;gap:6px}
+  .legend i{width:8px;height:8px;border-radius:2px}
+
+  @media (prefers-reduced-motion: reduce){ .detail{transition:none} }
+</style>
+</head>
+<body>
+<div class="wall">
+
+  <div class="top">
+    <div class="brand">night<span>jar</span></div>
+    <div class="presence"><i></i> home</div>
+    <div class="clock" id="clock">21:47</div>
+  </div>
+
+  <div class="verdict">
+    <h1 id="verdict" class="bad">One site is down</h1>
+    <p id="vsub">4 sites · 2 unacked · checked 34s ago</p>
+  </div>
+
+  <div class="sites" id="sites"></div>
+  <div class="scale"><span>90 days ago</span><span>today</span></div>
+
+  <!-- tier 2 -->
+  <div class="detail" id="detail">
+    <div class="hd">
+      <h2>Open issues</h2>
+      <span class="c">5 · titles only</span>
+      <span class="timer" id="timer"></span>
+    </div>
+    <div id="rows"></div>
+  </div>
+
+  <div class="foot">
+    <div class="legend">
+      <span><i style="background:#4FA882;opacity:.62"></i> up</span>
+      <span><i style="background:#E8A33D;opacity:.92"></i> degraded</span>
+      <span><i style="background:#E05252;opacity:.95"></i> outage</span>
+    </div>
+    <div class="r">
+      <button class="tap" id="fp">Fingerprint</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const SITES = [
+  {n:'sacco-portal',   s:'down', pct:'98.24', seed:7,  bad:[88,89], deg:[41,42,60]},
+  {n:'agrovet-api',    s:'warn', pct:'99.71', seed:19, bad:[],      deg:[86,87,88,89]},
+  {n:'clinic-booking', s:'up',   pct:'99.98', seed:3,  bad:[],      deg:[22]},
+  {n:'tuktuk-fleet',   s:'up',   pct:'99.93', seed:11, bad:[34],    deg:[]},
+];
+
+const ISSUES = [
+  {sev:'p1', t:'Site unreachable',        w:'sacco-portal',   n:'1',     ago:'4m',  un:true},
+  {sev:'p1', t:'Database connection',     w:'sacco-portal',   n:'1,284', ago:'4m',  un:true},
+  {sev:'p2', t:'Deploy failed',           w:'clinic-booking', n:'1',     ago:'6m',  un:false},
+  {sev:'p2', t:'Payment callback error',  w:'agrovet-api',    n:'37',    ago:'22m', un:false},
+  {sev:'p3', t:'Client request',          w:'tuktuk-fleet',   n:'—',     ago:'6h',  un:false},
+];
+
+// ---- 90-day uptime ribbons ------------------------------------------------
+const sitesEl = document.getElementById('sites');
+SITES.forEach(s => {
+  const bars = Array.from({length:90}, (_, i) => {
+    if (s.bad.includes(i))  return '<i class="out"></i>';
+    if (s.deg.includes(i))  return '<i class="deg"></i>';
+    if (i < 6)              return '<i class="gap"></i>';   // before monitoring began
+    return '<i></i>';
+  }).join('');
+
+  sitesEl.insertAdjacentHTML('beforeend', `
+    <div class="site">
+      <div class="nm"><span class="dot ${s.s}"></span>${s.n}</div>
+      <div class="ribbon">${bars}</div>
+      <div class="pct"><div class="v">${s.pct}%</div><div class="l">90-day</div></div>
+    </div>`);
+});
+
+// ---- tier 2 rows ----------------------------------------------------------
+document.getElementById('rows').innerHTML = ISSUES.map(i => `
+  <div class="row">
+    <span class="sev ${i.sev}">${i.sev.toUpperCase()}</span>
+    <span class="t">${i.t}<small>${i.w}</small></span>
+    <span class="r"><b>${i.n}</b> · <span class="${i.un?'un':''}">${i.ago}${i.un?' unacked':''}</span></span>
+  </div>`).join('');
+
+// ---- fingerprint reveal, auto-reverting -----------------------------------
+const REVEAL = 120;                 // 2 min on the wall — shorter than the console
+let left = 0, h = null;
+const detail = document.getElementById('detail'),
+      timer  = document.getElementById('timer'),
+      btn    = document.getElementById('fp');
+
+function close() {
+  clearInterval(h); h = null; timer.textContent = '';
+  detail.classList.remove('open'); btn.classList.remove('on');
+  btn.textContent = 'Fingerprint';
+}
+
+btn.onclick = () => {
+  if (detail.classList.contains('open')) { close(); return; }
+  detail.classList.add('open'); btn.classList.add('on'); btn.textContent = 'Hide';
+  left = REVEAL; clearInterval(h);
+  h = setInterval(() => {
+    left--;
+    timer.textContent = 'hides in ' + Math.floor(left/60) + ':' + String(left%60).padStart(2,'0');
+    if (left <= 0) close();
+  }, 1000);
+};
+
+const tick = () => {
+  const d = new Date();
+  document.getElementById('clock').textContent =
+    String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+};
+tick(); setInterval(tick, 20000);
+</script>
+</body>
+</html>

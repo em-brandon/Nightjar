@@ -1,0 +1,145 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 700" width="900" height="700" role="img" aria-label="Nightjar cabinet front panel cutout detail, dimensioned">
+  <title>Nightjar cabinet — front panel cutout detail</title>
+  <desc>Dimensioned front panel: 280 by 360 mm flat plate in 1.5 mm steel. Perforated intake zone at top aligned with the ThinkCentre and second device bays, an acrylic sub-panel cutout in the middle carrying the OLED aperture and capacitive touch zone, and a lower port band with one RJ45 keystone and two USB-A panel mounts.</desc>
+
+  <defs>
+    <marker id="d1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M2 2 L9 5 L2 8" fill="none" stroke="context-stroke" stroke-width="1.3" stroke-linecap="round"/>
+    </marker>
+    <pattern id="slots" width="21" height="60" patternUnits="userSpaceOnUse">
+      <rect x="0" y="7" width="6" height="45" rx="3" fill="#F7F5EF" stroke="#0F1420" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <style>
+    .t   { font: 600 14px ui-sans-serif, -apple-system, "Segoe UI", sans-serif; fill:#0F1420; letter-spacing:1.2px; }
+    .st  { font: 400 11px ui-sans-serif, -apple-system, "Segoe UI", sans-serif; fill:#0F1420; opacity:.65; }
+    .lbl { font: 500 11px ui-sans-serif, -apple-system, "Segoe UI", sans-serif; fill:#0F1420; }
+    .dim { font: 500 11px ui-monospace, "SF Mono", Menlo, monospace; fill:#B4741F; }
+    .n   { font: 400 11.5px ui-sans-serif, -apple-system, "Segoe UI", sans-serif; fill:#0F1420; }
+    .nh  { font: 600 11.5px ui-sans-serif, -apple-system, "Segoe UI", sans-serif; fill:#0F1420; }
+    .cut { fill:#FFFFFF; stroke:#0F1420; stroke-width:1.6; }
+    .dl  { stroke:#B4741F; stroke-width:1.1; fill:none; }
+    .ctr { stroke:#0F1420; stroke-width:.7; stroke-dasharray:12 4 3 4; opacity:.5; }
+    .ghost { fill:none; stroke:#0F1420; stroke-width:1.1; stroke-dasharray:5 4; opacity:.55; }
+  </style>
+
+  <rect width="900" height="700" fill="#F7F5EF"/>
+
+  <text class="t" x="40" y="34">FRONT PANEL — CUTOUT DETAIL</text>
+  <text class="st" x="40" y="52">1.5 mm mild steel · flat plate, no bends · laser cut · all dims mm</text>
+
+  <!-- ===== panel outline ===== -->
+  <rect class="cut" x="170" y="80" width="420" height="540" rx="4"/>
+
+  <!-- ===== intake perforation zone ===== -->
+  <rect x="209" y="122" width="342" height="243" fill="url(#slots)" stroke="#B4741F" stroke-width="1.1" stroke-dasharray="4 3"/>
+  <text class="st" x="380" y="112" text-anchor="middle">intake perforation — aligns with both device bays</text>
+
+  <!-- ===== acrylic sub-panel cutout ===== -->
+  <rect class="cut" x="230" y="392" width="300" height="114"/>
+  <text class="st" x="380" y="384" text-anchor="middle">acrylic sub-panel aperture (touch will not sense through metal)</text>
+
+  <!-- sub-panel fixing holes, M3 -->
+  <circle class="cut" cx="215" cy="380" r="2.4"/>
+  <circle class="cut" cx="545" cy="380" r="2.4"/>
+  <circle class="cut" cx="215" cy="518" r="2.4"/>
+  <circle class="cut" cx="545" cy="518" r="2.4"/>
+
+  <!-- OLED aperture + touch zone: in the sub-panel, shown for reference only -->
+  <rect class="ghost" x="308" y="426" width="84" height="45"/>
+  <text class="dim" x="350" y="452" text-anchor="middle">OLED</text>
+  <circle class="ghost" cx="478" cy="449" r="22"/>
+  <text class="dim" x="478" y="452" text-anchor="middle">touch</text>
+
+  <!-- ===== port band ===== -->
+  <line class="ctr" x1="280" y1="563" x2="510" y2="563"/>
+  <rect class="cut" x="303" y="548" width="22" height="30"/>
+  <text class="st" x="314" y="596" text-anchor="middle">RJ45</text>
+
+  <rect class="cut" x="385" y="551" width="21" height="23"/>
+  <circle class="cut" cx="376" cy="563" r="2.4"/>
+  <circle class="cut" cx="414" cy="563" r="2.4"/>
+  <text class="st" x="395" y="596" text-anchor="middle">USB 1</text>
+
+  <rect class="cut" x="454" y="551" width="21" height="23"/>
+  <circle class="cut" cx="445" cy="563" r="2.4"/>
+  <circle class="cut" cx="483" cy="563" r="2.4"/>
+  <text class="st" x="464" y="596" text-anchor="middle">USB 2</text>
+
+  <!-- ===== panel fixing holes, M4 ===== -->
+  <circle class="cut" cx="188" cy="98" r="3.4"/>
+  <circle class="cut" cx="572" cy="98" r="3.4"/>
+  <circle class="cut" cx="188" cy="350" r="3.4"/>
+  <circle class="cut" cx="572" cy="350" r="3.4"/>
+  <circle class="cut" cx="188" cy="602" r="3.4"/>
+  <circle class="cut" cx="572" cy="602" r="3.4"/>
+
+  <!-- ===== dimensions ===== -->
+  <!-- overall width -->
+  <path class="dl" d="M170 62 L590 62" marker-start="url(#d1)" marker-end="url(#d1)"/>
+  <text class="dim" x="380" y="58" text-anchor="middle">280</text>
+  <!-- overall height -->
+  <path class="dl" d="M152 80 L152 620" marker-start="url(#d1)" marker-end="url(#d1)"/>
+  <text class="dim" x="148" y="352" text-anchor="end">360</text>
+
+  <!-- edge inset -->
+  <path class="dl" d="M170 98 L188 98" marker-start="url(#d1)" marker-end="url(#d1)"/>
+  <text class="dim" x="196" y="90">12</text>
+
+  <!-- acrylic aperture width -->
+  <path class="dl" d="M230 528 L530 528" marker-start="url(#d1)" marker-end="url(#d1)"/>
+  <text class="dim" x="380" y="542" text-anchor="middle">200</text>
+  <!-- acrylic aperture height -->
+  <path class="dl" d="M608 392 L608 506" marker-start="url(#d1)" marker-end="url(#d1)"/>
+  <text class="dim" x="614" y="452">76</text>
+  <!-- acrylic top from datum -->
+  <path class="dl" d="M600 80 L600 392" marker-start="url(#d1)" marker-end="url(#d1)"/>
+  <text class="dim" x="604" y="240">208</text>
+
+  <!-- port centreline from datum -->
+  <path class="dl" d="M262 80 L262 563" marker-start="url(#d1)" marker-end="url(#d1)"/>
+  <text class="dim" x="256" y="470" text-anchor="end">322</text>
+
+  <!-- port x positions -->
+  <path class="dl" d="M170 620 L314 620" marker-start="url(#d1)" marker-end="url(#d1)"/>
+  <text class="dim" x="242" y="634" text-anchor="middle">96</text>
+  <path class="dl" d="M170 644 L395 644" marker-start="url(#d1)" marker-end="url(#d1)"/>
+  <text class="dim" x="282" y="658" text-anchor="middle">150</text>
+  <path class="dl" d="M170 668 L464 668" marker-start="url(#d1)" marker-end="url(#d1)"/>
+  <text class="dim" x="317" y="682" text-anchor="middle">196</text>
+
+  <!-- ===== notes ===== -->
+  <text class="nh" x="640" y="100">CUTOUTS</text>
+  <text class="n" x="640" y="120">RJ45 keystone     14.8 × 20.0</text>
+  <text class="n" x="640" y="138">USB-A panel mt    14.0 × 15.5</text>
+  <text class="n" x="640" y="156">USB M3 holes      25.0 centres</text>
+  <text class="n" x="640" y="174">Acrylic aperture  200 × 76</text>
+  <text class="n" x="640" y="192">Panel fixing      6 × Ø4.5 (M4)</text>
+  <text class="n" x="640" y="210">Sub-panel fixing  4 × Ø3.2 (M3)</text>
+
+  <text class="nh" x="640" y="248">PERFORATION</text>
+  <text class="n" x="640" y="268">4 × 30 slots, 14 × 40 pitch</text>
+  <text class="n" x="640" y="286">zone 228 × 162, inset 26 / 28</text>
+  <text class="n" x="640" y="304">free area ≈ 21% — do not reduce</text>
+
+  <text class="nh" x="640" y="342">SUB-PANEL (separate part)</text>
+  <text class="n" x="640" y="362">3 mm smoked acrylic or PETG</text>
+  <text class="n" x="640" y="380">220 × 96, overlaps aperture 10 mm</text>
+  <text class="n" x="640" y="398">OLED aperture 56 × 30, 1 mm lip</text>
+  <text class="n" x="640" y="416">touch pad Ø30 — NO hole, etch only</text>
+  <text class="n" x="640" y="434">panel ≤ 2 mm over the touch pad</text>
+
+  <text class="nh" x="640" y="472">VERIFY BEFORE CUTTING</text>
+  <text class="n" x="640" y="492">Connector footprints vary by</text>
+  <text class="n" x="640" y="510">manufacturer. Buy the RJ45 and</text>
+  <text class="n" x="640" y="528">USB parts first, measure them,</text>
+  <text class="n" x="640" y="546">then release this panel to cut.</text>
+  <text class="n" x="640" y="564">Same for the OLED module — board</text>
+  <text class="n" x="640" y="582">outlines differ between sellers.</text>
+
+  <text class="nh" x="640" y="620">FINISH</text>
+  <text class="n" x="640" y="640">Deburr all cut edges.</text>
+  <text class="n" x="640" y="658">Powder coat after cutting.</text>
+  <text class="n" x="640" y="676">Mask the sub-panel seating face.</text>
+</svg>

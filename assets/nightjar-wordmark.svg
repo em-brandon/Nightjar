@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 72" width="320" height="72" role="img" aria-label="Nightjar">
+  <title>Nightjar</title>
+  <rect width="72" height="72" rx="16" fill="#0F1420"/>
+  <g transform="translate(4,4) scale(0.64)">
+    <path d="M12 64 H88" stroke="#F2EFE6" stroke-width="2.5" stroke-linecap="round" opacity="0.35"/>
+    <path d="M24 47 C24 41, 32 37.5, 40 38.6 C52 40, 60 43, 70 49 L86 60
+             C74 58, 62 58, 52 57 C40 56, 26 53.5, 24 47 Z" fill="#F2EFE6"/>
+    <path d="M24.5 45.5 L17 49 L24.5 51.5 Z" fill="#F2EFE6"/>
+    <circle cx="33.5" cy="45.5" r="4.2" fill="#E8A33D"/>
+    <circle cx="33.5" cy="45.5" r="1.7" fill="#0F1420"/>
+  </g>
+  <!-- Convert to outlines before shipping anywhere the font may be missing. -->
+  <text x="90" y="47" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Inter, sans-serif"
+        font-size="34" font-weight="600" letter-spacing="-0.5" fill="#0F1420">nightjar</text>
+</svg>

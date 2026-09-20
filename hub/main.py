@@ -1,0 +1,24 @@
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+from .db import Base, engine
+from .ingest import router as ingest_router
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Fine for v1. Swap in Alembic before you have data you care about.
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield
+    await engine.dispose()
+
+
+app = FastAPI(title="incident hub", lifespan=lifespan)
+app.include_router(ingest_router)
+
+
+@app.get("/healthz")
+async def healthz() -> dict[str, str]:
+    return {"status": "ok"}
