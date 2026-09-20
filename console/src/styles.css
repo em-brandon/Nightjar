@@ -180,3 +180,53 @@ button { font: inherit; }
   .stats { grid-template-columns: 1fr; }
   .issue { gap: 10px; }
 }
+
+/* ---- boot splash (mockups/nightjar-console.html) ---- */
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ink);
+  cursor: pointer;
+  transition: opacity 0.45s ease;
+}
+.splash.leaving { opacity: 0; pointer-events: none; }
+.stage { width: 100%; max-width: 560px; padding: 36px; }
+.mark { display: flex; align-items: center; gap: 15px; margin-bottom: 30px; }
+.mark > svg { width: 52px; height: 52px; flex: none; }
+.mark h1 { font-size: 28px; font-weight: 600; letter-spacing: -0.8px; }
+.mark h1 span { color: var(--amber); }
+.mark p { font-family: var(--mono); font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+
+.boot { font-family: var(--mono); font-size: 12.5px; }
+.ln {
+  display: flex;
+  gap: 11px;
+  align-items: center;
+  padding: 5px 0;
+  opacity: 0;
+  transition: opacity 0.28s ease;
+}
+.ln.show { opacity: 1; }
+.ln .glyph { width: 19px; height: 19px; flex: none; opacity: 0.75; }
+.ln .nm { color: var(--bone); min-width: 88px; }
+.ln .role { color: var(--muted); }
+.ln .st { margin-left: auto; color: var(--muted); opacity: 0; transition: opacity 0.2s ease; }
+.ln.done .st { color: var(--green); opacity: 1; }
+.cursor {
+  display: inline-block;
+  width: 7px;
+  height: 12px;
+  margin-left: 4px;
+  background: var(--amber);
+  vertical-align: -1px;
+  animation: blink 1.1s steps(1) infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .cursor { animation: none; }
+  .ln, .ln .st, .splash { transition: none; }
+}

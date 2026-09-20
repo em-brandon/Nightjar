@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import Splash from "./Splash.jsx";
 
 const POLL_MS = 30_000;
 
@@ -230,6 +231,7 @@ export default function App() {
 
   return (
     <div className="shell">
+      <Splash />
       <div className="top">
         <div className="brand">
           night<span>jar</span>
