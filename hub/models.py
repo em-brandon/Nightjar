@@ -3,6 +3,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     DateTime,
     ForeignKey,
     Index,
@@ -44,6 +45,10 @@ class Site(Base):
     client_id: Mapped[int] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(120))
     env: Mapped[str] = mapped_column(String(20), default="production")
+
+    # What the uptime probe requests. None means "not monitored": the site still
+    # reports crashes, it just has no health checks or uptime ribbon.
+    url: Mapped[str | None] = mapped_column(String(500))
 
     # goes in the ingest URL — identifies the sender
     ingest_key: Mapped[str] = mapped_column(String(64), unique=True, default=_key)
@@ -102,3 +107,22 @@ class Event(Base):
     occurred_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class Check(Base):
+    """One uptime probe result. Prune on a schedule; the ribbon needs ~90 days."""
+
+    __tablename__ = "checks"
+    __table_args__ = (Index("ix_checks_site_time", "site_id", "checked_at"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    checked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    ok: Mapped[bool] = mapped_column(Boolean)
+    status_code: Mapped[int | None] = mapped_column(Integer)
+    # None on failure: a timeout has no meaningful latency
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
+    # exception class name only, never the message: it can carry the URL
+    error: Mapped[str | None] = mapped_column(String(100))

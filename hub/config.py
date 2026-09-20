@@ -8,6 +8,9 @@ class Settings(BaseSettings):
     verify_signatures: bool = False
     spike_threshold: int = 50
     spike_window_min: int = 10
+    probe_enabled: bool = True
+    probe_interval_s: int = 60
+    probe_timeout_s: float = 10.0
 
 
 settings = Settings()
