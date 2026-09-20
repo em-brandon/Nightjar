@@ -128,21 +128,8 @@ export default function Splash() {
     <div className={`splash${leaving ? " leaving" : ""}`} onClick={skip} role="presentation">
       <div className="stage">
         <div className="mark">
-          <svg viewBox="0 0 100 100" aria-hidden="true">
-            <rect width="100" height="100" rx="22" fill="#0F1420" />
-            <path d="M12 64 H88" stroke="#F2EFE6" strokeWidth="2.5" strokeLinecap="round" opacity=".28" />
-            <path
-              d="M24 47 C24 41,32 37.5,40 38.6 C52 40,60 43,70 49 L86 60 C74 58,62 58,52 57 C40 56,26 53.5,24 47 Z"
-              fill="#F2EFE6"
-            />
-            <path d="M24.5 45.5 L17 49 L24.5 51.5 Z" fill="#F2EFE6" />
-            <circle cx="33.5" cy="45.5" r="4.2" fill="#E8A33D" />
-            <circle cx="33.5" cy="45.5" r="1.7" fill="#0F1420" />
-          </svg>
-          <div>
-            <h1>night<span>jar</span></h1>
-            <p>incident hub</p>
-          </div>
+          <h1>night<span>jar</span></h1>
+          <p>incident hub</p>
         </div>
 
         <div className="boot" aria-hidden="true">
