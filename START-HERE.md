@@ -22,12 +22,17 @@ notifications come out.
 comes out. 200 identical crashes with varying IPs and retry counts collapse to a
 single row with `event_count` in the 200s.
 
-**Chunk 2 is not written.** This means Nightjar currently *cannot tell you
-anything*. It dedupes beautifully and never mentions it. Everything downstream —
-the console, the wall display, the Pico, the cabinet — is decoration on a system
-that does not yet alert.
+**Chunk 3 is done.** A React console shows sites and open issues, polling every
+30 seconds. See "Running it" in `CLAUDE.md` — it needs only Docker and Node.
 
-## Do these three things, in this order
+**Chunk 2 is not written, and is deferred until there is money for it.** Pushover
+is a paid licence, and production needs a domain and a VPS. This means Nightjar
+currently *cannot tell you anything*: it dedupes, and you can look at the result,
+but nothing interrupts you. Do not rely on it to catch a client outage yet.
+
+Everything below is still the right order. It is paused on cost, not on design.
+
+## Do these three things, in this order (when you can pay for them)
 
 **1. Prove Pushover works. Ten minutes, tonight.**
 

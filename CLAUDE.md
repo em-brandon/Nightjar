@@ -29,8 +29,15 @@ The scarce resource is **attention at inconvenient hours**, not compute.
 **Chunk 1: done.** Stack trace in, one deduplicated issue out. Verified: 200
 crashes with varying IPs and retry counts collapse to a single row.
 
-**Chunk 2: not written.** Nightjar therefore cannot alert anyone yet. This is
-the next thing and the entire point of the project.
+**Chunk 3: done.** React console, two read-only endpoints, 30-second polling.
+Runs locally against the dev database; needs no paid service.
+
+**Chunk 2: not written, deferred.** Nightjar therefore cannot alert anyone yet.
+It is still the entire point of the project, but it needs a Pushover licence, and
+production needs a domain and a VPS. Chunk 3 went first because it costs nothing.
+Resume chunk 2 when those are paid for. Until then the console is a place to
+*look*, not a reason to be interrupted, and nothing here should be mistaken for
+monitoring.
 
 Everything else waits.
 
@@ -60,9 +67,13 @@ One FastAPI service, one Postgres, one React console. Nothing else.
 Local dev needs only the first three:
 
 ```bash
-docker compose up -d db
+docker compose -f docker-compose.dev.yml up -d db
 uvicorn hub.main:app --reload
 ```
+
+`docker-compose.yml` is the production file and deliberately never publishes the
+database port. The dev file does, on `127.0.0.1:5433` (not 5432, so it does not
+collide with a Postgres already installed on the machine).
 
 ---
 
@@ -167,9 +178,20 @@ reporter snippet, the dedupe harness.
 - Test by breaking a staging route, not with a unit test. Test presence by
   tapping out and confirming the push *still arrives*.
 
-**Chunk 3.** React console. One page, ~300 lines, two endpoints
+**Chunk 3 — done.** React console. One page, two endpoints
 (`/api/sites/health`, `/api/issues`), 30-second polling, no websockets. Layout
 reference in `mockups/nightjar-console.html`.
+
+Built: verdict banner, site tiles, open-issue list, issue drawer. Site state is
+*derived* from open issues (`down` = open P1, `warn` = open P2, else `up`), never
+stored. When the hub is unreachable the console says so and never shows "All
+quiet" — silence must not read as all-clear.
+
+Not built, because the data does not exist yet: 90-day uptime ribbons and
+"unacked" state (need an uptime probe and chunk 2's acknowledgement), and
+Resolve / Mute / Snooze (need write endpoints — the natural first follow-up).
+The mockup also shows deployments, client requests and the fingerprint reveal;
+those belong to later chunks.
 
 **Chunk 4.** Email intake (Postmark/Mailgun inbound → `/ingest/email`) and the
 07:30 digest cron.
@@ -254,10 +276,21 @@ Nightjar's job is narrow — deduplicate, decide, deliver.
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
+docker compose -f docker-compose.dev.yml up -d db
 python seed.py                # prints ingest_key and ingest_secret
 uvicorn hub.main:app --reload
 ./test_ingest.sh <ingest_key>
 ```
+
+The console, in a second terminal:
+
+```bash
+cd console && npm install && npm run dev    # http://localhost:5173
+```
+
+Vite proxies `/api` to the hub on `:8000`, so the hub needs no CORS config. After
+`test_ingest.sh` the console should show one site in `warn` and one open issue
+with a count in the 200s.
 
 `test_ingest.sh` sends 200 copies of one crash with a different IP and retry
 count each time. Correct output is a **single** `issue_id` with `event_count` in
@@ -286,5 +319,9 @@ the 200s. Two hundred separate issues means the fingerprint is broken.
 
 Ink `#0F1420` · bone `#F2EFE6` · amber `#E8A33D`
 
-Amber is reserved for alert state — P1 badges, the status light, the bird's eye.
-If amber appears on ordinary UI it stops meaning anything.
+Amber is reserved for alert state — P2 badges, warning dots, the status light,
+the bird's eye. If amber appears on ordinary UI it stops meaning anything.
+
+In the console, P1 is **red** and P2 is amber, as in the mockup: red means "wake
+me", amber means "look soon". Making both amber would blur the one distinction
+that matters most at 2am.

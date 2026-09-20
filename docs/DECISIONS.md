@@ -385,3 +385,69 @@ known failure mode for this kind of project, and it is the reason this log ends
 here rather than with more design.
 
 **Next: the Pushover curl test, ten minutes. Then chunk 2, one evening.**
+
+---
+
+# Addendum — 2026-09-21
+
+Written after the log above. Where this contradicts "Next: the Pushover curl
+test", this wins.
+
+## 22. Chunk 3 before chunk 2, because of money
+
+**Decision:** build the console first and defer alerting.
+
+Pushover is a paid licence, and production needs a domain and a VPS; none of
+those were affordable. The console needs only Docker and Node, so it could be
+built and verified locally at zero cost.
+
+**Cost of the change:** the ordering argument above still stands — the console is
+decoration on a system that does not alert. Nightjar cannot interrupt anyone
+until chunk 2 exists, so it must not be trusted to catch a client outage.
+Resume chunk 2 when the licence, domain and VPS are paid for.
+
+---
+
+## 23. Site health is derived from open issues, not stored
+
+**Decision:** `down` = an open P1, `warn` = an open P2, otherwise `up`. Computed
+per request from `issues`; there is no health table.
+
+**Rejected:** faking the 90-day uptime ribbons (#15) or an "unacked" state. There
+is no uptime probe and no acknowledgement yet, so any such number would be
+invented. They arrive with uptime checks and chunk 2.
+
+A derived state cannot drift out of sync with the issues it summarises.
+
+---
+
+## 24. The console never says "All quiet" while it cannot reach the hub
+
+**Decision:** on a failed poll, the verdict becomes "Can't reach the hub" (red).
+Last good data stays on screen, labelled with its age, rather than blanking.
+
+This is #10 applied to the UI: a frozen or blind display that still looks
+healthy is the one failure this system cannot have.
+
+---
+
+## 25. P1 is red and P2 is amber in the console
+
+**Decision:** follow the mockup. This deliberately departs from the earlier brand
+note that amber marks P1.
+
+Red means "wake me", amber means "look soon". Both amber would blur the one
+distinction that matters at 2am. Amber stays reserved for alert state.
+
+---
+
+## 26. Separate dev compose file, on port 5433
+
+**Decision:** `docker-compose.dev.yml` publishes Postgres on `127.0.0.1:5433`.
+`docker-compose.yml` stays the prod file and still never publishes the database.
+
+**Why separate:** an override file would silently publish 5432 on the VPS. A
+standalone file cannot leak into prod.
+
+**Why 5433:** a native Postgres already held 5432 on the dev machine. Found by
+running it, not by assumption — the first `up` failed to bind.
