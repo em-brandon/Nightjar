@@ -1,17 +1,18 @@
-/* Tokens from mockups/nightjar-console.html. Dark only: this is a night tool.
+/* Full dark: neutral near-black with no blue cast (the mockup's navy ink was
+   dropped on purpose). Dark only: this is a night tool.
    Amber is reserved for alert state (P2, warn) and the wordmark. If it shows
    up on ordinary UI it stops meaning anything. */
 :root {
-  --ink: #0f1420;
-  --ink-2: #1a2130;
-  --ink-3: #262f42;
+  --ink: #0a0a0b;
+  --ink-2: #131315;
+  --ink-3: #1d1d20;
   --bone: #f2efe6;
-  --muted: #7c8799;
-  --dim: #9ba6b8;
+  --muted: #85858c;
+  --dim: #a6a6ad;
   --amber: #e8a33d;
   --red: #e05252;
   --green: #4fa882;
-  --line: #232b3c;
+  --line: #232326;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --sans: "Inter", ui-sans-serif, -apple-system, "Segoe UI", sans-serif;
   color-scheme: dark;
@@ -120,10 +121,10 @@ button { font: inherit; }
 }
 .sev.p1 { color: var(--red); background: rgba(224, 82, 82, 0.13); }
 .sev.p2 { color: var(--amber); background: rgba(232, 163, 61, 0.13); }
-.sev.p3 { color: var(--muted); background: rgba(124, 135, 153, 0.13); }
+.sev.p3 { color: var(--muted); background: rgba(133, 133, 140, 0.14); }
 
 /* ---- drawer ---- */
-.scrim { position: fixed; inset: 0; background: rgba(6, 9, 15, 0.62); z-index: 30; }
+.scrim { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7); z-index: 30; }
 .drawer {
   position: fixed;
   top: 0;

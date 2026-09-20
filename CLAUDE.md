@@ -317,7 +317,9 @@ the 200s. Two hundred separate issues means the fingerprint is broken.
 
 ## Brand
 
-Ink `#0F1420` · bone `#F2EFE6` · amber `#E8A33D`
+Ink `#0A0A0B` · bone `#F2EFE6` · amber `#E8A33D`
+
+The console is neutral near-black with no blue cast (surfaces `#131315`, `#1D1D20`, hairlines `#232326`). The mockups still use the original navy `#0F1420`; they are design references, not the implementation.
 
 Amber is reserved for alert state — P2 badges, warning dots, the status light,
 the bird's eye. If amber appears on ordinary UI it stops meaning anything.

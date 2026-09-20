@@ -451,3 +451,15 @@ standalone file cannot leak into prod.
 
 **Why 5433:** a native Postgres already held 5432 on the dev machine. Found by
 running it, not by assumption — the first `up` failed to bind.
+
+---
+
+## 27. Neutral near-black, not navy
+
+**Decision:** the console's ink is `#0A0A0B` with grey surfaces, replacing the
+mockups' blue-tinted `#0F1420` family. Amber, red and green are unchanged.
+
+Changed on the operator's preference after seeing it running. The brand section
+in `CLAUDE.md` is updated to match; the mockups are left as the original design
+reference. Because the palette lives in CSS custom properties, this was a token
+swap, not a restyle.
