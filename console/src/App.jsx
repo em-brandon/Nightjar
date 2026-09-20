@@ -1,7 +1,8 @@
 import Splash from "./Splash.jsx";
 import { Dot } from "./ui.jsx";
-import { ago, settled, useHashTab, useNow, usePoll } from "./hooks.js";
+import { ago, settled, tuning, useHashTab, useInactivity, useNow, usePoll } from "./hooks.js";
 import Deploys from "./views/Deploys.jsx";
+import Idle from "./views/Idle.jsx";
 import Incidents from "./views/Incidents.jsx";
 import Overview from "./views/Overview.jsx";
 import Requests from "./views/Requests.jsx";
@@ -14,7 +15,10 @@ const TABS = [
   ["deploys", "Deploys"],
   ["staging", "Staging"],
 ];
-const TAB_IDS = TABS.map(([id]) => id);
+// "idle" is a screen, not a tab: it is reachable at #/idle and starts by itself
+// after IDLE_AFTER_MS with no input, but has no sidebar entry.
+const TAB_IDS = [...TABS.map(([id]) => id), "idle"];
+const IDLE_AFTER_MS = tuning("idle", 5 * 60_000);
 
 // Simple stroke icons, 18x18. Inline so there is no icon dependency.
 const ICONS = {
@@ -34,6 +38,7 @@ export default function App() {
   const deploys = usePoll("/api/deploys");
   const now = useNow();
   const [tab, go] = useHashTab(TAB_IDS, "overview");
+  useInactivity(IDLE_AFTER_MS, () => go("idle"), tab !== "idle");
 
   const feeds = [health, issues, rising, tickets, deploys];
   const hubError = feeds.some((x) => x.error);
@@ -62,6 +67,17 @@ export default function App() {
     incidents: { n: openIssues.length, hot: openIssues.some((i) => i.severity === "P1") },
     requests: { n: openTickets.length, hot: openTickets.some((t) => t.overdue) },
   };
+
+  // The idle screen owns the whole viewport (no sidebar). It is left only by
+  // revealing detail and choosing Unlock, never by stray mouse movement.
+  if (tab === "idle") {
+    return (
+      <>
+        <Splash />
+        <Idle f={f} go={go} />
+      </>
+    );
+  }
 
   const View = VIEWS[tab];
   return (
@@ -93,6 +109,7 @@ export default function App() {
             {hubError ? "hub unreachable" : "hub connected"}
           </span>
           <span>{updatedAt ? `updated ${ago(updatedAt, now)}` : "waiting for data"}</span>
+          <button className="side-link" onClick={() => go("idle")}>Show idle screen</button>
         </div>
       </aside>
 

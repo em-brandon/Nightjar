@@ -148,7 +148,7 @@ export function Empty({ children }) {
 // ---------------------------------------------------------------- site card
 
 // One monitored site: uptime ring, live latency, latency trend, 90-day ribbon.
-export function SiteCard({ site: s, now }) {
+export function SiteCard({ site: s, now, big = false }) {
   const total = s.open_p1 + s.open_p2 + s.open_p3;
   const lat = s.latency_ms;
   // The ring and sparkline describe the probe alone. The dot and border carry
@@ -158,7 +158,7 @@ export function SiteCard({ site: s, now }) {
   const probeTone = s.uptime_24h == null ? "up" : s.uptime_24h >= 99.5 ? "up" : s.uptime_24h >= 95 ? "warn" : "down";
   const sparkTone = lat == null ? "var(--red)" : "var(--green)";
   return (
-    <div className={`card site ${s.state}`}>
+    <div className={`card site ${s.state} ${big ? "big" : ""}`}>
       <div className="site-head">
         <Dot state={s.state} />
         <b>{s.name}</b>
@@ -168,7 +168,7 @@ export function SiteCard({ site: s, now }) {
       {s.monitored ? (
         <>
           <div className="site-body">
-            <Gauge percent={s.uptime_24h} state={probeTone}>
+            <Gauge percent={s.uptime_24h} state={probeTone} size={big ? 136 : 92}>
               <span className="g-num">
                 <Odometer value={fmtPct(s.uptime_24h)} />
                 <small>%</small>
@@ -205,8 +205,9 @@ export function SiteCard({ site: s, now }) {
       <div className="site-foot">
         {s.monitored && (
           <span className={s.probe_stale ? "c-warn" : ""}>
-            {s.probe_stale ? "probe silent · last check " : "checked "}
-            {ago(s.last_check, now)}
+            {s.last_check == null
+              ? "awaiting first check"
+              : `${s.probe_stale ? "probe silent · last check " : "checked "}${ago(s.last_check, now)}`}
           </span>
         )}
         <span>

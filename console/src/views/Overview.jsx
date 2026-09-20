@@ -6,7 +6,7 @@ const DEPLOY_LABEL = { success: "success", failed: "failed", running: "running" 
 
 const mean = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
 
-function Verdict({ prod, hubError, updatedAt, now }) {
+export function Verdict({ prod, hubError, updatedAt, now }) {
   const down = prod.filter((s) => s.state === "down").length;
   const warn = prod.filter((s) => s.state === "warn").length;
 

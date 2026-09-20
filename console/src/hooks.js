@@ -1,6 +1,15 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export const POLL_MS = 30_000;
+
+// Idle-screen timings. `?idle=5&rotate=8&reveal=10` (seconds) shortens them for
+// testing, but only in the dev server: a production build ignores the URL, so a
+// query string can never lengthen how long details stay revealed.
+export function tuning(key, fallbackMs) {
+  if (!import.meta.env.DEV) return fallbackMs;
+  const v = Number(new URLSearchParams(location.search).get(key));
+  return v > 0 ? v * 1000 : fallbackMs;
+}
 
 // Fetch on mount and every `ms`. On failure the last good data is kept and
 // `error` is set: a blank page during a hub restart would be worse than a
@@ -117,4 +126,46 @@ export const fmtTime = (iso) => new Date(iso).toLocaleString();
 export function fmtPct(p) {
   if (p == null) return "—";
   return p >= 100 ? "100" : (Math.floor(p * 10) / 10).toFixed(1);
+}
+
+// Calls `onIdle` once after `ms` with no pointer, key, wheel or touch input.
+// Input events are throttled to one reset per second: pointermove fires
+// hundreds of times a second and resetting a timer on each would be wasteful.
+export function useInactivity(ms, onIdle, enabled = true) {
+  const cb = useRef(onIdle);
+  cb.current = onIdle;
+  useEffect(() => {
+    if (!enabled) return;
+    let timer = setTimeout(() => cb.current(), ms);
+    let last = Date.now();
+    const reset = () => {
+      if (Date.now() - last < 1000) return;
+      last = Date.now();
+      clearTimeout(timer);
+      timer = setTimeout(() => cb.current(), ms);
+    };
+    const events = ["pointermove", "pointerdown", "keydown", "wheel", "touchstart"];
+    events.forEach((e) => addEventListener(e, reset, { passive: true }));
+    return () => {
+      clearTimeout(timer);
+      events.forEach((e) => removeEventListener(e, reset));
+    };
+  }, [ms, enabled]);
+}
+
+// Whether the idle screen is showing detail. Detail reverts on its own after
+// `ms`, never on a button: you will walk away without pressing anything.
+//
+// Today `reveal()` is called by a labelled "Simulate fingerprint" control. When
+// the R307 reader exists (chunk 6) the hub will report a match and this is the
+// one place to swap: the rest of the screen only reads `revealed`.
+export function useReveal(ms, now) {
+  const [until, setUntil] = useState(0);
+  const remaining = Math.max(0, until - now);
+  return {
+    revealed: remaining > 0,
+    remainingMs: remaining,
+    reveal: () => setUntil(Date.now() + ms),
+    hide: () => setUntil(0),
+  };
 }
