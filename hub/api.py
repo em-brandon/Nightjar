@@ -1,5 +1,6 @@
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import case, func, select
@@ -7,8 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import settings
 from .db import get_session
-from .models import Check, Issue, Site
-from .schemas import DayState, IssueOut, SiteHealthOut
+from .models import Check, Event, Issue, IssueAction, Site
+from .schemas import DayState, IssueOut, RisingOut, SiteHealthOut
 
 # Read-only, for the console. Everything the console shows is derived from
 # issues and checks; there is no separate health table to drift out of sync.
@@ -26,32 +27,111 @@ OUTAGE_RATIO = 0.10
 DOWN_STREAK = 2
 
 
+async def acknowledged_ids(session: AsyncSession, issue_ids: list[int]) -> set[int]:
+    """Issues someone has looked at since they last opened. An ack counts until
+    a later resolve or reopen, so a regression is not born already-acknowledged."""
+    if not issue_ids:
+        return set()
+    acked: set[int] = set()
+    for issue_id, action in await session.execute(
+        select(IssueAction.issue_id, IssueAction.action)
+        .where(IssueAction.issue_id.in_(issue_ids))
+        .order_by(IssueAction.created_at, IssueAction.id)
+    ):
+        if action == "ack":
+            acked.add(issue_id)
+        elif action in ("resolve", "reopen"):
+            acked.discard(issue_id)
+    return acked
+
+
+def issue_out(issue: Issue, site_name: str, env: str, acked: bool) -> IssueOut:
+    return IssueOut(
+        id=issue.id,
+        site=site_name,
+        env=env,
+        severity=issue.severity,
+        status=issue.status,
+        snoozed_until=issue.snoozed_until,
+        acknowledged=acked,
+        title=issue.title,
+        culprit=issue.culprit,
+        fingerprint=issue.fingerprint,
+        event_count=issue.event_count,
+        first_seen=issue.first_seen,
+        last_seen=issue.last_seen,
+    )
+
+
 @router.get("/issues", response_model=list[IssueOut])
-async def list_issues(session: AsyncSession = Depends(get_session)) -> list[IssueOut]:
-    # P1 before P2 before P3, then most recently active. "P1" < "P2" < "P3"
-    # sorts correctly as text, but an explicit case survives a new severity.
+async def list_issues(
+    status: Literal["open", "all"] = "open",
+    session: AsyncSession = Depends(get_session),
+) -> list[IssueOut]:
+    # Open first, then P1 before P2 before P3, then most recently active. An
+    # explicit case survives a new severity where text ordering would not.
     rank = case((Issue.severity == "P1", 1), (Issue.severity == "P2", 2), else_=3)
-    rows = await session.execute(
+    query = (
         select(Issue, Site.name, Site.env)
         .join(Site, Issue.site_id == Site.id)
-        .where(Issue.status == "open")
-        .order_by(rank, Issue.last_seen.desc())
+        .order_by(case((Issue.status == "open", 0), else_=1), rank, Issue.last_seen.desc())
         .limit(ISSUE_LIMIT)
     )
-    return [
-        IssueOut(
-            id=issue.id,
-            site=site_name,
-            env=env,
-            severity=issue.severity,
-            title=issue.title,
-            culprit=issue.culprit,
-            fingerprint=issue.fingerprint,
-            event_count=issue.event_count,
-            first_seen=issue.first_seen,
-            last_seen=issue.last_seen,
+    if status == "open":
+        query = query.where(Issue.status == "open")
+    rows = (await session.execute(query)).all()
+    acked = await acknowledged_ids(session, [issue.id for issue, _, _ in rows])
+    return [issue_out(issue, name, env, issue.id in acked) for issue, name, env in rows]
+
+
+RISE_MIN = 5  # fewer than this in 30 minutes is noise, not a trend
+BUCKET_MIN = 10
+
+
+@router.get("/errors/rising", response_model=list[RisingOut])
+async def errors_rising(session: AsyncSession = Depends(get_session)) -> list[RisingOut]:
+    """Open issues whose event rate over the last 30 minutes is more than double
+    the 30 minutes before it. This is a look-at-it list, not an alert: the
+    spike alert stays in ingest, where it belongs."""
+    now = datetime.now(UTC)
+    since = now - timedelta(minutes=6 * BUCKET_MIN)
+    buckets: dict[int, list[int]] = defaultdict(lambda: [0] * 6)
+    for issue_id, at in await session.execute(
+        select(Event.issue_id, Event.occurred_at)
+        .join(Issue, Event.issue_id == Issue.id)
+        .where(Issue.status == "open", Event.occurred_at >= since)
+    ):
+        idx = min(5, int((at - since).total_seconds() // (BUCKET_MIN * 60)))
+        buckets[issue_id][idx] += 1
+
+    rising = []
+    for issue_id, series in buckets.items():
+        previous, recent = sum(series[:3]), sum(series[3:])
+        if recent >= RISE_MIN and recent > 2 * previous:
+            rising.append((issue_id, series, previous, recent))
+    if not rising:
+        return []
+
+    info = {
+        issue.id: (issue, name)
+        for issue, name in await session.execute(
+            select(Issue, Site.name)
+            .join(Site, Issue.site_id == Site.id)
+            .where(Issue.id.in_([r[0] for r in rising]))
         )
-        for issue, site_name, env in rows
+    }
+    rising.sort(key=lambda r: r[3], reverse=True)
+    return [
+        RisingOut(
+            issue_id=iid,
+            site=info[iid][1],
+            title=info[iid][0].title,
+            severity=info[iid][0].severity,
+            recent=recent,
+            previous=previous,
+            series=series,
+        )
+        for iid, series, previous, recent in rising[:10]
     ]
 
 

@@ -126,3 +126,67 @@ class Check(Base):
     latency_ms: Mapped[int | None] = mapped_column(Integer)
     # exception class name only, never the message: it can carry the URL
     error: Mapped[str | None] = mapped_column(String(100))
+
+
+class Ticket(Base):
+    """A client request: a change-over, an incident report, or an access ask.
+
+    Separate from crashes because the clock is a promise to a person, not an
+    error rate. Email intake (chunk 4) will create these; until then they come
+    in through POST /api/tickets."""
+
+    __tablename__ = "tickets"
+    __table_args__ = (Index("ix_tickets_status_created", "status", "created_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # SET NULL, not CASCADE: deleting a site must not erase a client's request
+    site_id: Mapped[int | None] = mapped_column(ForeignKey("sites.id", ondelete="SET NULL"))
+    # change | report | access
+    kind: Mapped[str] = mapped_column(String(20))
+    subject: Mapped[str] = mapped_column(String(300))
+    sender: Mapped[str] = mapped_column(String(255), default="")
+    # open | closed
+    status: Mapped[str] = mapped_column(String(20), default="open")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    site: Mapped["Site | None"] = relationship()
+
+
+class Deploy(Base):
+    """One deploy status report from CI. The env comes from the site, so a
+    staging deploy uses the staging site's key."""
+
+    __tablename__ = "deploys"
+    __table_args__ = (Index("ix_deploys_site_time", "site_id", "created_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    ref: Mapped[str] = mapped_column(String(120), default="")  # e.g. main@1f9c4a2
+    # running | success | failed
+    status: Mapped[str] = mapped_column(String(20))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    site: Mapped["Site"] = relationship()
+
+
+class IssueAction(Base):
+    """What a human did to an issue, and when. The audit trail: this is how you
+    answer "who muted that, and why is it quiet?" weeks later."""
+
+    __tablename__ = "issue_actions"
+    __table_args__ = (Index("ix_actions_issue_time", "issue_id", "created_at"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    issue_id: Mapped[int] = mapped_column(ForeignKey("issues.id", ondelete="CASCADE"))
+    # ack | resolve | mute | snooze | reopen
+    action: Mapped[str] = mapped_column(String(20))
+    detail: Mapped[str] = mapped_column(String(200), default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )

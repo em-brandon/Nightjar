@@ -29,6 +29,10 @@ class IssueOut(BaseModel):
     site: str
     env: str
     severity: str
+    status: Literal["open", "resolved", "muted", "snoozed"]
+    snoozed_until: datetime | None
+    # someone has looked at it since it last opened
+    acknowledged: bool
     title: str
     culprit: str
     fingerprint: str
@@ -63,6 +67,73 @@ class SiteHealthOut(BaseModel):
     latency_series: list[int | None]
     # 90 days, oldest first. gap = no checks that day (not "all good").
     ribbon: list[DayState]
+
+
+class RisingOut(BaseModel):
+    issue_id: int
+    site: str
+    title: str
+    severity: str
+    recent: int  # events in the last 30 min
+    previous: int  # events in the 30 min before that
+    series: list[int]  # six 10-minute buckets, oldest first
+
+
+ActionName = Literal["ack", "resolve", "mute", "snooze", "reopen"]
+
+
+class ActionIn(BaseModel):
+    action: ActionName
+    hours: int = Field(default=24, ge=1, le=720)  # snooze only
+
+
+class LogEntry(BaseModel):
+    at: datetime
+    # system: derived from the issue itself. action: something a person did.
+    kind: Literal["system", "action"]
+    text: str
+
+
+TicketKind = Literal["change", "report", "access"]
+
+
+class TicketIn(BaseModel):
+    kind: TicketKind
+    subject: str = Field(min_length=1, max_length=300)
+    sender: str = Field(default="", max_length=255)
+    site: str | None = None  # site name
+    due_at: datetime | None = None
+
+
+class TicketPatch(BaseModel):
+    status: Literal["open", "closed"]
+
+
+class TicketOut(BaseModel):
+    id: int
+    kind: TicketKind
+    subject: str
+    sender: str
+    site: str | None
+    status: Literal["open", "closed"]
+    created_at: datetime
+    due_at: datetime | None
+    closed_at: datetime | None
+    overdue: bool
+
+
+class DeployIn(BaseModel):
+    ref: str = Field(default="", max_length=120)
+    status: Literal["running", "success", "failed"]
+
+
+class DeployOut(BaseModel):
+    id: int
+    site: str
+    env: str
+    ref: str
+    status: Literal["running", "success", "failed"]
+    created_at: datetime
 
 
 class IngestOut(BaseModel):
