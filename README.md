@@ -19,6 +19,7 @@ Named for a bird that only becomes active after dark, which is when this system 
   - [Issue status](#issue-status)
   - [Severity](#severity)
   - [Presence and routing](#presence-and-routing)
+  - [Presence and NFC tags](#presence-and-nfc-tags)
 - [The console](#the-console)
 - [The wall monitor](#the-wall-monitor)
   - [What the monitor shows](#what-the-monitor-shows)
@@ -192,6 +193,46 @@ The speaker is rate-limited from day one: one sound per issue per 15 minutes and
 Without both, a spike machine-guns the speaker and it gets unplugged inside a week.
 
 > Presence, routing and the speaker are chunk 2 and are **not implemented yet**.
+
+### Presence and NFC tags
+
+Presence is how Nightjar knows whether you are home, so it can add the speaker or hold a chime. It is
+set by tapping an NFC tag with your iPhone.
+
+> **Planned, not built.** This is chunk 2. Nothing below exists in the code yet.
+
+**The tags.** Two NTAG213 stickers, because one tag maps to exactly one iOS Shortcuts automation:
+
+| Tag | Where | Sets |
+|---|---|---|
+| `arriving` | inside the door frame | `home`, with a 14-hour expiry |
+| `leaving` | by the keys | `away` |
+
+Create one Shortcuts personal automation per tag and switch **off** "Ask Before Running" on both.
+Otherwise every tap waits for a confirmation, and you will stop tapping.
+
+**The endpoint.** Each automation calls the hub:
+
+```
+POST /presence
+{"state": "home", "ttl_minutes": 840, "source": "nfc", "token": "<shared secret>"}
+```
+
+`source` is `nfc`, `geofence` or `manual`. `token` is how the hub knows the call is yours.
+
+**Inputs, in order of trust:**
+
+1. **NFC tap.** Explicit, so the most trusted.
+2. **Geofence automation.** Catches a forgotten tap. It is flaky and can arrive late, which is harmless
+   because every state expires.
+3. **Manual override** in the console.
+
+**Why it expires.** A stored toggle desyncs permanently the first time a tap is missed. An expiry lapses on
+its own, and with no record the state is `away`, the state where only the reliable channel (the push) is
+used. A missed tap therefore costs you a speaker announcement, never an alert.
+
+**How to test it.** Tap out, then break a staging route and confirm the push **still arrives**. Presence
+may add a channel. It must never be the reason a push does not fire.
 
 ---
 
