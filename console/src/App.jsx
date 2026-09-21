@@ -30,7 +30,7 @@ const ICONS = {
 };
 const VIEWS = { overview: Overview, incidents: Incidents, requests: Requests, deploys: Deploys, staging: Staging };
 
-export default function App() {
+export default function App({ onSignOut }) {
   const health = usePoll("/api/sites/health");
   const issues = usePoll("/api/issues?status=all");
   const rising = usePoll("/api/errors/rising");
@@ -113,6 +113,11 @@ export default function App() {
           </span>
           <span>{updatedAt ? `updated ${ago(updatedAt, now)}` : "waiting for data"}</span>
           <button className="side-link" onClick={() => go("idle")}>Show idle screen</button>
+          {onSignOut && (
+            <button className="side-link" onClick={onSignOut}>
+              Sign out
+            </button>
+          )}
         </div>
       </aside>
 

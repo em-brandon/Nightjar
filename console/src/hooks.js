@@ -2,6 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 export const POLL_MS = 30_000;
 
+// A 401 means the session ended (or was never there). Root listens for this and
+// shows the login, instead of every feed reporting "can't reach the hub".
+export const announceUnauthorized = () => window.dispatchEvent(new Event("nj-unauthorized"));
+
 // Idle-screen timings. `?idle=5&rotate=8&reveal=10` (seconds) shortens them for
 // testing, but only in the dev server: a production build ignores the URL, so a
 // query string can never lengthen how long details stay revealed.
@@ -21,6 +25,7 @@ export function usePoll(url, ms = POLL_MS) {
     async (signal) => {
       try {
         const res = await fetch(url, { signal });
+        if (res.status === 401) announceUnauthorized();
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         setState({ data, error: null, at: Date.now() });
@@ -82,6 +87,7 @@ export async function send(method, url, body) {
     headers: { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
+  if (res.status === 401) announceUnauthorized();
   if (!res.ok) {
     let why = `HTTP ${res.status}`;
     try {
