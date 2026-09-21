@@ -1,0 +1,31 @@
+# Reports the health of the home host (this machine) to Nightjar. Runs once; home-reporter.timer fires it.
+#
+#   sudo cp home-reporter.* /etc/systemd/system/
+#   sudo mkdir -p /etc/nightjar /var/lib/nightjar
+#   sudo tee /etc/nightjar/home-reporter.env <<'ENV'
+#   NIGHTJAR_URL=https://nightjar.example.co.ke
+#   NIGHTJAR_HOME_KEY=<ingest_key of the site with env "home">
+#   NIGHTJAR_HOME_SECRET=<its ingest_secret>
+#   NIGHTJAR_BACKUP_PATH=/var/backups/nightjar
+#   ENV
+#   sudo useradd --system --no-create-home nightjar-reporter   # skip if it exists (the stack reporter's)
+#   sudo chown nightjar-reporter /var/lib/nightjar
+#   sudo chmod 600 /etc/nightjar/home-reporter.env
+#   sudo systemctl enable --now home-reporter.timer
+#
+# Needs only the standard library, so the system python3 is enough. Once an hour it also runs an
+# internet speed test: about 6 MB, roughly 5 GB a month. Set NIGHTJAR_SPEED=0 to turn that off.
+
+[Unit]
+Description=Report the home host to Nightjar
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# A dedicated user with no shell. It reads temperatures, memory and disk, and the backup's timestamp.
+User=nightjar-reporter
+EnvironmentFile=/etc/nightjar/home-reporter.env
+ExecStart=/usr/bin/python3 /opt/nightjar/home_reporter.py
+# The speed test takes several seconds on a slow line. Never let a stuck run pile up behind the next.
+TimeoutStartSec=90

@@ -837,3 +837,171 @@ estimates, the GB per hour for ProRes RAW is inferred from Apple's chart, and ne
 modem's category nor the real LTE speed on site is known. Five new questions are in the
 design doc.
 
+---
+
+## 47. Home streaming runs on the ThinkCentre, is watched by Nightjar, and its history is kept
+
+**Decision:** Jellyfin runs on the ThinkCentre with its library on an external SSD, for about two concurrent
+viewers of ordinary TV shows. Nightjar watches it: a reporter next to Jellyfin pushes its state to the hub
+(`hub/media.py`, `client/jellyfin_reporter.py`), the console has a **Media** tab, and the idle screen has a panel.
+Documented in `docs/MEDIA-ARCHIVE.md`.
+
+**Why on the ThinkCentre:** the operator chose it. The rejected worry was contention with staging. Production
+runs on the VPS, so contention can only slow staging builds, and a CPU limit on the Jellyfin container contains
+that. This does not reverse #44 for the archive Pi, which stays a separate system.
+
+**What is shown:** the console shows names and titles, because it sits behind the console token. The idle screen
+always shows the server's state, the number of streams and the disk, and hides who and what until the fingerprint
+reveal, the same rule as incident titles (#13).
+
+**History is kept**, by the operator's choice: one row per viewing with the user, title, device, play method and
+time actually watched. It is personal data, so it is pruned after `MEDIA_HISTORY_DAYS` (default 365) and is shown
+only in the console, never on the wall.
+
+**Kept:** the hub never reaches into the home network (the reporter pushes), the Jellyfin API key never leaves the
+media machine, silence is `reporter silent`, problems are P2 edge-triggered issues that resolve themselves, and a
+stream starting never alerts.
+
+**Not verified:** field names against a live Jellyfin, and hardware transcoding on this CPU.
+
+---
+
+## 48. The wall shows a clock with seconds, and the weather and altitude of where it hangs
+
+**Decision:** the idle screen's clock shows hours, minutes and seconds, and beside it the temperature,
+condition, place and altitude. The console's sidebar carries a one-line version. The hub serves it at
+`/api/weather` (`hub/weather.py`).
+
+**Why Open-Meteo, not AccuWeather:** the operator suggested AccuWeather. Its free tier is small (reported as
+50 calls a day, with a location lookup costing a call of its own) and needs a key. Open-Meteo needs no key,
+allows up to 10,000 calls a day for non-commercial use, returns the terrain elevation in the same response,
+and is licensed CC BY 4.0. The hub calls it once per `WEATHER_TTL_MIN` (15) however many screens are open. If
+AccuWeather is wanted anyway, `_fetch` and `parse` in `hub/weather.py` are the only two places that know the
+provider.
+
+**Weather is decoration, and can never be an alert or a fault.** The endpoint always answers 200. A failed
+fetch keeps the last good reading and marks it `old` once it is three intervals stale; with no reading at all
+it says "weather unavailable". It is deliberately not one of the feeds that decide "hub unreachable".
+
+**The altitude is the terrain model's value at the configured coordinates** (a 90 m grid), not a survey. Set
+`WEATHER_LAT` and `WEATHER_LON` to the exact spot. The default is central Nairobi, inferred from the
+Africa/Nairobi timezone; the operator has not confirmed it.
+
+---
+
+## 49. Status icons in the wall's header: home health, internet, backup, presence, cabinet temperatures and the rate
+
+**Decision:** small status icons sit in the idle screen's header, to the right of the brand and before the weather,
+like a phone's notification area: an icon with a live rolling number beside each, instead of cards. They are
+internet speed, backup age, home or away, intake air, exhaust air, the ThinkCentre CPU and the USD to KES rate
+(on its own). Hovering or focusing an icon shows a small tooltip saying what it is and giving its numbers. Items
+are dim while all is well, amber or red only for a real problem, and a silent reporter is an amber icon with a
+dash, never a healthy number.
+
+**It is not a separate bar.** Two earlier versions were rejected by the operator: a row of cards at the bottom,
+and then a full-width pill bar across the top. The header is a three-column grid (brand, icons, weather and clock).
+The icon column has a minimum width and wraps inside itself, so at 1366 px it becomes two tidy rows and can never
+be drawn over the weather. Below 1350 px the weather's air column gives way first. The dashboard gets a Home tile
+with the same numbers and a manual home or away switch.
+
+**Air is part of the weather block**, not a tile: barometric pressure with its three-hour trend, and today's UV
+peak, sit in a column beside the temperature, place and coordinates. The condition line reads "Rain likely now" with
+the chance when the next hour says so, and otherwise just states the conditions. Rain expected later is not shown.
+
+**Intake and exhaust temperatures** need the cabinet's own sensors, which do not exist yet (the design targets
+"intake within 5 C of room ambient"). The reporter reads any Linux sensor file (a DS18B20's `temperature` or
+`w1_slave`, or a hwmon input) named by `NIGHTJAR_INTAKE_SENSOR` and `NIGHTJAR_EXHAUST_SENSOR`. Without them those
+two icons are absent, not zero. Only the CPU has thresholds (80 amber, 85 red); nothing in the design says what
+intake or exhaust temperature is too warm, so they are shown and never coloured.
+
+**Chosen by the operator** from a longer list: home health, rain and UV, backup, overdue requests, presence and
+the rate. Sun times, certificate expiry and a calendar line were left out.
+
+**Home health and the speed test** come from `client/home_reporter.py` on the ThinkCentre, pushed to
+`POST /ingest/{key}/home`. The test runs **hourly with a 5 MB download and a 1 MB upload** (about 6 MB, roughly
+5 GB a month), reduced from the 35 MB every 30 minutes first proposed, because the operator asked for less data.
+The trade-off is accuracy: small files understate a fast line, so the number means "is the internet working and
+roughly how well". Cloudflare's endpoints refuse Python's default user agent (the upload answers 403), so the
+reporter sends its own. If home internet is down the reporter cannot reach the hub at all, and the console shows
+it as silent.
+
+**Problems** use the shared edge-triggered logic (`hub/edge.py`, extracted from the media code): `HomeHostHot`
+(85 C) and `HomeDiskLow` (under 10%) are P2, `BackupStale` (36 hours, or tracked and never run) is P3. None is
+P1. A backup path that is not configured is shown as "not tracked", which is different from "tracked and missing".
+
+**Presence** is built without the alert policy: `POST /presence` (a token-checked NFC tap, 14 hours by default)
+and the console's own switch. It is stored as taps with an expiry, and an expired tap or no record at all is
+**away**. Nothing reads it yet, so it cannot suppress an alert; chunk 2's routing will.
+
+**Client requests are not a card.** The operator wanted a subtle cue: an inbox icon and one number in the Active
+incidents heading. It shows nothing when the inbox is clear, the open count in dim when requests are in time,
+and the overdue count in amber, breathing, when any are late.
+
+**Errors rising is red, with a red X when nothing is climbing.** Green was already staging deploys, and the calm
+state's text stays neutral so a quiet card does not read as an alarm. This bends the "red means wake me" rule,
+which the operator accepted.
+
+**Weather additions:** rain chance, UV and pressure come from the same Open-Meteo call as the temperature.
+Pressure is shown at sea level (what barometers and weather maps show), with a rising, falling or steady
+trend over three hours. At this altitude the station itself reads about 840 hPa, kept in the tooltip.
+
+**Sample data:** until the home reporter is connected, its three tiles show tagged `demo` sample values, as the
+media tile does. The presence, rate and weather tiles are always real.
+
+### 49a. The internet icon shows what the line is doing, temperatures have ranges, and the rate cycles
+
+**Internet icon.** It is no longer static. Offline (a red crossed wifi) means the wall cannot reach the hub,
+so the home connection is probably down. A silent reporter is an amber crossed wifi. Otherwise it follows the
+last minute of traffic: a plain wifi when idle, a cloud with an arrow down when downloading, up when uploading,
+and up-down arrows for both, each nudging in its direction. Traffic comes from the home reporter, which works
+out bits per second from `/proc/net/dev` between its runs (ignoring loopback, Docker, veth pairs and Tailscale,
+which would count bytes twice) and reports it as `rx_bps` and `tx_bps`. It is a one-minute average, so this
+says "busy lately", not a live meter, and the hourly speed test shows up in it while it runs. Above 0.2 Mbps
+counts as active. While the reporter is not connected, the sample data cycles through every state every 4
+seconds so the icons can be seen.
+
+**Temperature ranges** (`TEMP_RANGES` in `console/src/home.js`, one place to change): cool (blue) below the
+first figure, operating (amber) up to the second, high (red) from it. CPU 40 and 80, intake 20 and 35,
+exhaust 28 and 45. These are working figures, not measurements. The CPU's 80 is the cabinet design's own
+sustained target; the air ranges are reasoned for a small PC in a warm room, and should be revisited once the
+cabinet has been measured under load. The bar goes red at 80 but the hub only opens a P2 issue at 85.
+
+**Exchange rate** cycles US dollar, pound, yuan every 5 seconds, each as Kenyan shillings for one unit. The hub
+derives them from the one open.er-api.com call (a pound costs KES / GBP shillings) and leaves out any currency
+the source did not quote rather than guessing.
+
+**Unreachable hub.** The idle screen's incidents and errors-rising panels now say "Can't reach the hub" instead
+of "All clear" and "No errors rising" when the hub cannot be reached. Silence must not read as all-clear, and
+the panels had been claiming it.
+
+### 49b. A staging push is its own card under the clock, and each currency has its own colours
+
+**Staging push.** It began as a small icon in the header row, then the operator asked for it to be a card under
+the clock showing each state in turn. It has four states: **loading** (a running deploy, with a progress bar),
+**done** (the deploy reported success, so the files are delivered), **complete** (the staging stack for that site
+then reported healthy, so it is live and working) and **failed**. "Done" and "complete" are different on purpose:
+a finished upload says nothing about whether the stack it fed came up, so "complete" needs the stack's own report
+made after the deploy as proof. A silent, stale or degraded stack, an older report, or another site's stack does
+not count. Each state has its own time on screen: loading while the deploy runs (a running report over an hour old
+is a CI job that never finished, and is dropped), done for 10 minutes if nothing confirms it, complete for 5, and
+failed for an hour, because a failure needs seeing. The card slides in when there is something to say and slides
+away after. The commit ref on it is blurred until the fingerprint reveal, like the deploys panels.
+
+CI reports it through the existing `POST /ingest/{key}/deploy`, which takes an optional `progress` (0 to 100) on
+`running` reports. Without it the bar slides, because a made-up percentage would be worse than none. Progress on a
+finished deploy is dropped.
+
+**The sample.** So the card can be judged, a sample push plays while no real one is running: always in development,
+and in a real build only until a staging deploy has ever been reported. It walks through loading (12 seconds),
+done (6) and complete (6), then the card goes away and returns after a pause that alternates 40 and 30 seconds
+(`DEMO_*` in `console/src/push.js`), so it is on screen for under half the time. A real push replaces it.
+
+**It may not disturb anything.** The card sits in the space under the clock, positioned over the verdict row rather
+than in the flow, so its arrival cannot push anything. Measured in headless Chrome, with the card showing it ends
+above the Active incidents panel at 1920 x 1080, 1600 x 900 and 1366 x 768 (it gives up its text line on shorter
+screens, and shrinks further on the shortest, to stay inside that space). Its height is the same in every state.
+The header's icon area is also locked to two rows of height, so a wrapping icon cannot make the header taller.
+
+**The exchange rate** reads "$1 = 129.57 KES" (and "£1", "¥1"), the symbol as large as the number and "KES"
+readable, after the first version's "KES/$" was too small to make out. Each currency has its own fill: dollar
+green, pound a blue to red gradient, yuan red fading to white.

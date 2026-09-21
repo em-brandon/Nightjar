@@ -8,7 +8,7 @@ from sqlalchemy import delete, select
 
 from .config import settings
 from .db import SessionLocal
-from .models import Check, Site, StackReport
+from .models import Check, HomeReport, MediaPlay, MediaReport, Presence, Site, SpeedTest, StackReport
 
 log = logging.getLogger("nightjar.probe")
 
@@ -18,6 +18,10 @@ RETENTION = timedelta(days=100)
 PRUNE_EVERY = 60
 # Stack reports are a live view, not history: a week is plenty.
 STACK_RETENTION = timedelta(days=7)
+MEDIA_REPORT_RETENTION = timedelta(days=7)
+HOME_REPORT_RETENTION = timedelta(days=7)
+SPEED_RETENTION = timedelta(days=90)
+PRESENCE_RETENTION = timedelta(days=30)
 
 
 async def _probe(client: httpx.AsyncClient, site_id: int, url: str) -> Check:
@@ -61,6 +65,21 @@ async def _prune() -> None:
         await session.execute(
             delete(StackReport).where(
                 StackReport.reported_at < datetime.now(UTC) - STACK_RETENTION
+            )
+        )
+        await session.execute(
+            delete(MediaReport).where(
+                MediaReport.reported_at < datetime.now(UTC) - MEDIA_REPORT_RETENTION
+            )
+        )
+        now = datetime.now(UTC)
+        await session.execute(delete(HomeReport).where(HomeReport.reported_at < now - HOME_REPORT_RETENTION))
+        await session.execute(delete(SpeedTest).where(SpeedTest.tested_at < now - SPEED_RETENTION))
+        await session.execute(delete(Presence).where(Presence.created_at < now - PRESENCE_RETENTION))
+        # The viewing history is personal data, so it has its own, configurable limit.
+        await session.execute(
+            delete(MediaPlay).where(
+                MediaPlay.started_at < datetime.now(UTC) - timedelta(days=settings.media_history_days)
             )
         )
         await session.commit()

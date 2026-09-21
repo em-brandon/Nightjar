@@ -180,6 +180,53 @@ shows the two tiers side by side.
 
 None of these is P1. A media problem never wakes the phone.
 
+## Home streaming (Jellyfin)
+
+**Built (chunk 3 extension).** Jellyfin runs on the ThinkCentre, with its library on an external SSD, and
+people watch in Jellyfin's own apps or a browser. Nightjar never plays, stores or controls video. This is
+separate from the archive Pi above, which stays its own system. Production runs on the VPS, so a stream can
+slow staging but never a client's live site.
+
+| Piece | Where |
+|---|---|
+| Reporter: polls Jellyfin's `/Sessions` and `/System/Info/Public` on localhost, pushes a snapshot | `client/jellyfin_reporter.py`, run by `deploy/media/jellyfin-reporter.timer` |
+| Ingest: `POST /ingest/{key}/media`, signed like every other source | `hub/media.py` |
+| Feeds: `GET /api/media` (live) and `GET /api/media/history` | `hub/media.py` |
+| Tables: `media_reports` (live snapshots, pruned after 7 days), `media_plays` (history) | migration `0002` |
+| Console: the **Media** tab, and a panel on the idle screen | `console/src/views/Media.jsx`, `views/Idle.jsx` |
+
+The media server is a site with `env = media`. It is left out of `/api/sites/health`, so it never appears among
+client sites, the verdict or the wall's site cards. The Jellyfin API key is a broad admin key: it stays on the
+media machine and is never sent to the hub.
+
+**What it records.** A viewing is one session watching one item. It continues while that session keeps
+reporting, and a gap over 10 minutes starts a new one. `watched_s` counts real watching: paused time and
+reporter gaps are not credited. History is personal data, so it is kept for `MEDIA_HISTORY_DAYS` (default 365)
+and then deleted.
+
+**What is shown where**
+
+| | Console Media tab | Idle screen |
+|---|---|---|
+| Server up, not responding, disk nearly full, or `reporter silent` | yes | yes |
+| Number of streams, and library disk free | yes | yes |
+| Who is watching, what, on which device, direct play or transcode | yes | only after the fingerprint reveal |
+| History: watched by person, most watched, recent viewings (7 or 30 days) | yes | no |
+
+**Problems** open P2 issues, never P1: `MediaServerDown` when Jellyfin stops answering and `MediaDiskLow` under
+10% free. They are edge-triggered (one issue when it starts, not one per report) and resolve themselves after
+`STACK_HEALTHY_MIN` minutes of healthy reports. A quiet reporter is shown as `reporter silent` and its old
+snapshot claims no streams. A stream starting is never an alert.
+
+**Demo card.** Until a real media server reports, the dashboard tile and the idle-screen panel show sample data
+so the layout can be judged. It is tagged `demo` with a note, is never counted in any verdict or alert, and
+disappears the moment the first real report arrives (`demoMedia` in `console/src/media.js`). It is not shown
+while the hub is unreachable.
+
+**Not yet verified.** The reporter's field names follow Jellyfin's documented Sessions API and were tested
+against a fake server, not a live Jellyfin. Check them on the real server before relying on the numbers. Whether
+hardware transcoding works on the M920q's Intel graphics is also unmeasured.
+
 ## What Nightjar does, and does not do
 
 Nightjar is not the media manager. Tools for that already exist, and rebuilding them is out of scope. Its

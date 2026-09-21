@@ -59,6 +59,18 @@ def _reachable() -> bool:
         return False
 
 
+# Tables created by a migration after the baseline. Add to this when a migration adds a table.
+AFTER_BASELINE = {"media_reports", "media_plays", "home_reports", "speed_tests", "presence"}
+# Columns a later migration added to a table that already existed at the baseline. A database made by
+# the old create_all cannot have them either. Add to this when a migration adds a column.
+COLUMNS_AFTER_BASELINE = {"deploys": ["progress"]}
+
+
+def head_revision() -> str:
+    from alembic.script import ScriptDirectory
+    return ScriptDirectory.from_config(migrate._config(None)).get_current_head()
+
+
 @unittest.skipUnless(_reachable(), "Postgres is not reachable (start the dev database container)")
 class Migrations(unittest.TestCase):
     def setUp(self):
@@ -79,9 +91,16 @@ class Migrations(unittest.TestCase):
         return asyncio.run(_run(self.url, go))
 
     def legacy_create_all(self):
-        """Exactly what the hub used to do on startup."""
+        """What the hub used to do on startup, for the tables that existed then. Tables
+        added by later migrations (the media ones) are left out: a database made by the
+        old create_all cannot have them, and adopting one must still be able to add them."""
+        legacy = [t for name, t in Base.metadata.tables.items() if name not in AFTER_BASELINE]
+
         async def go(conn):
-            await conn.run_sync(Base.metadata.create_all)
+            await conn.run_sync(lambda c: Base.metadata.create_all(c, tables=legacy))
+            for table, columns in COLUMNS_AFTER_BASELINE.items():
+                for column in columns:
+                    await conn.execute(text(f"ALTER TABLE {table} DROP COLUMN {column}"))
         asyncio.run(_run(self.url, go))
 
     # ------------------------------------------------------------------ fresh
@@ -89,7 +108,7 @@ class Migrations(unittest.TestCase):
     def test_fresh_database_reaches_the_models_schema(self):
         migrate.upgrade(self.url)
         self.assertEqual(self.tables() - {"alembic_version"}, set(Base.metadata.tables))
-        self.assertEqual(self.sql("SELECT version_num FROM alembic_version"), [(migrate.BASELINE,)])
+        self.assertEqual(self.sql("SELECT version_num FROM alembic_version"), [(head_revision(),)])
         migrate.check(self.url)  # models and migrations agree, so no error
 
     def test_upgrade_is_idempotent(self):
@@ -113,7 +132,7 @@ class Migrations(unittest.TestCase):
         migrate.upgrade(self.url)
 
         self.assertEqual(self.sql("SELECT name FROM clients"), [("keep me",)])
-        self.assertEqual(self.sql("SELECT version_num FROM alembic_version"), [(migrate.BASELINE,)])
+        self.assertEqual(self.sql("SELECT version_num FROM alembic_version"), [(head_revision(),)])
         migrate.check(self.url)
 
     def test_a_drifted_legacy_database_is_refused_and_not_stamped(self):

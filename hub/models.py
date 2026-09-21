@@ -169,6 +169,8 @@ class Deploy(Base):
     ref: Mapped[str] = mapped_column(String(120), default="")  # e.g. main@1f9c4a2
     # running | success | failed
     status: Mapped[str] = mapped_column(String(20))
+    # 0 to 100 while running, when the pipeline reports it
+    progress: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -224,3 +226,122 @@ class StackReport(Base):
     host_disk_total_mb: Mapped[int | None] = mapped_column(Integer)
     host_disk_free_mb: Mapped[int | None] = mapped_column(Integer)
     services: Mapped[list] = mapped_column(JSONB, default=list)
+
+
+class MediaReport(Base):
+    """One snapshot of the home media server (Jellyfin), pushed in by a reporter on
+    the host it runs on. The hub cannot reach the home network, so it never asks.
+    A live view, pruned on a short schedule; the durable record is MediaPlay."""
+
+    __tablename__ = "media_reports"
+    __table_args__ = (Index("ix_media_site_time", "site_id", "reported_at"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    reported_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    # False means the reporter is alive but Jellyfin is not answering. A reporter
+    # that is not alive sends nothing, and shows as stale instead.
+    up: Mapped[bool] = mapped_column(Boolean)
+    version: Mapped[str | None] = mapped_column(String(40))
+    host_disk_total_mb: Mapped[int | None] = mapped_column(Integer)
+    host_disk_free_mb: Mapped[int | None] = mapped_column(Integer)
+    sessions: Mapped[list] = mapped_column(JSONB, default=list)
+
+
+class MediaPlay(Base):
+    """One viewing: who watched what, on which device, and for how long. This is the
+    history, and it is personal data, so it is pruned after `media_history_days`.
+
+    A play continues while the same session keeps reporting the same item; a gap
+    longer than PLAY_GAP (see hub/media.py) starts a new one, so pausing for lunch
+    and coming back is one viewing and watching it again tomorrow is another."""
+
+    __tablename__ = "media_plays"
+    __table_args__ = (
+        Index("ix_play_site_started", "site_id", "started_at"),
+        Index("ix_play_key", "site_id", "session_id", "item_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    session_id: Mapped[str] = mapped_column(String(80))
+    item_id: Mapped[str] = mapped_column(String(64))
+    user_name: Mapped[str] = mapped_column(String(120))
+    title: Mapped[str] = mapped_column(String(200))
+    series: Mapped[str | None] = mapped_column(String(200))
+    episode: Mapped[str | None] = mapped_column(String(20))
+    kind: Mapped[str | None] = mapped_column(String(20))
+    client: Mapped[str | None] = mapped_column(String(120))
+    device: Mapped[str | None] = mapped_column(String(120))
+    play_method: Mapped[str | None] = mapped_column(String(20))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Time actually spent watching: paused time and reporter gaps are not counted.
+    watched_s: Mapped[int] = mapped_column(Integer, default=0)
+    position_s: Mapped[int | None] = mapped_column(Integer)
+    runtime_s: Mapped[int | None] = mapped_column(Integer)
+
+
+class HomeReport(Base):
+    """One snapshot of the home host (the ThinkCentre), pushed in by a reporter on it. A live view,
+    pruned on a short schedule. Internet speed tests are kept separately: see SpeedTest."""
+
+    __tablename__ = "home_reports"
+    __table_args__ = (Index("ix_home_site_time", "site_id", "reported_at"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    reported_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    cpu_temp_c: Mapped[float | None] = mapped_column(Float)
+    load_1: Mapped[float | None] = mapped_column(Float)
+    cpu_count: Mapped[int | None] = mapped_column(Integer)
+    mem_total_mb: Mapped[int | None] = mapped_column(Integer)
+    mem_available_mb: Mapped[int | None] = mapped_column(Integer)
+    disk_total_mb: Mapped[int | None] = mapped_column(Integer)
+    disk_free_mb: Mapped[int | None] = mapped_column(Integer)
+    uptime_s: Mapped[int | None] = mapped_column(BigInteger)
+    intake_c: Mapped[float | None] = mapped_column(Float)
+    exhaust_c: Mapped[float | None] = mapped_column(Float)
+    rx_bps: Mapped[float | None] = mapped_column(Float)
+    tx_bps: Mapped[float | None] = mapped_column(Float)
+    # Whether the reporter was told where the backups land. Without it, "no backup found" and
+    # "backups are not being tracked" would look the same.
+    backup_configured: Mapped[bool] = mapped_column(Boolean, default=False)
+    backup_ok_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class SpeedTest(Base):
+    """One internet speed test run on the home host. Kept for the trend line, unlike the live
+    snapshots, and pruned after 90 days."""
+
+    __tablename__ = "speed_tests"
+    __table_args__ = (Index("ux_speed_site_time", "site_id", "tested_at", unique=True),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    tested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    down_mbps: Mapped[float] = mapped_column(Float)
+    up_mbps: Mapped[float | None] = mapped_column(Float)
+    latency_ms: Mapped[float | None] = mapped_column(Float)
+
+
+class Presence(Base):
+    """Who is home, as taps with an expiry. See hub/presence.py: on expiry, or with no record, the
+    effective state is away, so a missed tap can never leave the system wrongly believing someone
+    is home."""
+
+    __tablename__ = "presence"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    # home | away
+    state: Mapped[str] = mapped_column(String(10))
+    # nfc | geofence | manual
+    source: Mapped[str] = mapped_column(String(20))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )

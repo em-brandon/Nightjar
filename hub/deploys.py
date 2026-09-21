@@ -34,7 +34,9 @@ async def record_deploy(
         # 422 like any other bad input, not a 500 that a CI job would retry
         raise HTTPException(422, exc.errors(include_url=False, include_context=False)) from exc
 
-    deploy = Deploy(site_id=site.id, ref=payload.ref, status=payload.status)
+    # progress means something only while running: a finished deploy is complete or it is not
+    progress = payload.progress if payload.status == "running" else None
+    deploy = Deploy(site_id=site.id, ref=payload.ref, status=payload.status, progress=progress)
     session.add(deploy)
     await session.commit()
     return DeployOut(
@@ -44,6 +46,7 @@ async def record_deploy(
         ref=deploy.ref,
         status=deploy.status,
         created_at=deploy.created_at,
+        progress=deploy.progress,
     )
 
 
@@ -62,7 +65,8 @@ async def list_deploys(
         query = query.where(Site.env == env)
     return [
         DeployOut(
-            id=d.id, site=name, env=site_env, ref=d.ref, status=d.status, created_at=d.created_at
+            id=d.id, site=name, env=site_env, ref=d.ref, status=d.status, created_at=d.created_at,
+            progress=d.progress,
         )
         for d, name, site_env in await session.execute(query)
     ]

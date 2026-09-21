@@ -1,0 +1,32 @@
+# Reports the home media server to Nightjar. Runs once; jellyfin-reporter.timer fires it.
+#
+#   sudo cp jellyfin-reporter.* /etc/systemd/system/
+#   sudo mkdir -p /etc/nightjar
+#   sudo tee /etc/nightjar/jellyfin-reporter.env <<'ENV'
+#   NIGHTJAR_URL=https://nightjar.example.co.ke
+#   NIGHTJAR_MEDIA_KEY=<ingest_key of the site with env "media">
+#   NIGHTJAR_MEDIA_SECRET=<its ingest_secret>
+#   JELLYFIN_API_KEY=<Jellyfin dashboard > API Keys>
+#   NIGHTJAR_MEDIA_PATH=/mnt/media
+#   ENV
+#   sudo chmod 600 /etc/nightjar/jellyfin-reporter.env
+#   sudo systemctl enable --now jellyfin-reporter.timer
+#
+# Needs only the standard library, so the system python3 is enough. The Jellyfin API
+# key is a broad admin key: it lives only in this root-only file and never leaves
+# this machine.
+
+[Unit]
+Description=Report the home media server to Nightjar
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# A dedicated user with no shell and no access to Docker: this only reads Jellyfin
+# over localhost and a disk's free space.
+User=nightjar-reporter
+EnvironmentFile=/etc/nightjar/jellyfin-reporter.env
+ExecStart=/usr/bin/python3 /opt/nightjar/jellyfin_reporter.py
+# Never let a stuck reporter pile up behind the next run.
+TimeoutStartSec=30
