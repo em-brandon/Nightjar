@@ -754,3 +754,33 @@ and one a person resolved is left alone. Each resolve is logged as automatic.
 **Found by testing:** the tolerance for short history was 90 seconds, which is most
 of a 2-minute window, so it now scales with the window.
 
+---
+
+## 44. A media archive is a planned side project, and it stays off the staging volume
+
+**Decision:** plan a film archive as a side project, documented in
+`docs/MEDIA-ARCHIVE.md`, and do not build any of it yet. Nothing else waits on it.
+
+**Where it lives:** on a Raspberry Pi with its own disk (the recommended first step),
+not on the ThinkCentre's staging volume. The M920q's internal storage cannot hold a
+film archive (an hour of UHD ProRes 422 HQ is 318 GB, per Apple's table), and a full
+media disk sharing a filesystem with Postgres, Docker and Gitea would take all of them
+down at once. If it ever moves onto the ThinkCentre it gets a dedicated external drive.
+
+**The priority rule:** production deploys never wait on media, and the gate that orders
+media against staging work is local to the machine and fails open. This is #8 applied
+to a new subject: nothing may get in the way of the thing that must not fail. Uploads
+are deferred and resumed, not dropped, and staging builds are queued rather than
+running stacks paused, because pausing a container frees no memory.
+
+**What Nightjar does:** watch, not manage. Its job stays narrow, and tools for storing
+and serving footage exist. Media problems are P2 or P3, never P1, so they cannot wake
+you.
+
+**Research honesty:** the storage-size numbers were checked against Apple's own tables.
+The first search summary had ProRes 422 HQ UHD 30p wrong (629 Mb/s), and reading the
+source corrected it to 884 Mb/s. Camera-native bitrates, Pi transcoding and Samba speeds
+are marked as estimates or community-reported in the doc. Six open questions (Pi models,
+the archive disk, camera formats, where it lives, how files arrive, a second copy) must
+be answered before any of it is built.
+

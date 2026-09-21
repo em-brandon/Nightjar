@@ -34,6 +34,7 @@ Named for a bird that only becomes active after dark, which is when this system 
   - [Promotion readiness](#promotion-readiness)
   - [Capacity for ten stacks](#capacity-for-ten-stacks)
   - [Java apps](#java-apps)
+- [Media ingest and archive (planned)](#media-ingest-and-archive-planned)
 - [API reference](#api-reference)
 - [Quick start](#quick-start)
   - [Configuration](#configuration)
@@ -58,6 +59,7 @@ Named for a bird that only becomes active after dark, which is when this system 
 | Console: five tabs, uptime probe, incident actions, tickets, deploys, idle screen (chunk 3) | **Done.** Runs locally against a dev database |
 | Alerting: alert policy, presence, Pushover, speaker (chunk 2) | **Not written.** Deferred until the Pushover licence, a domain and a VPS are paid for |
 | Email intake and the 07:30 digest (chunk 4) | Not started |
+| Media ingest and archive on a Raspberry Pi (side project) | **Planned, not built.** Research and design in [`docs/MEDIA-ARCHIVE.md`](docs/MEDIA-ARCHIVE.md) |
 | Wall display route, Pico companion, Gitea integration, client status page (chunks 5 to 8) | Designed, not built. The idle screen is the software precursor to the wall display |
 
 > **Nightjar cannot yet interrupt you.** Until chunk 2 exists it deduplicates crashes and shows them
@@ -587,6 +589,57 @@ Rules for Java stacks:
 
 ---
 
+## Media ingest and archive (planned)
+
+> **Planned side project, not built.** Nothing here is in the code, and it is not on the critical path. The
+> research and full design are in [`docs/MEDIA-ARCHIVE.md`](docs/MEDIA-ARCHIVE.md). The Pico companion is
+> unchanged and stays paused.
+
+You are getting into film and production, and a Raspberry Pi already works as a camera media upload device
+(a place to drop a file). This is the plan for turning that into an archive, and the answer to whether the
+ThinkCentre can host it.
+
+| Question | Answer |
+|---|---|
+| Can the ThinkCentre do it? | **Yes, but only with its own external drive.** Its internal storage (one M.2 slot and one 2.5" bay, up to 1 TB each per Lenovo's spec) cannot hold a film archive. |
+| Will it strain storage? | **Not if media has its own drive and filesystem.** On the staging volume it will, and a full disk would take Postgres and Gitea down with it. |
+| Better place for it? | **The Raspberry Pi itself**, with the archive disk attached to it. Then media never touches the machine that runs staging. |
+| Pause staging during an upload? | **Queue staging builds; do not pause running stacks.** Pausing a container frees no memory. |
+| Reject uploads during a merge to `main`? | **Defer them, do not drop them.** A resumable protocol turns "rejected" into "retry in a minute". |
+
+**How big the footage is.** Apple's published ProRes rates: one hour of UHD ProRes 422 HQ at 24p is **318 GB**
+(707 Mb/s), and at 30p it is 398 GB. That is about 12 hours on a 4 TB drive, and a two-hour shoot is roughly
+636 GB. Your camera's native format may be much smaller or larger, so its real bitrate comes first. On gigabit
+Ethernet, one hour of that footage takes about 53 minutes to move at 100 MB/s.
+
+**What else a Raspberry Pi could be** for this project, best fit first: the media archive itself; an **offsite
+copy** of the archive and the backups; a **wall display driver**, so a staging problem cannot blank the wall; a
+**cabinet and drive sensor node** (temperatures and SMART readings); and, low priority, an independent uptime
+probe on a third network.
+
+**One rule above the rest: media never delays a production deploy.** If the archive ever shares the staging
+machine, work is ordered by priority:
+
+| Priority | Lane | Under contention |
+|---|---|---|
+| 1 | Production deploy (a merge to `main`) | Never waits and is never throttled |
+| 2 | Media upload | New uploads are deferred during a deploy; ones in progress are throttled, not killed |
+| 3 | Staging build | Queued while an upload is active. Running stacks stay up |
+| 4 | Background work (verification, proxies) | Only when the lanes above are idle |
+
+The decision is made **locally on the machine** with lock files and upload hooks, because the hub is on a VPS
+and a hook waiting on an internet round-trip can time out. The gate fails open, and it is never allowed to
+block a production deploy.
+
+**What Nightjar would do:** watch, not manage. A Media tab for uploads, archive disk and verification; issues for
+a low disk, a checksum mismatch or a silent Pi (P2 or P3, **never P1**, so media cannot wake you); and the same
+pattern as staging stacks, where a reporter pushes in and silence shows as `reporter silent`. It would never store,
+transcode or browse footage, because tools for that exist.
+
+Six questions block the design, starting with which Raspberry Pi models you have. They are listed in the design doc.
+
+---
+
 ## API reference
 
 Ingest, called by client apps and CI. Authenticated by the per-site key in the URL. With
@@ -764,6 +817,7 @@ background uptime probe, which serverless platforms freeze between requests.
 | 6 | Pico companion: status strip, fingerprint, watchdog | Designed |
 | 7 | Gitea integration | Designed. The generic deploy webhook exists |
 | 8 | Read-only client status page | Build when a client asks twice |
+| - | Media ingest and archive on a Raspberry Pi (side project) | **Planned, not built.** Research done, six open questions, not on the critical path. See [`docs/MEDIA-ARCHIVE.md`](docs/MEDIA-ARCHIVE.md) |
 | - | Staging host for client stacks | **Partly built:** stack view, reporter, Dockge setup, promotion readiness, disk, build and restart signals. Caddy routing and CI deploys planned. Measure real stacks first |
 
 ---
@@ -829,6 +883,7 @@ job is narrow: deduplicate, decide, deliver.
 | [`START-HERE.md`](START-HERE.md) | Where the project stands and what to do next |
 | [`docs/DECISIONS.md`](docs/DECISIONS.md) | Every decision, what was rejected, and why. Read before reversing anything |
 | [`docs/FULL-DESIGN.md`](docs/FULL-DESIGN.md) | Hardware, access tiers, and the later chunks |
+| [`docs/MEDIA-ARCHIVE.md`](docs/MEDIA-ARCHIVE.md) | Planned side project: what a Raspberry Pi can be, and whether media can share the staging machine |
 | [`DEPLOY.md`](DEPLOY.md) | Getting onto a VPS |
 | [`INTEGRATE.md`](INTEGRATE.md) | Wiring in client apps, uptime monitors, Sentry and Gitea |
 | [`mockups/`](mockups/) | Working HTML: console, wall display, boot splash, detail drawer |

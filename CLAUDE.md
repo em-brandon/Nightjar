@@ -335,6 +335,12 @@ Also out of scope: **rebuilding tools that exist.** Sentry or GlitchTip does
 exception capture and webhooks in. Grafana reads the same Postgres for metrics.
 Nightjar's job is narrow — deduplicate, decide, deliver.
 
+**Media management.** A planned side project (`docs/MEDIA-ARCHIVE.md`) may put a film archive on a
+Raspberry Pi. Nightjar would *watch* it (disk, uploads, verification, silence) and never store,
+transcode or browse footage. Media problems are P2 or P3, never P1. One rule carries into any code
+that touches it: **production deploys never wait on media**, and any gate on media or staging work
+fails open.
+
 ---
 
 ## Running it
