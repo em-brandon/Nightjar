@@ -283,9 +283,8 @@ site threw 1,284 exceptions" is true, alarming, and unactionable).
 
 Build it when a client asks for it twice. ~200 lines over data you already have.
 
-**Before production, regardless of chunk:** replace `create_all` on startup
-with Alembic. It is fine while the schema moves and a liability the moment
-there is data worth keeping.
+**Done:** `create_all` on startup was replaced with Alembic migrations (see the
+README's "Tests and migrations").
 
 ---
 

@@ -38,6 +38,7 @@ Named for a bird that only becomes active after dark, which is when this system 
 - [Quick start](#quick-start)
   - [Configuration](#configuration)
   - [Prove it works](#prove-it-works)
+  - [Tests and migrations](#tests-and-migrations)
 - [Wiring up apps](#wiring-up-apps)
 - [Deploying](#deploying)
 - [Roadmap](#roadmap)
@@ -463,6 +464,12 @@ The hub is on the VPS and staging is at home, so the hub cannot see that machine
 given it. The reporter reads `docker ps` and `docker stats` for the Compose projects you list, and posts
 them signed like every other ingest. Nightjar never controls a container.
 
+**A stop is not a crash.** Docker Desktop stopping its VM, a reboot and `docker compose stop` leave containers
+exited with 137, 143 or 255, and none of those is a failure, so they read `stopped`. A real crash code (1, 2,
+139 and so on) is `unhealthy` for 15 minutes (`NIGHTJAR_CRASH_WINDOW_MIN`) and simply `stopped` after that, and
+a container killed for running out of memory always counts. Every non-clean state carries a note under the
+service, such as "exited 137 (stopped or killed), 30 days ago", so nothing is hidden.
+
 The Staging tab shows, per stack: running, degraded or stopped; memory against its limit; CPU; a memory
 trend; and each service's state. It **warns when a running stack has no memory limit**, and shows a stack
 whose reporter has gone quiet as `reporter silent`, never as healthy. A **Manage stacks** button links to
@@ -503,8 +510,18 @@ The tab also watches the machine itself:
 (85%), or the host disk falling under 10% free opens an issue through the normal pipeline. It is
 **edge-triggered**: only a problem that has *just started* opens an event. One per one-minute report would be
 1,440 a day and would trip the spike detector, which is exactly the noise this project exists to prevent.
-Degraded and restart loops are P2. Memory is a P3 warning, so it can never wake anyone. These issues are not
-auto-resolved when the stack recovers, and sending them to your phone waits for chunk 2.
+Degraded and restart loops are P2. Memory is a P3 warning, so it can never wake anyone. Sending them to your
+phone waits for chunk 2.
+
+**They resolve themselves.** Once a problem has been gone for **10 minutes of reports in a row**
+(`STACK_HEALTHY_MIN`), its issue is resolved automatically. The rule is strict on purpose, because a resolved
+issue that relapses counts as a regression, and a flapping stack must not resolve and reopen all day:
+
+- the problem must be absent from every report in the window, with history reaching back far enough to
+  vouch for all of it
+- a gap in the reports means nothing resolves, since a silent reporter is not evidence of health
+- only **open** issues are touched: muted and snoozed stay as they are, and one you resolved yourself is left alone
+- the incident log says it was automatic: "Resolved automatically: agrovet has been healthy for 10 minutes"
 
 **Decommissioned stacks.** A stack that stops reporting stays visible as `reporter silent`, because silence looks
 like health, and it blocks promotion. Use **Remove** on the card once you know it was retired. The hub refuses
@@ -594,7 +611,18 @@ Console feeds, read-only:
 | `GET /api/stacks` | Staging stacks as last reported: state, memory and limit, CPU, services, and whether the reporter has gone silent |
 | `GET /healthz` | Liveness |
 
-Console writes. **These have no authentication yet** (see [Known gaps](#known-gaps)):
+**Everything under `/api` requires the console token**, either as the session cookie that login sets or as
+`Authorization: Bearer <token>` for scripts. `/ingest` keeps its per-site key and signature, and `/healthz` is open.
+With `CONSOLE_TOKEN` unset, auth is off (local development only), and the hub refuses to start that way when
+`VERIFY_SIGNATURES` is on.
+
+| Method and path | Purpose |
+|---|---|
+| `GET /api/auth/status` | `{required, authenticated}`. The console asks this to decide whether to show the login |
+| `POST /api/auth/login` | `{"token": "..."}`. Sets an HttpOnly, SameSite=Strict session cookie. 10 failures a minute locks out |
+| `POST /api/auth/logout` | Ends the session |
+
+Console writes:
 
 | Method and path | Purpose |
 |---|---|
@@ -654,6 +682,8 @@ docker compose -f docker-compose.dev.yml exec db \
 | `PROBE_ENABLED` | `true` | Run the uptime checker |
 | `PROBE_INTERVAL_S` | `60` | Seconds between probe rounds |
 | `PROBE_TIMEOUT_S` | `10` | Per-request timeout |
+| `CONSOLE_TOKEN` | empty | Guards the console and `/api`. Empty is open, for local development only. **Required in production**: the hub refuses to start without it, or with one under 16 characters |
+| `STACK_HEALTHY_MIN` | `10` | Minutes a stack problem must stay gone before its issue resolves itself |
 
 ### Prove it works
 
@@ -666,6 +696,27 @@ It sends 200 copies of one crash, each with a different IP address and retry cou
 broken. Open the console afterwards: one site in `warn` and one open issue.
 
 ---
+
+### Tests and migrations
+
+```bash
+python -m unittest discover -s tests -v    # migrations (needs the dev database up), auth, stack policy
+python -m unittest discover -s client -v   # the stack reporter's stop-versus-crash rules
+cd console && npm test                     # promotion readiness
+```
+
+The schema is managed by **Alembic** and migrates automatically every time the hub starts, so a new column no
+longer needs a hand-run `ALTER TABLE`. To change it:
+
+```bash
+# edit hub/models.py, then
+python -m alembic revision --autogenerate -m "what changed"
+# read the file it wrote, then commit it
+python -m alembic check    # fails if the models and the migrations disagree
+```
+
+A database created before migrations existed is **adopted** on first start, but only if it matches the models.
+If it has drifted, the hub refuses to start and says so, rather than declaring a wrong schema correct.
 
 ## Wiring up apps
 
@@ -721,30 +772,28 @@ background uptime probe, which serverless platforms freeze between requests.
 
 Recorded here so nothing looks finished that is not.
 
-1. **The write endpoints have no authentication.** Anyone who could reach the hub could mute every issue.
-   Fine on localhost, unacceptable on the internet. Gate them (Caddy basic auth or a shared token) first.
-2. **The Caddyfile would expose `/api/*` publicly.** Its catch-all proxies everything not under `/ingest`
-   to the hub. Together with the point above, deploying it unchanged exposes the console API.
+1. **Authentication is one shared secret.** `CONSOLE_TOKEN` guards the console and every write, with no
+   per-user accounts and no record of who did what. Rotating it signs everyone out. The session cookie is only
+   marked `Secure` behind HTTPS, so it must run behind Caddy's TLS and never over plain http. Passkeys (tier 3)
+   are still planned.
+2. **The Caddyfile still sends everything not under `/ingest` to the hub.** `/api` is authenticated now, so
+   that is no longer an open door, but there is no second layer in front of it.
 3. **The console is not in the deploy stack.** `docker-compose.yml` and the Caddyfile do not build or
    serve `console/`.
-4. **`create_all` on startup, not migrations.** It does not alter existing tables, so adding a column to a
-   running database needs a manual `ALTER TABLE`. Replace it with Alembic before there is data worth
-   keeping.
-5. **The uptime probe lives inside the hub.** It shares the hub's failure domain, so it is not the
+4. **The uptime probe lives inside the hub.** It shares the hub's failure domain, so it is not the
    dead-man's switch. Real uptime alerting still wants the second probe on another network.
-6. **Unlock on the idle screen is navigation, not security.** The fingerprint is simulated, and there is no
-   login to protect.
-7. **`INTEGRATE.md` describes endpoints that do not exist yet**, such as `/ingest/{key}/webhook` and
+5. **Unlock on the idle screen is navigation, not security.** The fingerprint is simulated. The login guards
+   the console, but Unlock does not add to it.
+6. **`INTEGRATE.md` describes endpoints that do not exist yet**, such as `/ingest/{key}/webhook` and
    `/ingest/gitea`.
-8. **A malformed request body to `/ingest/{key}/event` returns 500** rather than 422.
-9. **The cabinet drawings predate the OLED and M920q decisions.** See [the cabinet](#the-cabinet).
-10. **The stack reporter and Dockge both need the Docker socket, which is root-equivalent.** Dockge stays on the
-    tailnet behind its own login, and the reporter should run as a dedicated user. A read-only socket proxy
-    would narrow the reporter and is a possible later hardening.
-11. **A stack that exited uncleanly reads as `degraded`.** On Docker Desktop, stopping the VM does this to
-    every container, so expect false positives on a laptop. On Linux it means a real crash.
-12. **Stack issues are not auto-resolved on recovery.** A degraded stack that comes back leaves its issue open until
-    you resolve it, and a later relapse then counts as a regression.
+7. **A malformed request body to `/ingest/{key}/event` returns 500** rather than 422.
+8. **The cabinet drawings predate the OLED and M920q decisions.** See [the cabinet](#the-cabinet).
+9. **The stack reporter and Dockge both need the Docker socket, which is root-equivalent.** Dockge stays on the
+   tailnet behind its own login, and the reporter should run as a dedicated user. A read-only socket proxy
+   would narrow the reporter and is a possible later hardening.
+10. **A crash the reporter never saw reads as `stopped`.** A container that crashed before the reporter
+    started, or crashed more than 15 minutes ago and stayed down, shows as stopped with a note saying so. A
+    crash the reporter did see was raised as an issue when it happened.
 
 ---
 

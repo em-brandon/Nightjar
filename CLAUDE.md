@@ -34,9 +34,11 @@ Requests, Deploys, Staging), an uptime probe, incident actions with an audit
 trail, client-request tickets and CI deploy reports. 30-second polling. Runs
 locally against the dev database; needs no paid service.
 
-**Not safe to expose yet:** the write endpoints (`/api/tickets`,
-`/api/issues/{id}/actions`) have no auth. Put Caddy basic auth or a token in
-front of them before the hub is reachable from the internet.
+**Auth.** Everything under `/api` requires `CONSOLE_TOKEN`, as an HttpOnly session cookie or a
+bearer token. Ingest keeps its per-site key and HMAC. With the token unset auth is off (local
+development), and the hub **refuses to start** when `VERIFY_SIGNATURES` is on without one. The cookie
+is only `Secure` over https, so run it behind Caddy's TLS. Still to do before internet exposure: the
+console is not in the deploy stack yet.
 
 **Chunk 2: not written, deferred.** Nightjar therefore cannot alert anyone yet.
 It is still the entire point of the project, but it needs a Pushover licence, and
@@ -207,11 +209,20 @@ Data flows, all real tables:
 | Deploys | CI calls `POST /ingest/{key}/deploy` (same signing as crashes) | `/api/deploys` |
 | Staging | just a site with `env=staging` and a `url` | same as production |
 | Stacks | `client/stack_reporter.py` on the staging host *pushes* to `POST /ingest/{key}/stack` | `/api/stacks` |
-| Stack problems | degraded, restart loop, memory over 85%, host disk under 10% | an issue, **edge-triggered** (only when it starts) |
+| Stack problems | degraded, restart loop, memory over 85%, host disk under 10% | an issue, **edge-triggered** (only when it starts), which **resolves itself** after 10 healthy minutes |
 
 **Staging promotion.** A staging site is paired with its production site by *name*: `<production>-staging`
 belongs to `<production>`. `console/src/promotion.js` decides ready / blocked / in sync / behind. Blockers
 (failed or unfinished deploy, uptime under 99%, open P1/P2, silent, degraded or restarting stack) always win.
+
+**A stop is not a crash.** In `client/stack_reporter.py`, exit codes 0, 137, 143 and 255 mean stopped
+(Docker Desktop's VM, a reboot, `compose stop`), never a failure. A real crash code is unhealthy for 15
+minutes, then stopped, and an out-of-memory kill always counts. Do not collapse these back into "non-zero
+means broken": it raised a false alarm on every Docker Desktop restart.
+
+**Auto-resolve is strict.** A stack problem resolves only after `STACK_HEALTHY_MIN` minutes with no
+recurrence, history covering the whole window, and no reporter gap (silence is not health). Only `open`
+issues are touched, and it is logged as automatic. See `_healthy_for` and `tests/test_stack_policy.py`.
 
 **Stack problems are events, and must be edge-triggered.** `hub/stacks.py` opens an issue only when a condition
 *starts*, through `record_event` (extracted from ingest so every source shares one fingerprinting path). Never
@@ -270,9 +281,10 @@ not a hunt.
 **Chunk 5+.** Wall display, Pico companion, CI integration, client status page.
 All in `docs/FULL-DESIGN.md`.
 
-**Before production, regardless of chunk:** replace `create_all` on startup with
-Alembic. Fine while the schema moves; a liability the moment there is data worth
-keeping.
+**Schema changes go through Alembic.** The hub migrates on every start. Edit `hub/models.py`, run
+`python -m alembic revision --autogenerate -m "..."`, read the file it writes, commit it. `python -m alembic
+check` must pass. Never add a column by hand: `tests/test_migrations.py` exists to catch a model changed
+without a migration. A pre-migration database is adopted only if it matches the models.
 
 ---
 
@@ -342,6 +354,8 @@ The console, in a second terminal:
 ```bash
 cd console && npm install && npm run dev    # http://localhost:5173
 npm test                                    # promotion-readiness rules (console/src/promotion.js)
+python -m unittest discover -s tests        # migrations, auth, stack policy (needs the dev db up)
+python -m unittest discover -s client       # the stack reporter
 ```
 
 Vite proxies `/api` to the hub on `:8000`, so the hub needs no CORS config. After
@@ -361,6 +375,8 @@ the 200s. Two hundred separate issues means the fingerprint is broken.
 | `PROBE_ENABLED` | run the uptime checker (default true) |
 | `PROBE_INTERVAL_S` | seconds between rounds (default 60) |
 | `PROBE_TIMEOUT_S` | per-request timeout (default 10) |
+| `CONSOLE_TOKEN` | guards the console and `/api`. Empty = open (dev only). Required in production, min 16 chars |
+| `STACK_HEALTHY_MIN` | minutes a stack problem must stay gone before it resolves itself (default 10) |
 | `VITE_STACK_CONTROL_URL` | console build-time: where the Staging tab's *Manage stacks* button points (Dockge over Tailscale). Optional |
 
 ---

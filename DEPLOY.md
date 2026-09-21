@@ -70,11 +70,17 @@ cd /opt/nightjar
 # copy the repo up, or clone it
 cp .env.prod.example .env
 openssl rand -base64 32          # paste as POSTGRES_PASSWORD
+openssl rand -base64 32          # paste as CONSOLE_TOKEN (the hub will not start without it)
 nano .env                        # set HUB_DOMAIN too
 
 docker compose up -d --build
 docker compose logs -f caddy     # watch the certificate get issued
 ```
+
+The hub migrates its own database on every start, so there is no schema step. It also refuses to start
+if `CONSOLE_TOKEN` is missing or under 16 characters, because otherwise the console API and every write
+would be open to the internet. Sign in at your domain with that token. The session cookie is marked
+`Secure` behind Caddy's TLS, so never use the console over plain http.
 
 Then create the first site and note its keys:
 

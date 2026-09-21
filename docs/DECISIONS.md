@@ -532,7 +532,7 @@ like the charts that line was written to exclude.
 
 ---
 
-## 32. The write endpoints have no authentication
+## 32. The write endpoints have no authentication (resolved: see #42)
 
 **Decision:** deferred, and recorded so it is not forgotten.
 
@@ -569,7 +569,8 @@ R307 reader exists, a labelled "Simulate fingerprint" button triggers it.
 **What Unlock is:** it navigates to Overview. #14 says a fingerprint is
 convenience-grade and unfit for anything that changes state, and reserves the
 console for a passkey. Until the write endpoints are gated (#32), the console has
-no login at all, so Unlock protects nothing. It exists to give the flow its shape,
+no login when this was written (there is one now, see #42) and Unlock still only
+navigates, so it protects nothing. It exists to give the flow its shape,
 not to be a security boundary. Do not treat it as one.
 
 **Rule kept:** the idle screen cannot suppress an alert. It only displays.
@@ -655,8 +656,8 @@ and resolve-then-crash still returns a regression.
 **Severity:** degraded and restart loops are P2. Memory is a warning, so P3 and
 digest-only, and can never wake anyone.
 
-**Not done:** issues are not auto-resolved on recovery. That is a behaviour
-change worth deciding on its own.
+**Not done at the time (built since, see #43):** issues are not auto-resolved on
+recovery. That is a behaviour change worth deciding on its own.
 
 ---
 
@@ -670,4 +671,86 @@ really silent.
 that has died looks exactly like one that was retired, and quietly making it
 vanish is the failure this project is built to avoid (#10). An explicit act costs
 one click and cannot hide a real outage.
+
+---
+
+## 40. A stop is not a crash
+
+**Decision:** exit codes 0, 137, 143 and 255 mean a container was *stopped*. Any
+other non-zero code is a crash, unhealthy for 15 minutes and simply down after
+that, and an out-of-memory kill always counts.
+
+Found with real data, not by guessing: a container killed a month earlier and a
+stack exited 109 days earlier both read "degraded". Docker Desktop stopping its
+VM, a reboot and `compose stop` all produce 137, 143 or 255, so "non-zero means
+broken" raised a false alarm on every restart, which teaches you to ignore the
+page.
+
+**The blind spot, stated:** a crash from before the reporter started, or one that
+stayed down past 15 minutes, reads as stopped. The crash was reported as an issue
+when it happened if the reporter was watching, and the service carries a note
+("crashed with exit code 1, 3 days ago") either way, so it is visible and not lost.
+
+---
+
+## 41. Migrations replace create_all, and adoption is checked
+
+**Decision:** the schema is managed by Alembic and migrates on every start.
+`create_all` never altered a table, so each new column needed a hand-run `ALTER
+TABLE` and a database could drift from the code unnoticed. This was the
+"before production" item, and it was done before there was data worth losing.
+
+**Adoption is verified, not assumed.** A database made by the old `create_all` is
+stamped as the baseline, upgraded, and then *checked* against the models. If it has
+drifted, the hub refuses to start and undoes the stamp, because a stamp on a wrong
+schema would make the next start believe everything is fine. `alembic check` is
+the guard against a model changed without a migration.
+
+**Tested against real databases,** including the refusal case. The dev database was
+adopted with its data intact, and the production image migrated a fresh database
+from inside the container.
+
+---
+
+## 42. One shared secret guards the console, and production refuses to run without it
+
+**Decision:** `CONSOLE_TOKEN` guards everything under `/api`. Multi-user auth stays
+out of scope; a single shared secret is not (#32). Ingest keeps its per-site key
+and HMAC, and `/healthz` is open.
+
+- **A session cookie, not a token in the page.** HttpOnly, so page JavaScript never
+  holds the secret, and SameSite=Strict, so another site cannot make the browser
+  send it. Scripts use a bearer header. Changing the token signs everyone out.
+- **Guessing is impractical:** 0.5 s per wrong attempt and a lockout after 10 a
+  minute, refusing even the correct token, so a guesser gains nothing.
+- **Fail closed:** the hub will not start with `VERIFY_SIGNATURES` on and no token, or
+  with one under 16 characters, and Compose fails before starting. API docs are
+  hidden when auth is on.
+
+**Found by testing:** the route audit passed vacuously, because this FastAPI wraps
+included routers and `app.routes` showed none of them. It now asks `app.openapi()`
+for the real routes, hits each anonymously, demands 401, and asserts it found enough
+of them to mean something.
+
+**Not solved:** one secret means no per-user accounts and no record of who did what,
+and the cookie is only `Secure` behind HTTPS. Passkeys (tier 3) remain the plan.
+
+---
+
+## 43. Stack problems resolve themselves, strictly
+
+**Decision:** a stack problem's issue resolves after 10 minutes of reports in a row
+with the problem absent (`STACK_HEALTHY_MIN`).
+
+**Why so strict:** a resolved issue that relapses becomes a regression, which is an
+alert once chunk 2 exists. A flapping stack must therefore not resolve and reopen
+all day. The window needs history reaching back far enough to vouch for all of it,
+and any gap longer than the stale threshold blocks it, because a silent reporter is
+not evidence of health (#10).
+
+**Boundaries:** only `open` issues are touched. Muted and snoozed stay as they are,
+and one a person resolved is left alone. Each resolve is logged as automatic.
+
+**Found by testing:** the tolerance for short history was 90 seconds, which is most
+of a 2-minute window, so it now scales with the window.
 
