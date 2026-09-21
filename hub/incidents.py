@@ -77,7 +77,13 @@ async def issue_log(
         .where(IssueAction.issue_id == issue_id)
         .order_by(IssueAction.created_at, IssueAction.id)
     ):
-        text = ACTION_TEXT[a.action] + (f" for {a.detail}" if a.detail else "")
+        if a.action == "snooze":
+            text = f"Snoozed for {a.detail}"
+        elif a.detail.startswith("auto:"):
+            # done by the hub, not by a person: say so
+            text = f"{ACTION_TEXT[a.action]} automatically: {a.detail[5:].strip()}"
+        else:
+            text = ACTION_TEXT[a.action]
         entries.append(LogEntry(at=a.created_at, kind="action", text=text))
     if issue.event_count > 1:
         entries.append(

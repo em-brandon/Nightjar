@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     # is off (local development only); the hub refuses that when
     # VERIFY_SIGNATURES is on. Generate one with: openssl rand -base64 32
     console_token: str = ""
+    # A stack problem resolves itself once it has been gone for this many minutes
+    # of reports in a row. Long enough that a flapping stack does not open and
+    # close all day, since every relapse after a resolve counts as a regression.
+    stack_healthy_min: int = 10
 
 
 settings = Settings()

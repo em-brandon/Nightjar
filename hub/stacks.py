@@ -7,9 +7,11 @@ from pydantic import ValidationError
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from . import fingerprint as fp
+from .config import settings
 from .db import get_session
 from .ingest import _load_site, _verify, record_event
-from .models import Site, StackReport
+from .models import Issue, IssueAction, Site, StackReport
 from .schemas import EventIn, Frame, ServiceIn, StackAck, StackOut, StackReportIn
 
 log = logging.getLogger("nightjar.stacks")
@@ -30,6 +32,8 @@ RESTART_WINDOW = timedelta(minutes=10)
 RESTART_LOOP_MIN = 3
 MEM_HIGH_FRACTION = 0.85
 DISK_LOW_FRACTION = 0.10
+# How far short of the full healthy window the history may fall and still count.
+RESOLVE_SLACK = timedelta(seconds=90)
 
 # What becomes an issue. error is P2 and warning is P3 (digest only), so memory
 # pressure never wakes anyone. The message is fixed text: the fingerprint
@@ -86,6 +90,89 @@ def _event(key: str, payload: StackReportIn) -> EventIn:
             "host_disk_total_mb": payload.host_disk_total_mb,
         },
     )
+
+
+def _healthy_for(key: str, timeline: list, now: datetime) -> bool:
+    """Has this problem been absent for the whole healthy window, with reports to prove it?
+
+    `timeline` is [(reported_at, {conditions that report showed})], oldest first,
+    ending with the report being processed. It is deliberately strict, because a
+    resolved issue that relapses becomes a regression, and a stack that flaps must
+    not resolve and reopen all day:
+
+      * the problem is absent from every report inside the window;
+      * the history reaches back far enough to vouch for all of it;
+      * there is no gap longer than the stale threshold. A reporter that went quiet
+        for a while is not evidence of health, whatever the reports on either side
+        of the gap said.
+    """
+    window = timedelta(minutes=settings.stack_healthy_min)
+    # The history may fall a little short of the window (reports are a minute
+    # apart), but the allowance scales with it: 90 seconds is fine for ten
+    # minutes and would be most of a two-minute window.
+    slack = min(RESOLVE_SLACK, window / 4)
+    if not timeline or timeline[0][0] > now - window + slack:
+        return False  # not enough history to speak for the whole window
+
+    start = now - window
+    inside = [(t, c) for t, c in timeline if t >= start]
+    if any(key in c for _, c in inside):
+        return False
+
+    # include the last report before the window as an anchor, so a gap right at
+    # its start is caught too
+    before = [t for t, _ in timeline if t < start]
+    times = ([before[-1]] if before else []) + [t for t, _ in inside]
+    return all(b - a <= STALE_AFTER for a, b in zip(times, times[1:]))
+
+
+def _fingerprint(site: Site, event: EventIn) -> str:
+    frames = [f.model_dump(exclude_none=True) for f in event.frames]
+    return fp.compute(site.id, event.exception_type, event.message, frames)
+
+
+async def _auto_resolve(session, site, payload, timeline, now, still_bad) -> None:
+    """Resolve the open issue for each problem that has stayed gone.
+
+    Only `open` issues are touched. Muted stays muted, snoozed stays snoozed, and
+    an issue a person already resolved is not ours to change. Every resolve is
+    written to the audit trail as automatic, so "why did this close itself?" has
+    an answer.
+    """
+    candidates = {key: _fingerprint(site, _event(key, payload)) for key in PROBLEMS if key not in still_bad}
+    if not candidates:
+        return
+    # the same row lock ingest and the console's actions take
+    issues = (
+        await session.scalars(
+            select(Issue)
+            .where(
+                Issue.site_id == site.id,
+                Issue.fingerprint.in_(list(candidates.values())),
+                Issue.status == "open",
+            )
+            .with_for_update()
+        )
+    ).all()
+    by_fp = {i.fingerprint: i for i in issues}
+    changed = False
+    for key, digest in candidates.items():
+        issue = by_fp.get(digest)
+        if issue is not None and _healthy_for(key, timeline, now):
+            issue.status = "resolved"
+            issue.snoozed_until = None
+            session.add(
+                IssueAction(
+                    issue_id=issue.id,
+                    action="resolve",
+                    detail=f"auto: {payload.stack} has been healthy for {settings.stack_healthy_min} minutes",
+                )
+            )
+            changed = True
+    if changed:
+        await session.commit()
+    else:
+        await session.rollback()  # release the row locks
 
 
 @ingest_router.post("/{ingest_key}/stack", response_model=StackAck, status_code=201)
@@ -162,6 +249,23 @@ async def record_stack(
             # turn into a failed report, and must not poison the session.
             log.exception("could not record %s for %s", key, payload.stack)
             await session.rollback()
+
+    # And the other direction: a problem that has stayed gone resolves itself.
+    try:
+        timeline = [
+            (
+                r.reported_at,
+                _conditions(
+                    r.state, r.mem_mb, r.mem_limit_mb, r.host_disk_free_mb, r.host_disk_total_mb,
+                    _restart_delta(rows[:i], r.reported_at, r.restarts),
+                ),
+            )
+            for i, r in enumerate(rows)
+        ] + [(now, now_bad)]
+        await _auto_resolve(session, site, payload, timeline, now, now_bad)
+    except Exception:
+        log.exception("could not auto-resolve for %s", payload.stack)
+        await session.rollback()
     return StackAck(id=report.id)
 
 
