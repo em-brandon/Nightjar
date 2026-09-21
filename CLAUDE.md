@@ -372,12 +372,15 @@ python -m unittest discover -s client       # the stack reporter
 ```
 
 Vite proxies `/api` to the hub on `:8000`, so the hub needs no CORS config. After
-`test_ingest.sh` the console should show one site in `warn` and one open issue
-with a count in the 200s.
+`test_ingest.sh` the console should show one site in `warn` and one open issue,
+its count growing by 200 each run.
 
 `test_ingest.sh` sends 200 copies of one crash with a different IP and retry
-count each time. Correct output is a **single** `issue_id` with `event_count` in
-the 200s. Two hundred separate issues means the fingerprint is broken.
+count each time (the 200 is only how many copies it sends, not a limit). It counts
+the distinct issue ids that come back and prints **PASS** only if there is exactly
+one (exit 0); otherwise it prints **FAIL** and why (exit 1). More than one issue
+means the fingerprint is broken. Set `NIGHTJAR_URL` and `NIGHTJAR_SECRET` to run it
+signed against a hub with `VERIFY_SIGNATURES` on.
 
 | Variable | Purpose |
 |---|---|

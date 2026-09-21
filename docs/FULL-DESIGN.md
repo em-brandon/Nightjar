@@ -191,7 +191,7 @@ assets/            logo + cabinet drawings
 tools/             drawing generators
 Dockerfile, docker-compose.yml
 seed.py            creates one client + site, prints ingest keys
-test_ingest.sh     fires 200 varied copies of one crash; expect ONE issue
+test_ingest.sh     fires 200 varied copies of one crash; prints PASS if they land in ONE issue
 CLAUDE.md          this file — the reasoning
 DEPLOY.md          getting onto a VPS
 INTEGRATE.md       wiring client apps, uptime, Sentry, Gitea in
@@ -410,9 +410,10 @@ uvicorn hub.main:app --reload
 ```
 
 `test_ingest.sh` sends 200 copies of one crash with a different IP address and
-retry count in each message. Correct output is a single `issue_id` with
-`event_count` in the 200s. Two hundred separate issues means the fingerprint
-is broken.
+retry count in each message (200 is just how many it sends). It counts the
+distinct issues the responses came back under and prints PASS if there is
+exactly one, or FAIL and the reason if not. More than one issue means the
+fingerprint is broken.
 
 ### Environment
 

@@ -56,7 +56,7 @@ Named for a bird that only becomes active after dark, which is when this system 
 
 | Piece | State |
 |---|---|
-| Ingest, fingerprinting, deduplication (chunk 1) | **Done and tested.** 200 varied crashes collapse to one issue |
+| Ingest, fingerprinting, deduplication (chunk 1) | **Done and tested.** The same crash sent 200 times, with a different address and retry count each time, lands in **one** issue ([how](#fingerprint)) |
 | Console: five tabs, uptime probe, incident actions, tickets, deploys, idle screen (chunk 3) | **Done.** Runs locally against a dev database |
 | Alerting: alert policy, presence, Pushover, speaker (chunk 2) | **Not written.** Deferred until the Pushover licence, a domain and a VPS are paid for |
 | Email intake and the 07:30 digest (chunk 4) | Not started |
@@ -149,6 +149,25 @@ It is built from `site_id` + exception type + **normalised** message + the inner
 
 Both failure directions are real. Too loose and unrelated bugs merge, so you only hear about one.
 Too tight and every occurrence is its own row.
+
+**A worked example.** This is what the test sends, and what Nightjar makes of it. It is real output, not a mock-up:
+
+| Occurrence | Message | After normalising | Fingerprint |
+|---|---|---|---|
+| #1 | `connection to server at "10.0.0.1" failed after 1 retries` | `connection to server at "<s>" failed after <n> retries` | `4b659855…` |
+| #2 | `connection to server at "10.0.0.2" failed after 2 retries` | the same | `4b659855…` |
+| #200 | `connection to server at "10.0.0.200" failed after 200 retries` | the same | `4b659855…` |
+
+The quoted address becomes `"<s>"` and the retry count becomes `<n>`, so every occurrence reduces to the same
+sentence and gets the same fingerprint. **That is what the "200" in these docs means.** It is only how many copies
+the test script sends, enough to be convincing. It is not a limit of any kind.
+
+Two things it must get right in the other direction, both checked:
+
+- **Different bugs stay separate.** A different exception type, or the same crash on a different site, gets a
+  different fingerprint.
+- **Editing the file must not split one bug in two.** The same crash with its line numbers shifted by 30 keeps the
+  same fingerprint.
 
 ### state_change
 
@@ -780,12 +799,21 @@ docker compose -f docker-compose.dev.yml exec db \
 ### Prove it works
 
 ```bash
-./test_ingest.sh <ingest_key>
+./test_ingest.sh <ingest_key> [count]        # count defaults to 200
 ```
 
-It sends 200 copies of one crash, each with a different IP address and retry count. Correct output is a
-**single** `issue_id` with `event_count` in the 200s. Two hundred separate issues means the fingerprint is
-broken. Open the console afterwards: one site in `warn` and one open issue.
+It sends 200 copies of one crash, each with a different address and retry count, and **explains itself as it
+goes**: it shows the sample messages, then counts how many different issues the responses came back under.
+**`PASS` means exactly one** (exit code 0). Anything else prints `FAIL` with the reason (exit code 1): the wrong
+key, a hub that is down, a hub that wants signed requests, or, if the fingerprint were broken, how many separate
+issues the crashes landed in. Open the console afterwards: one site in `warn` and one open issue.
+
+Against a production hub, which checks signatures, give it the site's secret so it signs each request the way a
+real reporter does:
+
+```bash
+NIGHTJAR_URL=https://nightjar.example.co.ke NIGHTJAR_SECRET=<ingest_secret> ./test_ingest.sh <ingest_key>
+```
 
 ---
 

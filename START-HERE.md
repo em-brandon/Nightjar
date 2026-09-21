@@ -19,8 +19,9 @@ notifications come out.
 ## Where the project actually stands
 
 **Chunk 1 is done and tested.** A stack trace goes in, one deduplicated issue
-comes out. 200 identical crashes with varying IPs and retry counts collapse to a
-single row with `event_count` in the 200s.
+comes out. The same crash sent 200 times, with a different IP address and retry
+count each time, collapses to a single row. `./test_ingest.sh` proves it and
+prints PASS.
 
 **Chunk 3 is done.** A React console shows sites and open issues, polling every
 30 seconds. See "Running it" in `CLAUDE.md` — it needs only Docker and Node.
@@ -57,8 +58,9 @@ morning.
 DNS propagation is the only step you cannot hurry, so start its clock while you
 write code.
 
-**3. Deploy chunk 1 to the VPS.** Follow `DEPLOY.md`. Confirm 200 crashes
-collapse to one issue over HTTPS, then resolve it and send it again — a
+**3. Deploy chunk 1 to the VPS.** Follow `DEPLOY.md`. Confirm the 200-crash test
+prints PASS over HTTPS (set `NIGHTJAR_URL` and `NIGHTJAR_SECRET`, since production
+checks signatures), then resolve it and send it again — a
 `"regression"` response proves the state machine works end to end.
 
 **Then write chunk 2.** It is one evening and it is the entire point.

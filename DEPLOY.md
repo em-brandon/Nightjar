@@ -96,16 +96,18 @@ docker compose exec hub python seed.py
 curl https://nightjar.yourdomain.co.ke/healthz
 ```
 
-Then run the dedupe test against the live endpoint — 200 varied copies of one
-crash must produce **one** issue:
+Then run the dedupe test against the live endpoint. It sends 200 varied copies of
+one crash, and **PASS** means they landed in one issue:
 
 ```bash
-./test_ingest.sh <ingest_key>      # edit URL to the https host
+NIGHTJAR_URL=https://nightjar.yourdomain.co.ke NIGHTJAR_SECRET=<ingest_secret> \
+  ./test_ingest.sh <ingest_key>
 ```
 
 `VERIFY_SIGNATURES` is `true` in production, so unsigned requests are rejected.
-`client/reporter.py` signs correctly; plain curl will need the HMAC header, or
-flip the flag off briefly to test.
+The script signs each request with the site's `ingest_secret` (from `seed.py`), the
+same way `client/reporter.py` does, so there is no need to switch the check off to
+test. If you leave the secret out, it says that is why it failed.
 
 ---
 
