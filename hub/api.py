@@ -174,6 +174,9 @@ async def sites_health(session: AsyncSession = Depends(get_session)) -> list[Sit
             )
             .select_from(Site)
             .outerjoin(Issue, Issue.site_id == Site.id)
+            # The home media server has its own tab. As a "site" it would appear
+            # among the client sites, on the verdict and the wall display.
+            .where(Site.env.not_in(["media", "home"]))
             .group_by(Site.id)
             .order_by(Site.name)
         )

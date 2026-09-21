@@ -1,6 +1,9 @@
-import { ago, fmtPct, plural } from "../hooks.js";
+import { ago, fmtPct, plural, send } from "../hooks.js";
 import { readiness } from "../promotion.js";
+import { backupView, hostView, netView, presenceView } from "../home.js";
+import { label, mediaState } from "../media.js";
 import { Dot, Empty, Odometer, Pill, Sev, SiteCard, Spark } from "../ui.jsx";
+import { DemoTag, DiskBar } from "./Media.jsx";
 
 const DEPLOY_TONE = { success: "ok", failed: "bad", running: "run" };
 const DEPLOY_LABEL = { success: "success", failed: "failed", running: "running" };
@@ -73,8 +76,142 @@ function Tile({ title, to, go, children, tone = "" }) {
   );
 }
 
+const MEDIA_TEXT = { up: "up", down: "not responding", low: "disk nearly full", silent: "reporter silent" };
+const MEDIA_TONE = { up: "ok", down: "bad", low: "warn", silent: "warn" };
+
+// Home media. Shows sample data, clearly tagged, until a real server is connected.
+function MediaTile({ media, demo, go }) {
+  const m = media[0];
+  const state = mediaState(m);
+  const streams = m.stale ? [] : m.sessions;
+  return (
+    <Tile title="Home media" to="media" go={go} tone={state === "down" ? "bad" : state === "up" ? "" : "warn"}>
+      <div className="t-head">
+        <span className="t-num">
+          <Odometer value={streams.length} />
+          <small> streaming</small>
+        </span>
+        <span className="t-chips">
+          {demo && <DemoTag />}
+          <Pill tone={MEDIA_TONE[state]}>{MEDIA_TEXT[state]}</Pill>
+        </span>
+      </div>
+      {streams.length === 0 ? (
+        <Empty>Nobody is watching right now.</Empty>
+      ) : (
+        <ul className="t-list">
+          {streams.slice(0, 2).map((s) => (
+            <li key={s.session_id}>
+              <span className="t-main">
+                <span>{s.user}</span>
+                <span className="t-sub">{label(s)}</span>
+              </span>
+              {s.play_method === "transcode" && <Pill tone="warn">transcoding</Pill>}
+            </li>
+          ))}
+        </ul>
+      )}
+      <DiskBar m={m} />
+      {demo && <p className="demo-note">Sample data. Connect the Jellyfin reporter to see your own.</p>}
+    </Tile>
+  );
+}
+
+const HOME_TONE = { hot: "bad", low: "bad", warm: "warn", silent: "warn" };
+
+// The home host: internet speed, the ThinkCentre's health, the backup, and who is home. Sample data,
+// clearly tagged, until the home reporter is connected. The presence buttons are the console's own
+// switch: an NFC tap is the normal way, and a tap that lapses falls back to away.
+function HomeTile({ home, demo, presence, now, go, reloadPresence }) {
+  const h = home[0];
+  const net = netView(h, now);
+  const host = hostView(h);
+  const backup = backupView(h);
+  const who = presenceView(presence);
+  const set = (state) => async (e) => {
+    e.stopPropagation(); // the tile itself is a link
+    try {
+      await send("POST", "/api/presence", { state, ttl_minutes: 840 });
+      await reloadPresence();
+    } catch {
+      /* the next poll shows the truth */
+    }
+  };
+  const tone = HOME_TONE[host?.state] ?? (backup && ["stale", "missing"].includes(backup.state) ? "warn" : "");
+  return (
+    <Tile title="Home network and host" to="overview" go={go} tone={tone}>
+      <div className="t-head">
+        <span className="t-num">
+          {net && (net.state === "ok" || net.state === "old") ? (
+            <>
+              <Odometer value={net.down} />
+              <small> Mbps down</small>
+            </>
+          ) : (
+            <small>{net?.text ?? "no data"}</small>
+          )}
+        </span>
+        <span className="t-chips">
+          {demo && <DemoTag />}
+          {who && (
+            <span title={who.sub ?? undefined}>
+              <Pill tone={who.state === "home" ? "ok" : "run"}>{who.text}</Pill>
+            </span>
+          )}
+        </span>
+      </div>
+      {net?.series?.length > 1 && <Spark points={net.series} width={220} height={28} tone="var(--blue)" />}
+      <ul className="t-list">
+        <li>
+          <span className="t-main">
+            <span>Internet</span>
+            <span className="t-sub">
+              {net && (net.state === "ok" || net.state === "old")
+                ? [net.up ? `↑ ${net.up} Mbps` : null, net.latency, `${net.age} ago`].filter(Boolean).join(" · ")
+                : net?.text}
+            </span>
+          </span>
+          {net?.state === "old" && <Pill tone="warn">test old</Pill>}
+        </li>
+        <li>
+          <span className="t-main">
+            <span>ThinkCentre</span>
+            <span className="t-sub">
+              {host?.state === "silent"
+                ? "reporter silent"
+                : [
+                    host?.temp,
+                    h?.intake_c != null ? `in ${Math.round(h.intake_c)}°` : null,
+                    h?.exhaust_c != null ? `out ${Math.round(h.exhaust_c)}°` : null,
+                    host?.diskFree != null ? `disk ${host.diskFree}% free` : null,
+                    host?.memUsed != null ? `RAM ${host.memUsed}%` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ") || "—"}
+            </span>
+          </span>
+          {host && host.state !== "ok" && host.state !== "silent" && <Pill tone={host.state === "warm" ? "warn" : "bad"}>{host.state === "low" ? "disk low" : host.state}</Pill>}
+        </li>
+        <li>
+          <span className="t-main">
+            <span>Backup</span>
+            <span className="t-sub">{backup?.text ?? "—"}</span>
+          </span>
+          {backup && ["stale", "missing"].includes(backup.state) && <Pill tone="warn">{backup.state}</Pill>}
+        </li>
+      </ul>
+      <div className="home-actions">
+        <button className="btn" onClick={set("home")}>I'm home</button>
+        <button className="btn" onClick={set("away")}>Away</button>
+        <span className="muted">home lasts 14 h</span>
+      </div>
+      {demo && <p className="demo-note">Sample data. Connect the home reporter to see your own.</p>}
+    </Tile>
+  );
+}
+
 export default function Overview({ f }) {
-  const { sites, issues, rising, tickets, deploys, stacks, now, go, hubError, updatedAt, loaded } = f;
+  const { sites, issues, rising, tickets, deploys, stacks, media, mediaDemo, home, homeDemo, presence, reloadPresence, now, go, hubError, updatedAt, loaded } = f;
 
   const prod = sites.filter((s) => s.env !== "staging");
   const staging = sites.filter((s) => s.env === "staging");
@@ -286,6 +423,12 @@ export default function Overview({ f }) {
             </>
           )}
         </Tile>
+        {(home.length > 0 || homeDemo) && (
+          <HomeTile home={home.length > 0 ? home : homeDemo} demo={home.length === 0} presence={presence} now={now} go={go} reloadPresence={reloadPresence} />
+        )}
+        {(media.length > 0 || mediaDemo) && (
+          <MediaTile media={media.length > 0 ? media : mediaDemo} demo={media.length === 0} go={go} />
+        )}
       </div>
     </>
   );

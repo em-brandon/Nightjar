@@ -33,7 +33,8 @@ export function DeployHowTo({ env }) {
   -d '{"ref": "'"$GITHUB_REF_NAME@$GITHUB_SHA"'", "status": "success"}'`}</pre>
       <p className="hint">
         Send <code>running</code> when a deploy starts, then <code>success</code> or{" "}
-        <code>failed</code> when it ends. If signatures are on, sign the body like a crash report.
+        <code>failed</code> when it ends. For a staging deploy you can add <code>"progress": 0-100</code> to
+        the running reports and the wall shows how far the upload has got. If signatures are on, sign the body like a crash report.
       </p>
     </div>
   );

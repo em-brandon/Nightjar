@@ -19,6 +19,23 @@ class Settings(BaseSettings):
     # of reports in a row. Long enough that a flapping stack does not open and
     # close all day, since every relapse after a resolve counts as a regression.
     stack_healthy_min: int = 10
+    # How long the home media viewing history is kept. It records who watched what,
+    # which is personal data, so it is bounded rather than kept forever.
+    media_history_days: int = 365
+    # The wall display's weather, from Open-Meteo (no key). The coordinates are where the
+    # ThinkCentre and the wall are, not where the VPS is. Set them to the exact spot: the
+    # elevation shown comes from the terrain model at these coordinates.
+    weather_enabled: bool = True
+    weather_lat: float = -1.2921
+    weather_lon: float = 36.8219
+    weather_name: str = "Nairobi"
+    weather_ttl_min: int = 15
+    # USD to KES for the wall, from open.er-api.com (no key). It updates once a day.
+    rates_enabled: bool = True
+    rates_ttl_min: int = 360
+    # Shared secret for the presence tap (POST /presence, from an iOS Shortcuts NFC automation).
+    # Empty disables the route. Generate one with: openssl rand -base64 24
+    presence_token: str = ""
 
 
 settings = Settings()

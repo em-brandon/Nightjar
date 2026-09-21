@@ -29,8 +29,8 @@ The scarce resource is **attention at inconvenient hours**, not compute.
 **Chunk 1: done.** Stack trace in, one deduplicated issue out. Verified: 200
 crashes with varying IPs and retry counts collapse to a single row.
 
-**Chunk 3: done, and grown.** React console with five tabs (Overview, Incidents,
-Requests, Deploys, Staging), an uptime probe, incident actions with an audit
+**Chunk 3: done, and grown.** React console with six tabs (Overview, Incidents,
+Requests, Deploys, Staging, Media), an uptime probe, incident actions with an audit
 trail, client-request tickets and CI deploy reports. 30-second polling. Runs
 locally against the dev database; needs no paid service.
 
@@ -206,10 +206,12 @@ Data flows, all real tables:
 | Errors rising | derived from `events` (last 30 min > 2x the 30 before) | `/api/errors/rising` |
 | Incident actions | `POST /api/issues/{id}/actions` (ack, resolve, mute, snooze, reopen) | `/api/issues/{id}/log` |
 | Client requests | `POST /api/tickets` now, email intake in chunk 4 | `/api/tickets` |
-| Deploys | CI calls `POST /ingest/{key}/deploy` (same signing as crashes) | `/api/deploys` |
+| Deploys | CI calls `POST /ingest/{key}/deploy` (same signing as crashes). A running report may carry `progress` 0 to 100, shown as a card under the wall's clock (loading, done, complete, failed) while a staging push runs | `/api/deploys` |
 | Staging | just a site with `env=staging` and a `url` | same as production |
 | Stacks | `client/stack_reporter.py` on the staging host *pushes* to `POST /ingest/{key}/stack` | `/api/stacks` |
 | Stack problems | degraded, restart loop, memory over 85%, host disk under 10% | an issue, **edge-triggered** (only when it starts), which **resolves itself** after 10 healthy minutes |
+| Home host | `client/home_reporter.py` on the ThinkCentre *pushes* CPU temperature, disk, memory, backup age and an hourly internet speed test to `POST /ingest/{key}/home` | `/api/home`, a dashboard tile and the idle screen's header icons (with live numbers and hover tooltips) |
+| Home media | `client/jellyfin_reporter.py` on the ThinkCentre *pushes* Jellyfin's sessions to `POST /ingest/{key}/media` | `/api/media`, `/api/media/history`, the Media tab and an idle-screen panel |
 
 **Staging promotion.** A staging site is paired with its production site by *name*: `<production>-staging`
 belongs to `<production>`. `console/src/promotion.js` decides ready / blocked / in sync / behind. Blockers
@@ -312,11 +314,19 @@ hub/
   tickets.py       client requests
   deploys.py       CI deploy reports
   stacks.py        staging stack reports in, /api/stacks out
+  media.py         Jellyfin snapshots in, /api/media and viewing history out
+  weather.py       /api/weather: cached Open-Meteo reading, rain, UV and pressure for the wall (decoration only)
+  home.py          home host snapshots and internet speed tests in, /api/home out
+  presence.py      home or away as taps with an expiry (away on expiry or with no record)
+  rates.py         /api/rates: cached USD to KES rate (decoration only)
+  edge.py          edge-triggered issues shared by every pushed source: open once, resolve themselves
 console/           Vite + React 19 UI: src/views/* is one file per tab
 client/
   reporter.py      the whole "SDK" — drop into any managed FastAPI app
   thermal_probe.py host thermals as ordinary tickets
   stack_reporter.py runs on the staging host, pushes Docker stack state to the hub
+  jellyfin_reporter.py runs beside Jellyfin, pushes who is streaming what to the hub
+  home_reporter.py runs on the ThinkCentre, pushes its health and an hourly speed test to the hub
 deploy/            bootstrap.sh, Caddyfile, backup.sh
   staging/         Dockge (Tailscale-only), reporter timer, client stack template
 mockups/           working HTML: console, wall, boot splash, drawer
@@ -342,10 +352,12 @@ Also out of scope: **rebuilding tools that exist.** Sentry or GlitchTip does
 exception capture and webhooks in. Grafana reads the same Postgres for metrics.
 Nightjar's job is narrow — deduplicate, decide, deliver.
 
-**Media management.** A planned side project (`docs/MEDIA-ARCHIVE.md`) may put a film archive on a
-Raspberry Pi. Nightjar would *watch* it (disk, uploads, verification, silence) and never store,
-transcode or browse footage. Media problems are P2 or P3, never P1. The media Pis are decoupled from
-the ThinkCentre and share nothing with staging or deploys, so there is no gate between them.
+**Media management.** Two separate things. The film archive on Raspberry Pis (`docs/MEDIA-ARCHIVE.md`) is
+planned and decoupled from the ThinkCentre. Home streaming (Jellyfin) is built: it runs on the ThinkCentre and
+Nightjar watches it through a reporter (Media tab, idle panel, viewing history kept for `MEDIA_HISTORY_DAYS`).
+Nightjar never stores, transcodes, browses or plays footage. Media problems are P2 or P3, never P1, and
+production runs on the VPS, so media can slow staging but never a client's live site. On the idle screen,
+who is watching and what stays behind the fingerprint reveal.
 
 ---
 
@@ -392,6 +404,10 @@ signed against a hub with `VERIFY_SIGNATURES` on.
 | `PROBE_TIMEOUT_S` | per-request timeout (default 10) |
 | `CONSOLE_TOKEN` | guards the console and `/api`. Empty = open (dev only). Required in production, min 16 chars |
 | `STACK_HEALTHY_MIN` | minutes a stack problem must stay gone before it resolves itself (default 10) |
+| `MEDIA_HISTORY_DAYS` | how long the home media viewing history (personal data) is kept (default 365) |
+| `WEATHER_ENABLED` / `WEATHER_LAT` / `WEATHER_LON` / `WEATHER_NAME` / `WEATHER_TTL_MIN` | the wall's weather and altitude, from Open-Meteo (no key). Defaults to Nairobi; set the exact coordinates of the wall, since the elevation shown is the terrain model's value at that point |
+| `PRESENCE_TOKEN` | shared secret for the NFC presence tap (`POST /presence`). Empty disables that route |
+| `RATES_ENABLED` / `RATES_TTL_MIN` | the USD to KES rate on the wall, from open.er-api.com (no key) |
 | `VITE_STACK_CONTROL_URL` | console build-time: where the Staging tab's *Manage stacks* button points (Dockge over Tailscale). Optional |
 
 ---
@@ -414,6 +430,14 @@ The console is neutral near-black with no blue cast (surfaces `#131315`, `#1D1D2
 
 Amber is reserved for alert state — P2 badges, warning dots, the status light,
 the bird's eye. If amber appears on ordinary UI it stops meaning anything.
+
+The idle screen's panel headings are the one deliberate exception to the neutral palette, chosen by the
+operator: production deploys orange, staging deploys green, home media blue, active incidents yellow with a
+slow pulse (`--orange`, `--green`, `--blue`, `--yellow`), each with a local `lucide-react` icon. They colour
+the heading only. Orange and yellow are kept visibly apart from the amber that means P2. Hidden detail on
+that screen is blurred, never replaced with dots. Errors rising is red (green belongs to staging deploys),
+with a red X when nothing is climbing. Client requests are deliberately not a card: an inbox icon and one
+number in the incidents heading, amber and breathing only when a request is overdue.
 
 In the console, P1 is **red** and P2 is amber, as in the mockup: red means "wake
 me", amber means "look soon". Making both amber would blur the one distinction

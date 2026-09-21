@@ -10,12 +10,20 @@ from .db import engine
 from .deploys import ingest_router as deploy_ingest_router
 from .deploys import router as deploys_router
 from .incidents import router as incidents_router
+from .home import ingest_router as home_ingest_router
+from .home import router as home_router
 from .ingest import router as ingest_router
+from .media import ingest_router as media_ingest_router
+from .media import router as media_router
 from .migrate import upgrade
+from .presence import public_router as presence_public_router
+from .presence import router as presence_router
 from .probe import probe_loop
+from .rates import router as rates_router
 from .stacks import ingest_router as stack_ingest_router
 from .stacks import router as stacks_router
 from .tickets import router as tickets_router
+from .weather import router as weather_router
 
 
 @asynccontextmanager
@@ -52,6 +60,14 @@ app.include_router(deploy_ingest_router)
 app.include_router(deploys_router, dependencies=console)
 app.include_router(stack_ingest_router)
 app.include_router(stacks_router, dependencies=console)
+app.include_router(media_ingest_router)
+app.include_router(media_router, dependencies=console)
+app.include_router(weather_router, dependencies=console)
+app.include_router(home_ingest_router)
+app.include_router(home_router, dependencies=console)
+app.include_router(presence_public_router)
+app.include_router(presence_router, dependencies=console)
+app.include_router(rates_router, dependencies=console)
 
 
 @app.get("/healthz")
