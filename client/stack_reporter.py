@@ -19,6 +19,9 @@ Configuration:
 
         {"agrovet": {"key": "abc...", "secret": "def..."}}
 
+    NIGHTJAR_DISK_PATH  (optional) path whose filesystem is checked for free space.
+                      Defaults to /var/lib/docker if it exists, else the root.
+
 Only the projects listed there are reported, so unrelated containers on the same
 machine never leak into the console.
 
@@ -32,6 +35,7 @@ import hmac
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -82,6 +86,56 @@ def host_memory_bytes() -> int:
     return int(result.stdout.strip() or 0)
 
 
+def volume_sizes() -> dict[str, float] | None:
+    """Bytes of volumes per Compose project, from one `docker system df -v`.
+    None if it cannot be read: a failed lookup must not become a reported 0."""
+    try:
+        result = subprocess.run(
+            ["docker", "system", "df", "-v", "--format", "json"],
+            capture_output=True, text=True, timeout=60, check=True,
+        )
+        volumes = json.loads(result.stdout).get("Volumes") or []
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+    totals: dict[str, float] = {}
+    for v in volumes:
+        project = parse_labels(v.get("Labels", "")).get("com.docker.compose.project")
+        if project:
+            totals[project] = totals.get(project, 0.0) + parse_size(v.get("Size", ""))
+    return totals
+
+
+def restart_counts(container_ids: list[str]) -> dict[str, int]:
+    """Cumulative restarts per container name."""
+    if not container_ids:
+        return {}
+    try:
+        result = subprocess.run(
+            ["docker", "inspect", "-f", "{{.Name}}|{{.RestartCount}}", *container_ids],
+            capture_output=True, text=True, timeout=TIMEOUT, check=True,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    counts = {}
+    for line in result.stdout.splitlines():
+        name, _, n = line.partition("|")
+        if n.strip().isdigit():
+            counts[name.lstrip("/")] = int(n)
+    return counts
+
+
+def host_disk() -> tuple[int, int] | None:
+    """(total, free) bytes of the filesystem Docker writes to."""
+    path = os.environ.get("NIGHTJAR_DISK_PATH") or (
+        "/var/lib/docker" if os.path.isdir("/var/lib/docker") else os.path.abspath(os.sep)
+    )
+    try:
+        usage = shutil.disk_usage(path)
+    except OSError:
+        return None
+    return usage.total, usage.free
+
+
 def service_state(container: dict) -> str:
     """running | stopped | unhealthy. A clean exit is a stack someone stopped on
     purpose, which is normal here; a crash or a failing health check is not."""
@@ -113,19 +167,26 @@ def collect(projects: list[str]) -> dict[str, dict]:
     stats = {row["Name"]: row for row in docker_lines("stats", "--no-stream")}
 
     by_project: dict[str, list[dict]] = {p: [] for p in projects}
-    for c in docker_lines("ps", "-a"):
+    for c in docker_lines("ps", "-a", "--size"):
         labels = parse_labels(c.get("Labels", ""))
         project = labels.get("com.docker.compose.project")
         if project in by_project:
             c["_service"] = labels.get("com.docker.compose.service", c.get("Names", "?"))
             by_project[project].append(c)
 
+    vols = volume_sizes()
+    restarts = restart_counts([c["ID"] for cs in by_project.values() for c in cs])
+    disk = host_disk()
+
     reports = {}
     for project, containers in by_project.items():
-        services, mem, cpu, limits = [], 0.0, 0.0, []
+        services, mem, cpu, limits, layers = [], 0.0, 0.0, [], 0.0
         for c in containers:
             st = stats.get(c.get("Names", ""))
             used = None
+            # "20.5kB (virtual 285MB)": the first figure is this container's own
+            # writable layer; the virtual part is the shared image, not counted.
+            layers += parse_size((c.get("Size") or "").split(" (")[0])
             if st:
                 used_raw, _, limit_raw = st.get("MemUsage", "").partition("/")
                 used = parse_size(used_raw)
@@ -137,6 +198,7 @@ def collect(projects: list[str]) -> dict[str, dict]:
                 "name": c["_service"],
                 "state": service_state(c),
                 "mem_mb": round(used / MIB) if used is not None else None,
+                "restarts": restarts.get(c.get("Names", "")),
             })
         # A stack only has a memory limit if every running container has one.
         # One unlimited service means one runaway can still take the host.
@@ -148,6 +210,11 @@ def collect(projects: list[str]) -> dict[str, dict]:
             "mem_limit_mb": round(sum(limits) / MIB) if limited else None,
             "cpu_pct": round(cpu, 1),
             "host_mem_mb": round(host / MIB),
+            # volumes plus writable layers; None if volumes could not be read
+            "disk_mb": round((vols.get(project, 0.0) + layers) / MIB) if vols is not None else None,
+            "restarts": sum(s["restarts"] or 0 for s in services) if restarts else None,
+            "host_disk_total_mb": round(disk[0] / MIB) if disk else None,
+            "host_disk_free_mb": round(disk[1] / MIB) if disk else None,
             "services": services,
         }
     return reports

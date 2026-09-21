@@ -215,4 +215,12 @@ class StackReport(Base):
     mem_limit_mb: Mapped[int | None] = mapped_column(Integer)
     cpu_pct: Mapped[float | None] = mapped_column(Float)
     host_mem_mb: Mapped[int | None] = mapped_column(Integer)
+    # Volumes plus each container's writable layer. Images are shared between
+    # stacks, so they are deliberately not attributed to any one of them.
+    disk_mb: Mapped[int | None] = mapped_column(Integer)
+    # Cumulative restart count across the stack's containers. The feed works
+    # out the recent delta; one number on its own says nothing about a loop.
+    restarts: Mapped[int | None] = mapped_column(Integer)
+    host_disk_total_mb: Mapped[int | None] = mapped_column(Integer)
+    host_disk_free_mb: Mapped[int | None] = mapped_column(Integer)
     services: Mapped[list] = mapped_column(JSONB, default=list)

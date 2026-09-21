@@ -144,6 +144,7 @@ class ServiceIn(BaseModel):
     name: str = Field(max_length=120)
     state: ServiceState
     mem_mb: int | None = Field(default=None, ge=0)
+    restarts: int | None = Field(default=None, ge=0)
 
 
 class StackReportIn(BaseModel):
@@ -153,6 +154,10 @@ class StackReportIn(BaseModel):
     mem_limit_mb: int | None = Field(default=None, ge=0)
     cpu_pct: float | None = Field(default=None, ge=0)
     host_mem_mb: int | None = Field(default=None, ge=0)
+    disk_mb: int | None = Field(default=None, ge=0)
+    restarts: int | None = Field(default=None, ge=0)
+    host_disk_total_mb: int | None = Field(default=None, ge=0)
+    host_disk_free_mb: int | None = Field(default=None, ge=0)
     services: list[ServiceIn] = Field(default_factory=list, max_length=60)
 
 
@@ -173,6 +178,16 @@ class StackOut(BaseModel):
     mem_limit_mb: int | None
     cpu_pct: float | None
     host_mem_mb: int | None
+    disk_mb: int | None
+    host_disk_total_mb: int | None
+    host_disk_free_mb: int | None
+    restarts: int | None
+    # restarts in the last 10 minutes. Needs two reports in the window to show
+    # anything: a single report reads 0, never a guess. None if not reported.
+    restarts_10m: int | None
+    # a container restarting again and again still reads as "running" between
+    # crashes, so the loop is flagged on its own
+    restart_loop: bool
     services: list[ServiceIn]
     mem_series: list[int | None]  # oldest first
 

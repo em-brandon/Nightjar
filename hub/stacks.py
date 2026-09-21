@@ -22,6 +22,9 @@ router = APIRouter(prefix="/api", tags=["stacks"])
 STALE_AFTER = timedelta(seconds=180)
 SERIES_POINTS = 30
 SERIES_WINDOW = timedelta(hours=3)
+# Three restarts inside ten minutes is a loop, not a deploy.
+RESTART_WINDOW = timedelta(minutes=10)
+RESTART_LOOP_MIN = 3
 
 
 @ingest_router.post("/{ingest_key}/stack", response_model=StackAck, status_code=201)
@@ -47,6 +50,10 @@ async def record_stack(
         mem_limit_mb=payload.mem_limit_mb,
         cpu_pct=payload.cpu_pct,
         host_mem_mb=payload.host_mem_mb,
+        disk_mb=payload.disk_mb,
+        restarts=payload.restarts,
+        host_disk_total_mb=payload.host_disk_total_mb,
+        host_disk_free_mb=payload.host_disk_free_mb,
         services=[s.model_dump() for s in payload.services],
     )
     session.add(report)
@@ -77,12 +84,30 @@ async def list_stacks(session: AsyncSession = Depends(get_session)) -> list[Stac
     }
 
     series: dict[tuple[int, str], list[int | None]] = defaultdict(list)
-    for site_id, stack, mem in await session.execute(
-        select(StackReport.site_id, StackReport.stack, StackReport.mem_mb)
+    # earliest restart count inside the window: the baseline for the delta
+    baseline: dict[tuple[int, str], int | None] = {}
+    for site_id, stack, mem, restarts, at in await session.execute(
+        select(
+            StackReport.site_id,
+            StackReport.stack,
+            StackReport.mem_mb,
+            StackReport.restarts,
+            StackReport.reported_at,
+        )
         .where(StackReport.reported_at >= now - SERIES_WINDOW)
         .order_by(StackReport.site_id, StackReport.stack, StackReport.reported_at)
     ):
-        series[(site_id, stack)].append(mem)
+        key = (site_id, stack)
+        series[key].append(mem)
+        if at >= now - RESTART_WINDOW and key not in baseline:
+            baseline[key] = restarts
+
+    def restarts_10m(r: StackReport) -> int | None:
+        start = baseline.get((r.site_id, r.stack))
+        if start is None or r.restarts is None:
+            return None
+        # a recreated container resets its counter; that is not negative restarts
+        return max(0, r.restarts - start)
 
     out = [
         StackOut(
@@ -96,6 +121,12 @@ async def list_stacks(session: AsyncSession = Depends(get_session)) -> list[Stac
             mem_limit_mb=r.mem_limit_mb,
             cpu_pct=r.cpu_pct,
             host_mem_mb=r.host_mem_mb,
+            disk_mb=r.disk_mb,
+            host_disk_total_mb=r.host_disk_total_mb,
+            host_disk_free_mb=r.host_disk_free_mb,
+            restarts=r.restarts,
+            restarts_10m=restarts_10m(r),
+            restart_loop=(restarts_10m(r) or 0) >= RESTART_LOOP_MIN and not now - r.reported_at > STALE_AFTER,
             services=[ServiceIn(**svc) for svc in r.services],
             mem_series=series[(r.site_id, r.stack)][-SERIES_POINTS:],
         )
