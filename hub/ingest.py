@@ -56,6 +56,13 @@ async def ingest_event(
     _verify(site.ingest_secret, raw, x_hub_signature)
 
     payload = EventIn.model_validate_json(raw)
+    return await record_event(session, site, payload)
+
+
+async def record_event(session: AsyncSession, site: Site, payload: EventIn) -> IngestOut:
+    """Fingerprint, group and store one event. Shared by the HTTP endpoint and by
+    the hub's own checks (staging stacks), so every source is deduplicated the
+    same way and returns the same `state_change`."""
     frames = [f.model_dump(exclude_none=True) for f in payload.frames]
 
     digest = fp.compute(site.id, payload.exception_type, payload.message, frames)

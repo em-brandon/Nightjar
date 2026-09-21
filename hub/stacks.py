@@ -1,3 +1,4 @@
+import logging
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
@@ -7,9 +8,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .db import get_session
-from .ingest import _load_site, _verify
+from .ingest import _load_site, _verify, record_event
 from .models import Site, StackReport
-from .schemas import ServiceIn, StackAck, StackOut, StackReportIn
+from .schemas import EventIn, Frame, ServiceIn, StackAck, StackOut, StackReportIn
+
+log = logging.getLogger("nightjar.stacks")
 
 # A reporter on the staging host pushes in; the console reads. The hub never
 # reaches out to that machine, and is never given access to its Docker.
@@ -25,6 +28,64 @@ SERIES_WINDOW = timedelta(hours=3)
 # Three restarts inside ten minutes is a loop, not a deploy.
 RESTART_WINDOW = timedelta(minutes=10)
 RESTART_LOOP_MIN = 3
+MEM_HIGH_FRACTION = 0.85
+DISK_LOW_FRACTION = 0.10
+
+# What becomes an issue. error is P2 and warning is P3 (digest only), so memory
+# pressure never wakes anyone. The message is fixed text: the fingerprint
+# groups every occurrence into one issue, and the numbers ride in `extra`.
+PROBLEMS = {
+    "degraded": ("StackDegraded", "stack {stack} is degraded", "error"),
+    "restart_loop": ("StackRestartLoop", "stack {stack} is restarting repeatedly", "error"),
+    "memory_high": ("StackMemoryHigh", "stack {stack} is near its memory limit", "warning"),
+    "disk_low": ("HostDiskLow", "staging host disk is nearly full", "error"),
+}
+
+
+def _restart_delta(rows: list, at: datetime, restarts: int | None) -> int:
+    """Restarts in the RESTART_WINDOW ending at `at`, against the earliest earlier
+    report inside it. With nothing to compare against it is 0, never a guess. A
+    recreated container resets its counter, which is not negative restarts."""
+    if restarts is None:
+        return 0
+    for r in rows:
+        if r.reported_at >= at - RESTART_WINDOW and r.restarts is not None:
+            return max(0, restarts - r.restarts)
+    return 0
+
+
+def _conditions(state, mem, limit, free, total, delta) -> set[str]:
+    bad = set()
+    if state == "degraded":
+        bad.add("degraded")
+    if delta >= RESTART_LOOP_MIN:
+        bad.add("restart_loop")
+    if limit and mem is not None and mem >= MEM_HIGH_FRACTION * limit:
+        bad.add("memory_high")
+    if total and free is not None and free < DISK_LOW_FRACTION * total:
+        bad.add("disk_low")
+    return bad
+
+
+def _event(key: str, payload: StackReportIn) -> EventIn:
+    exception_type, template, level = PROBLEMS[key]
+    # Disk is a property of the host, so every stack on it shares one issue.
+    module, function = ("host", "disk") if key == "disk_low" else ("stack", payload.stack)
+    return EventIn(
+        exception_type=exception_type,
+        message=template.format(stack=payload.stack),
+        frames=[Frame(module=module, function=function)],
+        level=level,
+        environment="staging",
+        extra={
+            "stack": payload.stack,
+            "state": payload.state,
+            "mem_mb": payload.mem_mb,
+            "mem_limit_mb": payload.mem_limit_mb,
+            "host_disk_free_mb": payload.host_disk_free_mb,
+            "host_disk_total_mb": payload.host_disk_total_mb,
+        },
+    )
 
 
 @ingest_router.post("/{ingest_key}/stack", response_model=StackAck, status_code=201)
@@ -42,6 +103,37 @@ async def record_stack(
     except ValidationError as exc:
         raise HTTPException(422, exc.errors(include_url=False, include_context=False)) from exc
 
+    now = datetime.now(UTC)
+    # Recent history for this stack, read BEFORE the new report goes in, so we can
+    # tell what has just *changed*.
+    rows = (
+        await session.scalars(
+            select(StackReport)
+            .where(
+                StackReport.site_id == site.id,
+                StackReport.stack == payload.stack,
+                StackReport.reported_at >= now - timedelta(minutes=25),
+            )
+            .order_by(StackReport.reported_at)
+        )
+    ).all()
+    prev = rows[-1] if rows else None
+
+    now_bad = _conditions(
+        payload.state, payload.mem_mb, payload.mem_limit_mb,
+        payload.host_disk_free_mb, payload.host_disk_total_mb,
+        _restart_delta(rows, now, payload.restarts),
+    )
+    was_bad = (
+        _conditions(
+            prev.state, prev.mem_mb, prev.mem_limit_mb,
+            prev.host_disk_free_mb, prev.host_disk_total_mb,
+            _restart_delta(rows[:-1], prev.reported_at, prev.restarts),
+        )
+        if prev
+        else set()
+    )
+
     report = StackReport(
         site_id=site.id,
         stack=payload.stack,
@@ -58,6 +150,18 @@ async def record_stack(
     )
     session.add(report)
     await session.commit()
+
+    # Edge-triggered: only a problem that has just STARTED opens an event. One per
+    # report while a stack stays degraded would be 1,440 a day and would trip the
+    # spike detector. Repeats of a known issue are deduplicated by the pipeline.
+    for key in sorted(now_bad - was_bad):
+        try:
+            await record_event(session, site, _event(key, payload))
+        except Exception:
+            # The report is already saved. A failure to open an issue must not
+            # turn into a failed report, and must not poison the session.
+            log.exception("could not record %s for %s", key, payload.stack)
+            await session.rollback()
     return StackAck(id=report.id)
 
 
