@@ -36,11 +36,12 @@ export default function App() {
   const rising = usePoll("/api/errors/rising");
   const tickets = usePoll("/api/tickets?status=all");
   const deploys = usePoll("/api/deploys");
+  const stacks = usePoll("/api/stacks");
   const now = useNow();
   const [tab, go] = useHashTab(TAB_IDS, "overview");
   useInactivity(IDLE_AFTER_MS, () => go("idle"), tab !== "idle");
 
-  const feeds = [health, issues, rising, tickets, deploys];
+  const feeds = [health, issues, rising, tickets, deploys, stacks];
   const hubError = feeds.some((x) => x.error);
   const loaded = feeds.every((x) => x.data);
   const stamps = feeds.map((x) => x.at).filter(Boolean);
@@ -52,6 +53,7 @@ export default function App() {
     rising: rising.data ?? [],
     tickets: tickets.data ?? [],
     deploys: settled(deploys.data ?? []),
+    stacks: stacks.data ?? [],
     now,
     go,
     hubError,
