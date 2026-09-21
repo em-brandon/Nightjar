@@ -2,14 +2,12 @@
 
 import asyncio
 
-from hub.db import Base, SessionLocal, engine
+from hub.db import SessionLocal
+from hub.migrate import upgrade
 from hub.models import Client, Site
 
 
 async def main() -> None:
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
     async with SessionLocal() as session:
         client = Client(name="Demo Client", contact_email="demo@example.com")
         session.add(client)
@@ -23,4 +21,6 @@ async def main() -> None:
         print(f"ingest_secret = {site.ingest_secret}")
 
 
+# Blocking, and Alembic runs its own event loop, so it goes before ours.
+upgrade()
 asyncio.run(main())

@@ -8,7 +8,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY hub/ ./hub/
-COPY seed.py .
+COPY seed.py alembic.ini ./
+COPY migrations/ ./migrations/
 
 # Run unprivileged. Nothing here needs root.
 RUN useradd --create-home --uid 10001 nightjar && chown -R nightjar /app
