@@ -206,6 +206,12 @@ Data flows, all real tables:
 | Client requests | `POST /api/tickets` now, email intake in chunk 4 | `/api/tickets` |
 | Deploys | CI calls `POST /ingest/{key}/deploy` (same signing as crashes) | `/api/deploys` |
 | Staging | just a site with `env=staging` and a `url` | same as production |
+| Stacks | `client/stack_reporter.py` on the staging host *pushes* to `POST /ingest/{key}/stack` | `/api/stacks` |
+
+**Nightjar shows staging stacks; it never controls them.** The hub is on the VPS and staging is on a
+machine at home, so it cannot and must not reach that Docker. A reporter there pushes state in; start,
+stop and logs live in Dockge over Tailscale. A reporter that has gone quiet is shown as `reporter
+silent`, never as healthy.
 
 A site with no `url` is not monitored: it still reports crashes but has no ring
 or ribbon. Sites are created by `seed.py`; set `url` with SQL until the chunk 4b
@@ -277,11 +283,14 @@ hub/
   incidents.py     issue actions + audit log
   tickets.py       client requests
   deploys.py       CI deploy reports
+  stacks.py        staging stack reports in, /api/stacks out
 console/           Vite + React 19 UI: src/views/* is one file per tab
 client/
   reporter.py      the whole "SDK" — drop into any managed FastAPI app
   thermal_probe.py host thermals as ordinary tickets
+  stack_reporter.py runs on the staging host, pushes Docker stack state to the hub
 deploy/            bootstrap.sh, Caddyfile, backup.sh
+  staging/         Dockge (Tailscale-only), reporter timer, client stack template
 mockups/           working HTML: console, wall, boot splash, drawer
 docs/              FULL-DESIGN.md — hardware, access tiers, later chunks
 ```
@@ -342,6 +351,7 @@ the 200s. Two hundred separate issues means the fingerprint is broken.
 | `PROBE_ENABLED` | run the uptime checker (default true) |
 | `PROBE_INTERVAL_S` | seconds between rounds (default 60) |
 | `PROBE_TIMEOUT_S` | per-request timeout (default 10) |
+| `VITE_STACK_CONTROL_URL` | console build-time: where the Staging tab's *Manage stacks* button points (Dockge over Tailscale). Optional |
 
 ---
 

@@ -575,3 +575,44 @@ not to be a security boundary. Do not treat it as one.
 **Rule kept:** the idle screen cannot suppress an alert. It only displays.
 Timings (`?idle=&rotate=&reveal=`) are overridable in the dev server only, so a
 production URL cannot lengthen how long detail stays revealed.
+
+---
+
+## 35. Staging stacks are pushed in, and shown read-only
+
+**Decision:** a reporter on the staging host posts each Docker Compose project's
+state to the hub (`POST /ingest/{key}/stack`). The Staging tab only displays it.
+
+The hub is on the VPS (#9) and staging is on the ThinkCentre at home, so the hub
+cannot see that machine's Docker, and must never be handed it: a socket exposed
+to an internet-facing service is root on the box. Pushing in inverts the
+direction, so nothing on the internet can reach a container. It reuses the
+pattern `thermal_probe.py` already set.
+
+**Rules carried in:** a reporter that has gone quiet is `reporter silent` and is
+left out of the totals, never shown as healthy (#10). It only reports projects
+named in its config, so unrelated containers never reach the console. It swallows
+every failure and exits 0, like the app reporter. A running stack with no memory
+limit is flagged, because one runaway app can take the whole machine.
+
+**Found by testing:** keyed on site alone, two projects sharing one site key
+overwrote each other. The feed is keyed on site and stack.
+
+---
+
+## 36. Control lives in Dockge over Tailscale, not in Nightjar
+
+**Decision:** start, stop, restart and logs are done in Dockge on the staging
+host, reached over Tailscale. The Staging tab links to it
+(`VITE_STACK_CONTROL_URL`) and says it is read-only when that is unset.
+
+**Rejected:** building start and stop into Nightjar. It would need write access to
+Docker from something internet-facing, and it rebuilds a tool that exists (the
+standing "do not rebuild tools that exist" rule). Portainer is an acceptable
+alternative and Coolify or Dokploy go further, but Dockge fits the
+one-directory-per-client layout with the least machinery.
+
+**Costs, stated plainly:** the Docker socket is root-equivalent for both Dockge
+and the reporter. Docker publishes ports straight through `ufw`, so the Dockge
+compose file binds to the Tailscale address only and refuses to start without one.
+

@@ -30,6 +30,7 @@ Named for a bird that only becomes active after dark, which is when this system 
   - [The dead-man's switch](#the-dead-mans-switch)
 - [Where things run](#where-things-run)
 - [Staging for client stacks](#staging-for-client-stacks)
+  - [Seeing and controlling stacks](#seeing-and-controlling-stacks)
   - [Capacity for ten stacks](#capacity-for-ten-stacks)
   - [Java apps](#java-apps)
 - [API reference](#api-reference)
@@ -252,7 +253,7 @@ The left sidebar has five tabs, with live count badges:
 | **Incidents** | Open and all issues. A drawer with Acknowledge, Resolve, Mute, Snooze and Reopen, and an audit-trail log |
 | **Requests** | Client requests (change, report, access) with overdue flagging. Logged by hand until email intake exists |
 | **Deploys** | Production deploy history, reported by CI |
-| **Staging** | Staging sites (a site with `env=staging`) with the same checks, plus staging deploys |
+| **Staging** | A read-only view of each staging stack (state, memory against its limit, CPU, services), the staging sites' uptime checks, and staging deploys |
 
 How the numbers are derived, so nothing is invented:
 
@@ -419,8 +420,10 @@ does not affect alerting at all.
 
 ## Staging for client stacks
 
-> **Planned optimisations, not built.** Nothing here is configured in the repo yet, and every number is an
-> **estimate**. Deploy two or three real stacks, run `docker stats` for a day, and multiply.
+> **Partly built.** The read-only stack view, the stack reporter and the Dockge setup files exist
+> (see [Seeing and controlling stacks](#seeing-and-controlling-stacks)). Caddy routing, the per-client
+> layout and Gitea Actions deploys are still planned, and every capacity number is an **estimate**. Deploy
+> two or three real stacks, run `docker stats` for a day, and multiply.
 
 Nightjar's own backend (FastAPI and Postgres) does not constrain what clients run. It receives plain HTTP,
 so a client on PHP, Node, Python or Java is fine. What hosts staging is the ThinkCentre, using **Docker
@@ -445,6 +448,28 @@ with `env=staging` and a `url`, so it gets the same uptime checks and appears on
 **Other stacks need a reporter.** [`client/reporter.py`](client/reporter.py) is Python only. A Node or Java
 app needs either the Sentry SDK forwarding by webhook, or a small client posting to
 `/ingest/{key}/event`. The uptime probe and deploy reports work for any language.
+
+### Seeing and controlling stacks
+
+These are two jobs, kept apart on purpose:
+
+| Job | Where | How |
+|---|---|---|
+| **See** the stacks | The console's Staging tab | [`client/stack_reporter.py`](client/stack_reporter.py) on the ThinkCentre *pushes* each stack's state to the hub |
+| **Control** them (start, stop, logs) | [Dockge](https://github.com/louislam/dockge) on the ThinkCentre | Reached over Tailscale, never the public internet |
+
+The hub is on the VPS and staging is at home, so the hub cannot see that machine's Docker, and must not be
+given it. The reporter reads `docker ps` and `docker stats` for the Compose projects you list, and posts
+them signed like every other ingest. Nightjar never controls a container.
+
+The Staging tab shows, per stack: running, degraded or stopped; memory against its limit; CPU; a memory
+trend; and each service's state. It **warns when a running stack has no memory limit**, and shows a stack
+whose reporter has gone quiet as `reporter silent`, never as healthy. A **Manage stacks** button links to
+Dockge when `VITE_STACK_CONTROL_URL` is set.
+
+Setup is in [`deploy/staging/`](deploy/staging/) and the staging section of [`DEPLOY.md`](DEPLOY.md): a
+Dockge compose file bound to the Tailscale address only, a systemd timer for the reporter, and a client
+stack template with a `mem_limit` on every service.
 
 ### Capacity for ten stacks
 
@@ -515,6 +540,7 @@ Ingest, called by client apps and CI. Authenticated by the per-site key in the U
 |---|---|
 | `POST /ingest/{key}/event` | Report a crash. Returns `issue_id`, `fingerprint`, `event_count`, `severity`, `state_change` |
 | `POST /ingest/{key}/deploy` | Report a deploy: `{"ref": "main@1f9c4a2", "status": "running \| success \| failed"}` |
+| `POST /ingest/{key}/stack` | Report a staging stack's state. Sent by `client/stack_reporter.py`, not by hand |
 
 Console feeds, read-only:
 
@@ -526,6 +552,7 @@ Console feeds, read-only:
 | `GET /api/issues/{id}/log` | The audit trail for one issue |
 | `GET /api/tickets?status=open\|closed\|all` | Client requests |
 | `GET /api/deploys?env=production\|staging\|all` | Deploy history |
+| `GET /api/stacks` | Staging stacks as last reported: state, memory and limit, CPU, services, and whether the reporter has gone silent |
 | `GET /healthz` | Liveness |
 
 Console writes. **These have no authentication yet** (see [Known gaps](#known-gaps)):
@@ -645,7 +672,7 @@ background uptime probe, which serverless platforms freeze between requests.
 | 6 | Pico companion: status strip, fingerprint, watchdog | Designed |
 | 7 | Gitea integration | Designed. The generic deploy webhook exists |
 | 8 | Read-only client status page | Build when a client asks twice |
-| - | Staging host for client stacks: Compose per client, Caddy routing, Gitea Actions deploys, Java tuning | Planned. Measure real stacks first |
+| - | Staging host for client stacks | **Partly built:** read-only stack view, reporter, Dockge setup. Caddy routing and CI deploys planned. Measure real stacks first |
 
 ---
 
@@ -670,6 +697,11 @@ Recorded here so nothing looks finished that is not.
    `/ingest/gitea`.
 8. **A malformed request body to `/ingest/{key}/event` returns 500** rather than 422.
 9. **The cabinet drawings predate the OLED and M920q decisions.** See [the cabinet](#the-cabinet).
+10. **The stack reporter and Dockge both need the Docker socket, which is root-equivalent.** Dockge stays on the
+    tailnet behind its own login, and the reporter should run as a dedicated user. A read-only socket proxy
+    would narrow the reporter and is a possible later hardening.
+11. **A stack that exited uncleanly reads as `degraded`.** On Docker Desktop, stopping the VM does this to
+    every container, so expect false positives on a laptop. On Linux it means a real crash.
 
 ---
 
