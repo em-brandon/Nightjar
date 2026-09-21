@@ -58,13 +58,14 @@ async def record_stack(
 async def list_stacks(session: AsyncSession = Depends(get_session)) -> list[StackOut]:
     now = datetime.now(UTC)
 
-    # Newest report per site, however old, so a dead reporter is still listed
-    # (as stale) instead of vanishing from the page.
+    # Newest report per (site, stack), however old, so a dead reporter is still
+    # listed (as stale) instead of vanishing. Keyed on the stack as well as the
+    # site: two projects sharing one site key must not overwrite each other.
     latest = (
         await session.scalars(
             select(StackReport)
-            .distinct(StackReport.site_id)
-            .order_by(StackReport.site_id, StackReport.reported_at.desc())
+            .distinct(StackReport.site_id, StackReport.stack)
+            .order_by(StackReport.site_id, StackReport.stack, StackReport.reported_at.desc())
         )
     ).all()
     if not latest:
@@ -75,13 +76,13 @@ async def list_stacks(session: AsyncSession = Depends(get_session)) -> list[Stac
         for s in await session.scalars(select(Site).where(Site.id.in_([r.site_id for r in latest])))
     }
 
-    series: dict[int, list[int | None]] = defaultdict(list)
-    for site_id, mem in await session.execute(
-        select(StackReport.site_id, StackReport.mem_mb)
+    series: dict[tuple[int, str], list[int | None]] = defaultdict(list)
+    for site_id, stack, mem in await session.execute(
+        select(StackReport.site_id, StackReport.stack, StackReport.mem_mb)
         .where(StackReport.reported_at >= now - SERIES_WINDOW)
-        .order_by(StackReport.site_id, StackReport.reported_at)
+        .order_by(StackReport.site_id, StackReport.stack, StackReport.reported_at)
     ):
-        series[site_id].append(mem)
+        series[(site_id, stack)].append(mem)
 
     out = [
         StackOut(
@@ -96,9 +97,9 @@ async def list_stacks(session: AsyncSession = Depends(get_session)) -> list[Stac
             cpu_pct=r.cpu_pct,
             host_mem_mb=r.host_mem_mb,
             services=[ServiceIn(**svc) for svc in r.services],
-            mem_series=series[r.site_id][-SERIES_POINTS:],
+            mem_series=series[(r.site_id, r.stack)][-SERIES_POINTS:],
         )
         for r in latest
     ]
-    out.sort(key=lambda o: o.site)
+    out.sort(key=lambda o: (o.site, o.stack))
     return out
