@@ -617,16 +617,8 @@ Rules for Java stacks:
 > unchanged and stays paused.
 
 You are getting into film and production, and a Raspberry Pi already works as a camera media upload device
-(a place to drop a file). This is the plan for turning that into an archive, and the answer to whether the
-ThinkCentre can host it.
-
-| Question | Answer |
-|---|---|
-| Can the ThinkCentre do it? | **Yes, but only with its own external drive.** Its internal storage (one M.2 slot and one 2.5" bay, up to 1 TB each per Lenovo's spec) cannot hold a film archive. |
-| Will it strain storage? | **Not if media has its own drive and filesystem.** On the staging volume it will, and a full disk would take Postgres and Gitea down with it. |
-| Better place for it? | **The Raspberry Pi itself**, with the archive disk attached to it. Then media never touches the machine that runs staging. |
-| Pause staging during an upload? | **Queue staging builds; do not pause running stacks.** Pausing a container frees no memory. |
-| Reject uploads during a merge to `main`? | **Defer them, do not drop them.** A resumable protocol turns "rejected" into "retry in a minute". |
+(a place to drop a file). This is the plan for turning that into an archive. The media Pis are **a separate system**: they share no
+machine, disk or CI with staging, and Nightjar only watches them.
 
 **How big the footage is.** Apple's published ProRes rates: one hour of UHD ProRes 422 HQ at 24p is **318 GB**
 (707 Mb/s), and at 30p it is 398 GB. That is about 12 hours on a 4 TB drive, and a two-hour shoot is roughly
@@ -634,25 +626,6 @@ ThinkCentre can host it.
 Ethernet, one hour of that footage takes about 53 minutes to move at 100 MB/s.
 
 **On location, two storage tiers.** Cards fill on site and the next shot needs an empty one, so clearing the card and uploading are treated as two separate jobs. Footage is copied to a **local SSD** on a field Pi, verified by read-back, and only then may the card be cleared. It is uploaded to the **archive at home** (the hard disk) only once the local copy is confirmed, and the local copy is freed only once the remote copy verifies. LTE cannot carry a RAW shoot day (roughly 212 to 477 GB per hour of ProRes RAW, against a few to a few hundred Mbps of uplink), so over LTE only **chosen selects or proxies** go up, and the full footage travels on the drive. A 256 GB card takes about 43 minutes to a hard disk and about 11 to an SSD before verification (estimates), which is why the local tier is an SSD. Details and the open questions are in [`docs/MEDIA-ARCHIVE.md`](docs/MEDIA-ARCHIVE.md#on-location-two-storage-tiers).
-
-**What else a Raspberry Pi could be** for this project, best fit first: the media archive itself; an **offsite
-copy** of the archive and the backups; a **wall display driver**, so a staging problem cannot blank the wall; a
-**cabinet and drive sensor node** (temperatures and SMART readings); and, low priority, an independent uptime
-probe on a third network.
-
-**One rule above the rest: media never delays a production deploy.** If the archive ever shares the staging
-machine, work is ordered by priority:
-
-| Priority | Lane | Under contention |
-|---|---|---|
-| 1 | Production deploy (a merge to `main`) | Never waits and is never throttled |
-| 2 | Media upload | New uploads are deferred during a deploy; ones in progress are throttled, not killed |
-| 3 | Staging build | Queued while an upload is active. Running stacks stay up |
-| 4 | Background work (verification, proxies) | Only when the lanes above are idle |
-
-The decision is made **locally on the machine** with lock files and upload hooks, because the hub is on a VPS
-and a hook waiting on an internet round-trip can time out. The gate fails open, and it is never allowed to
-block a production deploy.
 
 **What Nightjar would do:** watch, not manage. A Media tab for uploads, archive disk and verification; issues for
 a low disk, a checksum mismatch or a silent Pi (P2 or P3, **never P1**, so media cannot wake you); and the same
