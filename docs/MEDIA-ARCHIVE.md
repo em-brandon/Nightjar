@@ -13,6 +13,8 @@ upload arrives or an upload rejected while a merge to `main` is running.
 
 | Question | Answer |
 |---|---|
+| On a shoot, how does footage get from the card to the archive? | **Two tiers.** Copy to a local SSD on site, verify, and only then clear the card. Upload to the archive at home once the local copy is confirmed. See [On location](#on-location-two-storage-tiers). |
+| Can LTE carry a RAW shoot day? | **No.** Hundreds of GB against a few Mbps of uplink. LTE carries chosen selects or proxies; the drive carries the rest home. |
 | Can the ThinkCentre do it? | **Yes, but only with its own external drive.** Its internal storage cannot hold a film archive. |
 | Will it strain storage? | **Not if media has its own drive and filesystem.** On the staging volume it will, and a full disk would take Postgres and Gitea down with it. |
 | Better place for it? | **The Raspberry Pi itself**, with the archive disk attached to it. Then media never touches the machine that runs staging. |
@@ -101,6 +103,112 @@ For how files reach it, two options, both decided later:
   [tusd](https://github.com/tus/tusd) (the reference server, in Go). Better for large files over an
   unreliable link, because an interrupted upload continues where it stopped.
 
+## On location: two storage tiers
+
+Everything above assumes files arrive at a Pi that stays at home. A shoot day is different: cards fill on
+site, and the next shot needs an empty card. Two jobs get confused here, and they run on very different clocks.
+
+| Job | Speed set by | Gates shooting? |
+|---|---|---|
+| **Clear the card**: copy it to a fast local drive, verify, then free the card | Card reader and the local drive | **Yes.** It is the only job that does. |
+| **Upload over LTE**: send footage to the home archive | The LTE uplink | **No.** It must never be a reason a card stays full. |
+
+So there are two storage tiers, and the rule between them is one sentence: **save to local first, and upload to
+remote only once the local copy is confirmed.**
+
+| Tier | Where | Medium | Job |
+|---|---|---|---|
+| **1. Local** | On site, on the field Pi | **SSD** | Take the card offload fast and hold the day's footage until it is safe elsewhere |
+| **2. Remote** | At home, on the archive Pi (design C above) | **Hard disk** | The archive. Speed matters less, capacity and cost matter more |
+
+### The order of events for every file
+
+| Step | State | What is allowed now |
+|---|---|---|
+| 1 | **On the card** | Nothing is safe. Do not format. |
+| 2 | **Copied to local** | Still not safe. A copy nobody has checked is a guess. |
+| 3 | **Verified on local** (read back, checksum matches) | **The card may be cleared.** This is the only gate for shooting. |
+| 4 | **Queued for upload** | Waits for a link, or for the drive to travel home. Never blocks step 3 for the next card. |
+| 5 | **Uploaded, and verified on remote** | **Only now may the local copy be freed.** |
+
+Two things follow from that table:
+
+- **The card is freed at step 3, and local space at step 5.** Local is not a cache to be emptied when full. If it
+  fills before uploads catch up, the answer is a bigger SSD or a second one, never deleting an unconfirmed copy.
+- **Verification is part of the clock.** Read-back roughly doubles a copy's time. Skipping it is how footage is
+  lost, so plan the offload time with it included.
+
+### What LTE can and cannot carry
+
+Peak LTE uplink by modem category, from a published table (real speeds are lower and shared, and the table is
+peak or headline rates):
+
+| Modem category | Peak uplink | 20 GB takes |
+|---|---|---|
+| Cat 1 | 5 Mbps | about 8.9 hours |
+| Cat 4 | 50 Mbps | about 53 minutes at best |
+| Cat 7 | 150 Mbps | about 18 minutes at best |
+
+Which category a given modem is, and what it actually gets where you shoot, is **unmeasured**: test on site.
+
+RAW footage is enormous. Apple states ProRes RAW falls between ProRes 422 and ProRes 422 HQ, and ProRes RAW HQ
+between 422 HQ and 4444. Combined with the verified table above, that is **roughly 212 to 318 GB per hour for
+ProRes RAW and 318 to 477 GB per hour for RAW HQ** at UHD 24p. That figure is my inference from those two
+statements, not a published number, and other RAW formats and stills differ. A three-hour shoot is about 636 to
+954 GB, which is over 28 hours at 50 Mbps even at peak. **LTE cannot carry a shoot day.** It can carry about
+20 GB of chosen material.
+
+So over LTE, upload **only what is chosen**: proxies, selects, or one hero clip, marked by the operator. The full
+RAW travels on the drive and reaches the archive at home over gigabit, where 636 GB takes about 1.8 hours at
+100 MB/s. This is still the same rule: the uploaded set is deleted from local only once the remote copy verifies,
+and the rest stays on local until the drive is home.
+
+### How fast the card clears
+
+Estimated time to copy, before verification. **The rates are my working figures, not measurements:** about
+400 MB/s for a fast SSD on a Pi 5's USB 3 port (a ceiling), and about 100 MB/s for a portable hard disk.
+Double it for read-back.
+
+| Card | To a hard disk (about 100 MB/s) | To an SSD (about 400 MB/s) |
+|---|---|---|
+| 20 GB | about 3.5 min | about 1 min |
+| 128 GB | about 21 min | about 5 min |
+| 256 GB | about 43 min | about 11 min |
+| 512 GB | about 85 min | about 21 min |
+
+That is why tier 1 is an SSD. Around a four-times difference decides whether a card is back in the camera in
+twenty minutes or ninety, and an SSD also survives being carried.
+
+### Rules for the field tier
+
+1. **The local tier is an SSD, and not an SMR hard disk.** Many large portable hard disks use shingled recording
+   and can stall badly on sustained writes. Check the model before buying.
+2. **Own more cards than you fill in a day.** Offload one while you shoot with another.
+3. **A Pi is a good background worker, not the fastest offloader.** Its USB ports cap the rate above. A laptop with
+   a fast NVMe drive is often quicker for on-site offload. The field Pi's strength is the unattended work:
+   verifying, holding the queue, and sending chosen files over LTE. Whether to offload with the Pi or a laptop
+   is an open question below.
+4. **Power.** A Pi 5 needs its 27 W supply, and a bus-powered drive adds current on top. Check the whole load
+   against a battery or car supply before a shoot.
+5. **Never format a card the software has not confirmed.** The tool shows "verified, safe to clear" per card,
+   and a person still formats it. Nothing formats automatically.
+
+### What Nightjar adds for this
+
+Nightjar still only watches. The field Pi pushes its state the way the stack reporter does, and the Media tab
+shows the two tiers side by side.
+
+| Nightjar would show | Severity when wrong |
+|---|---|
+| Cards **awaiting verification**, and the oldest one waiting | P2 if a card has waited too long |
+| **A verification failure** (a checksum mismatch on local) | P2, and it stays open until a person looks |
+| **Local free space** falling toward zero while unconfirmed files remain | P2 |
+| **Upload backlog** and the oldest unconfirmed file | P3 |
+| **Field Pi silent** | Shown as `reporter silent`, never as healthy |
+
+None of these is P1. A media problem never wakes the phone, and none of this is ever in the path of a production
+deploy.
+
 ## The gate: production never waits
 
 Your two rules (pause staging when an upload arrives, reject uploads during a merge to `main`) are the right
@@ -180,6 +288,13 @@ Nothing is decided until these are answered.
 4. **Where should the archive live:** on the Pi (recommended), or on the ThinkCentre?
 5. **How do files reach the Pi:** a card reader on the Pi, or uploads from a laptop or phone?
 6. **Is there a plan for a second copy in another place?**
+7. **On a shoot day: is it video RAW or stills, and from which camera?** Which format sets the real GB per hour.
+8. **Which cards, how many, and what sizes**, and how many hours do you shoot on a busy day?
+9. **What LTE speed do you actually get where you shoot**, and which modem? Measure it on site.
+10. **Offload with the field Pi or a laptop?** The Pi is good unattended. A laptop with fast NVMe is usually
+    quicker to clear a card.
+11. **How big does the local SSD need to be?** At least the largest day you expect, since local is only freed
+    after the remote copy verifies.
 
 ## Sources, and how much to trust each
 
@@ -191,6 +306,9 @@ Nothing is decided until these are answered.
 | Pi 5 PCIe 2.0 x1, two USB 3.0 ports, gigabit Ethernet, 27 W supply, 600 mA USB default | Product page and power guides | [Raspberry Pi 5](https://www.raspberrypi.com/products/raspberry-pi-5/), [powering the Pi 5](https://bret.dk/how-to-power-the-raspberry-pi-5-a-complete-guide/), [Pi forum](https://forums.raspberrypi.com/viewtopic.php?t=383340) |
 | Samba speeds of 50 to 80 MB/s (hard disk) and about 110 MB/s (Pi 5 with SSD) | **Community-reported**, not lab-tested | [PiCockpit](https://picockpit.com/raspberry-pi/turn-your-raspberry-pi-into-a-nas-with-samba/), [Zbotic](https://zbotic.in/raspberry-pi-file-server-samba-nas-for-home-network/) |
 | Camera-native H.265 at 100 to 200 Mb/s | **My estimate**, unverified | none |
+| LTE peak uplink by UE category | **Read in the table**. Peak or headline rates, so real speeds are lower | [Electronics Notes](https://www.electronics-notes.com/articles/connectivity/4g-lte-long-term-evolution/ue-categories-classes.php) |
+| ProRes RAW sits between ProRes 422 and 422 HQ (RAW HQ between 422 HQ and 4444) | **Read in Apple's chart**. The GB per hour derived from it is **my inference** | [Apple ProRes RAW white paper](https://www.apple.com/final-cut-pro/docs/Apple_ProRes_RAW.pdf) |
+| About 400 MB/s SSD on a Pi 5 USB port and about 100 MB/s portable hard disk, and the card-clearing times built on them | **My working figures**, not measured | none |
 | Whether a Pi can transcode proxies acceptably | **Not researched**: verify for your model | none |
 
 A note on process: the first search summary I got claimed ProRes 422 HQ UHD 30p is 629 Mb/s and 283 GB per

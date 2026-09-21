@@ -633,6 +633,8 @@ ThinkCentre can host it.
 636 GB. Your camera's native format may be much smaller or larger, so its real bitrate comes first. On gigabit
 Ethernet, one hour of that footage takes about 53 minutes to move at 100 MB/s.
 
+**On location, two storage tiers.** Cards fill on site and the next shot needs an empty one, so clearing the card and uploading are treated as two separate jobs. Footage is copied to a **local SSD** on a field Pi, verified by read-back, and only then may the card be cleared. It is uploaded to the **archive at home** (the hard disk) only once the local copy is confirmed, and the local copy is freed only once the remote copy verifies. LTE cannot carry a RAW shoot day (roughly 212 to 477 GB per hour of ProRes RAW, against a few to a few hundred Mbps of uplink), so over LTE only **chosen selects or proxies** go up, and the full footage travels on the drive. A 256 GB card takes about 43 minutes to a hard disk and about 11 to an SSD before verification (estimates), which is why the local tier is an SSD. Details and the open questions are in [`docs/MEDIA-ARCHIVE.md`](docs/MEDIA-ARCHIVE.md#on-location-two-storage-tiers).
+
 **What else a Raspberry Pi could be** for this project, best fit first: the media archive itself; an **offsite
 copy** of the archive and the backups; a **wall display driver**, so a staging problem cannot blank the wall; a
 **cabinet and drive sensor node** (temperatures and SMART readings); and, low priority, an independent uptime

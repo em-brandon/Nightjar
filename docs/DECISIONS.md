@@ -816,3 +816,31 @@ published, and the profile page blocks automated checks), so the scope must be c
 created first. `nightjar-reporter` is free on PyPI. Trusted publishing supports GitHub
 Actions and not self-hosted runners such as the Gitea one, so packages publish from GitHub.
 
+---
+
+## 46. On location, media is saved locally first and uploaded once the local copy is confirmed
+
+**Decision:** plan the shoot-day workflow as two storage tiers. Tier 1 is a fast SSD on a
+field Pi, which takes the card offload. Tier 2 is the archive disk on the home Pi. A file is
+copied to tier 1 and verified by read-back, and only then may its card be cleared. It is
+uploaded to tier 2 only once tier 1 is confirmed, and freed from tier 1 only once tier 2
+verifies. Documented in `docs/MEDIA-ARCHIVE.md`. Nothing is built.
+
+**Why:** the scarce thing on a shoot is empty cards, and the fast path to one is a local
+copy. LTE carries a few to a few hundred Mbps at best, against hundreds of GB per hour of
+RAW, so any design where freeing a card waits on an upload would stop the shoot. Separating
+"clear the card" from "upload" also means the slow link can fail without costing a shot.
+
+**Rejected:** clearing cards against the remote copy (LTE cannot keep up); a hard disk as
+the field tier (about four times slower to clear a card, worse when carried, and many large
+portable disks are SMR); uploading everything over LTE (over a day per shoot at peak rates);
+letting the software format cards (a person formats, after seeing "verified").
+
+**Kept from before:** media problems are P2 or P3 and never P1, Nightjar only watches, and
+media never delays a production deploy.
+
+**Not verified:** the SSD and hard disk throughput and the card-clearing times are working
+estimates, the GB per hour for ProRes RAW is inferred from Apple's chart, and neither the
+modem's category nor the real LTE speed on site is known. Five new questions are in the
+design doc.
+
