@@ -761,17 +761,10 @@ of a 2-minute window, so it now scales with the window.
 **Decision:** plan a film archive as a side project, documented in
 `docs/MEDIA-ARCHIVE.md`, and do not build any of it yet. Nothing else waits on it.
 
-**Where it lives:** on a Raspberry Pi with its own disk (the recommended first step),
-not on the ThinkCentre's staging volume. The M920q's internal storage cannot hold a
-film archive (an hour of UHD ProRes 422 HQ is 318 GB, per Apple's table), and a full
-media disk sharing a filesystem with Postgres, Docker and Gitea would take all of them
-down at once. If it ever moves onto the ThinkCentre it gets a dedicated external drive.
-
-**The priority rule:** production deploys never wait on media, and the gate that orders
-media against staging work is local to the machine and fails open. This is #8 applied
-to a new subject: nothing may get in the way of the thing that must not fail. Uploads
-are deferred and resumed, not dropped, and staging builds are queued rather than
-running stacks paused, because pausing a container frees no memory.
+**Where it lives:** on its own Raspberry Pi with its own disk, fully decoupled from the ThinkCentre. Sharing
+a machine with staging was considered and rejected: a full media disk would take Postgres, Docker and Gitea down
+with it, and it would need a priority gate between media and deploys. Decoupling removes the problem, so the
+archive doc makes no comparison with the ThinkCentre and has no gate.
 
 **What Nightjar does:** watch, not manage. Its job stays narrow, and tools for storing
 and serving footage exist. Media problems are P2 or P3, never P1, so they cannot wake
@@ -837,7 +830,7 @@ portable disks are SMR); uploading everything over LTE (over a day per shoot at 
 letting the software format cards (a person formats, after seeing "verified").
 
 **Kept from before:** media problems are P2 or P3 and never P1, Nightjar only watches, and
-media never delays a production deploy.
+the media Pis are decoupled from staging and deploys, so nothing needs gating.
 
 **Not verified:** the SSD and hard disk throughput and the card-clearing times are working
 estimates, the GB per hour for ProRes RAW is inferred from Apple's chart, and neither the
