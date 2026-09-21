@@ -29,6 +29,9 @@ Named for a bird that only becomes active after dark, which is when this system 
   - [The Pico companion](#the-pico-companion)
   - [The dead-man's switch](#the-dead-mans-switch)
 - [Where things run](#where-things-run)
+- [Staging for client stacks](#staging-for-client-stacks)
+  - [Capacity for ten stacks](#capacity-for-ten-stacks)
+  - [Java apps](#java-apps)
 - [API reference](#api-reference)
 - [Quick start](#quick-start)
   - [Configuration](#configuration)
@@ -414,6 +417,95 @@ does not affect alerting at all.
 
 ---
 
+## Staging for client stacks
+
+> **Planned optimisations, not built.** Nothing here is configured in the repo yet, and every number is an
+> **estimate**. Deploy two or three real stacks, run `docker stats` for a day, and multiply.
+
+Nightjar's own backend (FastAPI and Postgres) does not constrain what clients run. It receives plain HTTP,
+so a client on PHP, Node, Python or Java is fine. What hosts staging is the ThinkCentre, using **Docker
+Compose with Caddy in front**, which hides the language differences behind containers.
+
+**The layout.**
+
+- **One Compose project per client**, for example `/srv/staging/<client>/` and
+  `docker compose -p <client> up -d --build`. Each has its own network and its own database.
+- **Only Caddy joins a shared network.** No stack publishes a host port.
+- **Routing by subdomain.** `clientname.staging.yourdomain` reaches that client's container, with one
+  wildcard DNS record covering all of them.
+- **Staging stays off the public internet**, behind Tailscale or basic auth. It holds real client data and
+  should not be indexed.
+- **Resource limits on every service.** Set `mem_limit` and `cpus`, so one runaway app is killed before it
+  takes the machine down. Add swap (8 GB or zram) as a safety net, not something to rely on.
+
+**The deploy path.** A Gitea Actions runner on the ThinkCentre deploys on a push to `develop`, then reports
+to Nightjar with the deploy webhook (`running`, then `success` or `failed`). Each staging stack is a site
+with `env=staging` and a `url`, so it gets the same uptime checks and appears on the Staging tab.
+
+**Other stacks need a reporter.** [`client/reporter.py`](client/reporter.py) is Python only. A Node or Java
+app needs either the Sentry SDK forwarding by webhook, or a small client posting to
+`/ingest/{key}/event`. The uptime probe and deploy reports work for any language.
+
+### Capacity for ten stacks
+
+The ThinkCentre has 6 cores and 24 GB of RAM (8 GB plus the planned 16 GB module). Roughly 7 GB goes to
+Gitea, the runner, Grafana, Uptime Kuma and the wall-display browser. That leaves about 15 to 17 GB.
+
+| Stack | Estimated idle RAM |
+|---|---|
+| PHP or WordPress (app and web server) | 150 to 300 MB |
+| Node app | 150 to 400 MB |
+| Its database | 200 to 500 MB |
+| **Typical stack total** | **0.5 to 1 GB** |
+
+Ten typical stacks come to about 8 GB, which fits with headroom. What can break it:
+
+- **Builds, not running stacks.** A `composer install`, `npm ci` or Docker build can briefly want 1 to 3 GB
+  and every core. Run **one build at a time** (runner concurrency of 1). That also protects the thermal
+  target of CPU under 80 °C.
+- **Disk.** Each stack is roughly 2 to 4 GB of images and data, plus build cache. Schedule
+  `docker system prune`, and check the SSD size, which is not recorded anywhere yet.
+- **One heavy client.** It can use as much as five light stacks.
+
+Ways to reduce pressure:
+
+1. Stop idle stacks after a day or so and start them on demand. Ten registered stacks may mean only four or
+   five running at once.
+2. Share one Postgres server with a database and user per client, instead of one server per stack. This is
+   lighter but less isolated, so start with one per stack and consolidate only if RAM runs out.
+
+Past about ten stacks, or with several heavy clients, one machine is the bottleneck. A second box or a small
+VPS is cheaper than clever tuning.
+
+### Java apps
+
+Java is the heaviest common stack for this machine. A JVM reserves memory up front, so it uses roughly the
+same RAM whether or not anyone is using the app.
+
+| | Typical stack | Java (Spring Boot and similar) |
+|---|---|---|
+| Idle RAM, app only | 150 to 400 MB | about 400 to 800 MB |
+| With its database | 0.5 to 1 GB | about 1 to 1.5 GB |
+| Build | brief spike | slow, can want 2 to 4 GB and all cores |
+| Start time | seconds | 10 to 60 seconds |
+
+A mixed ten, say four Java stacks at 1.3 GB and six lighter ones at 0.8 GB, is about 10 GB. With the
+infrastructure and a build spike that is around 20 GB of 24 GB: tight but workable. It stops working if most
+of the ten are Java, or if one is very heavy. Elasticsearch, Kafka and large legacy WAR apps each need 1 to
+2 GB or more alone, and belong on a separate small VPS.
+
+Rules for Java stacks:
+
+1. **Set the heap explicitly.** Use `-XX:MaxRAMPercentage=70` (or `-Xmx`) alongside a container `mem_limit`.
+   Without a matching limit a JVM can grow until the container is killed.
+2. **Build in CI, not on the staging box.** Deploy the finished image. A Maven build on the ThinkCentre is
+   the worst case for RAM and heat.
+3. **Keep Java stacks running.** Slow startup makes auto-stop unpleasant, so stop the light stacks when idle
+   and leave the Java ones on.
+4. **Cache dependencies** (`~/.m2` or `~/.gradle`) in a volume so builds are faster.
+
+---
+
 ## API reference
 
 Ingest, called by client apps and CI. Authenticated by the per-site key in the URL. With
@@ -553,6 +645,7 @@ background uptime probe, which serverless platforms freeze between requests.
 | 6 | Pico companion: status strip, fingerprint, watchdog | Designed |
 | 7 | Gitea integration | Designed. The generic deploy webhook exists |
 | 8 | Read-only client status page | Build when a client asks twice |
+| - | Staging host for client stacks: Compose per client, Caddy routing, Gitea Actions deploys, Java tuning | Planned. Measure real stacks first |
 
 ---
 
