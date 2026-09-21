@@ -146,6 +146,62 @@ Nothing moves. The VPS keeps Nightjar. The Tiny becomes:
 
 ---
 
+## Staging host: control and reporting
+
+Staging runs on the ThinkCentre, one Compose project per client under
+`/srv/staging/<client>/`. Nightjar's hub is on the VPS, so it splits two jobs
+that must not be mixed:
+
+| Job | Where | How |
+|---|---|---|
+| **See** the stacks | Nightjar's Staging tab | A reporter on the ThinkCentre *pushes* state in |
+| **Control** them (start, stop, logs) | Dockge on the ThinkCentre | Reached over Tailscale, never the public internet |
+
+The hub never reaches into the ThinkCentre and is never handed its Docker.
+Everything is in [`deploy/staging/`](deploy/staging/).
+
+### Control: Dockge over Tailscale
+
+1. Install Tailscale on the ThinkCentre and on the devices you will use.
+2. `tailscale ip -4` on the ThinkCentre, and put it in `deploy/staging/.env` as
+   `TAILSCALE_IP=100.x.y.z`.
+3. `docker compose -f dockge.compose.yml up -d`, open `http://100.x.y.z:5001`, and
+   create the admin account **immediately**.
+4. Set `VITE_STACK_CONTROL_URL` in the console's `.env` to that address, so the
+   Staging tab shows a **Manage stacks** button.
+
+Three things worth knowing:
+
+- **The Docker socket is root-equivalent.** Anyone who can use Dockge can run
+  anything on that machine. That is why it stays on the tailnet and behind its
+  own login, and why it is not exposed through Caddy.
+- **Docker bypasses `ufw`.** The Firewall note below is true of the VPS, where
+  nothing is published. On the ThinkCentre a plain `5001:5001` would be open to
+  the whole LAN whatever `ufw` says, so the compose file binds to the Tailscale
+  address only and refuses to start without one.
+- **Portainer works too.** It is heavier and more general, and Dockge is a better
+  fit for the one-directory-per-client layout. Coolify and Dokploy go further and
+  also automate routing and deploys, at the cost of another system to maintain.
+
+### Reporting: the stack reporter
+
+[`client/stack_reporter.py`](client/stack_reporter.py) reports each Compose
+project you list in `stacks.json` (project name to that staging site's ingest
+key). Install `stack-reporter.service` and `stack-reporter.timer` from
+`deploy/staging/` to run it every minute. Follow the steps in the service file.
+
+- **Run it as a dedicated user in the `docker` group.** Reading `docker ps` needs
+  the socket, which is root-equivalent. A read-only socket proxy would narrow this
+  and is a reasonable later hardening.
+- **Every service in a stack needs a `mem_limit`.** The Staging tab flags any
+  running stack without one. See `client-stack.example.yml`.
+- **If the reporter dies**, the tab shows the stack as `reporter silent` rather
+  than healthy, and drops it from the totals.
+
+Check it with `python stack_reporter.py` by hand, then open the Staging tab.
+
+---
+
 ## Firewall note
 
 `ufw` allows only 22, 80 and 443. Postgres and the hub are not published to the

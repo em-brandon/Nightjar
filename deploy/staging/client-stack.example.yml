@@ -1,0 +1,48 @@
+# Template for one client's staging stack: /srv/staging/<client>/compose.yaml
+#
+# Every service gets a memory limit. The console's Staging tab warns about any
+# running stack without one, because a single runaway app can otherwise take
+# the whole machine with it (and every other client's staging).
+#
+# The project name (the directory name here) is what stacks.json refers to.
+
+services:
+  web:
+    image: registry.example.com/agrovet/web:develop
+    restart: unless-stopped
+    mem_limit: 768m
+    cpus: 1.0
+    networks: [default, edge]        # `edge` is the shared network Caddy joins
+    # No `ports:` on purpose. Only Caddy reaches this, over `edge`.
+    environment:
+      DATABASE_URL: postgres://app:${DB_PASSWORD}@db:5432/app
+      # Java? Give the JVM a heap that fits inside mem_limit, or it grows until
+      # the container is killed:
+      # JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    mem_limit: 512m
+    cpus: 0.5
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: app
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  dbdata:
+
+networks:
+  edge:
+    external: true                   # docker network create edge

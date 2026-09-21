@@ -1,0 +1,4 @@
+{
+  "agrovet": { "key": "<ingest_key of the agrovet staging site>", "secret": "<its ingest_secret>" },
+  "clinic":  { "key": "<ingest_key of the clinic staging site>",  "secret": "<its ingest_secret>" }
+}

@@ -1,0 +1,35 @@
+# Dockge: start, stop, restart and read logs for staging stacks.
+# Runs on the STAGING HOST (the ThinkCentre), never on the VPS.
+#
+# Nightjar only *shows* stacks. Control lives here, reached over Tailscale, so
+# the internet-facing hub is never handed the power to control containers.
+#
+#   1. Install Tailscale on this machine and your laptop/phone.
+#   2. Find this machine's tailnet address:   tailscale ip -4
+#   3. Put it in .env next to this file:      TAILSCALE_IP=100.x.y.z
+#   4. docker compose -f dockge.compose.yml up -d
+#   5. Open http://100.x.y.z:5001 and create the admin account IMMEDIATELY.
+#   6. In the console's .env:  VITE_STACK_CONTROL_URL=http://100.x.y.z:5001
+#
+# Dockge manages every Compose project it finds under /srv/staging, one
+# directory per client, which is the layout the stack reporter expects.
+
+services:
+  dockge:
+    image: louislam/dockge:1
+    restart: unless-stopped
+    ports:
+      # Bind to the Tailscale address ONLY. Docker publishes ports straight
+      # through the firewall, so ufw would NOT protect a plain "5001:5001":
+      # it would be reachable from the whole LAN.
+      - "${TAILSCALE_IP:?set TAILSCALE_IP in .env}:5001:5001"
+    volumes:
+      # Root-equivalent access to this machine. That is exactly why it must
+      # stay on the tailnet and behind Dockge's own login.
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data:/app/data
+      # The stacks directory must be the SAME path on both sides. A relative
+      # path or a mismatch writes your compose files to the wrong place.
+      - /srv/staging:/srv/staging
+    environment:
+      - DOCKGE_STACKS_DIR=/srv/staging

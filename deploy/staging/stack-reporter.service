@@ -1,0 +1,26 @@
+# Reports each staging stack to Nightjar. Runs once; stack-reporter.timer fires it.
+#
+#   sudo cp stack-reporter.* /etc/systemd/system/
+#   sudo mkdir -p /etc/nightjar
+#   sudo cp stacks.example.json /etc/nightjar/stacks.json     # then fill in the keys
+#   printf 'NIGHTJAR_URL=https://nightjar.example.co.ke\nNIGHTJAR_STACKS=/etc/nightjar/stacks.json\n' \
+#       | sudo tee /etc/nightjar/stack-reporter.env
+#   sudo chmod 600 /etc/nightjar/*
+#   sudo systemctl enable --now stack-reporter.timer
+#
+# Needs only the standard library, so the system python3 is enough.
+
+[Unit]
+Description=Report staging stacks to Nightjar
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Reading `docker ps` and `docker stats` needs access to the Docker socket, which
+# is root-equivalent. Use a dedicated user in the docker group, not your own.
+User=nightjar-reporter
+EnvironmentFile=/etc/nightjar/stack-reporter.env
+ExecStart=/usr/bin/python3 /opt/nightjar/stack_reporter.py
+# Never let a stuck reporter pile up behind the next run.
+TimeoutStartSec=30
