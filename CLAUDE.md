@@ -207,6 +207,15 @@ Data flows, all real tables:
 | Deploys | CI calls `POST /ingest/{key}/deploy` (same signing as crashes) | `/api/deploys` |
 | Staging | just a site with `env=staging` and a `url` | same as production |
 | Stacks | `client/stack_reporter.py` on the staging host *pushes* to `POST /ingest/{key}/stack` | `/api/stacks` |
+| Stack problems | degraded, restart loop, memory over 85%, host disk under 10% | an issue, **edge-triggered** (only when it starts) |
+
+**Staging promotion.** A staging site is paired with its production site by *name*: `<production>-staging`
+belongs to `<production>`. `console/src/promotion.js` decides ready / blocked / in sync / behind. Blockers
+(failed or unfinished deploy, uptime under 99%, open P1/P2, silent, degraded or restarting stack) always win.
+
+**Stack problems are events, and must be edge-triggered.** `hub/stacks.py` opens an issue only when a condition
+*starts*, through `record_event` (extracted from ingest so every source shares one fingerprinting path). Never
+emit one per report: 1,440 a day would trip the spike detector.
 
 **Nightjar shows staging stacks; it never controls them.** The hub is on the VPS and staging is on a
 machine at home, so it cannot and must not reach that Docker. A reporter there pushes state in; start,
@@ -332,6 +341,7 @@ The console, in a second terminal:
 
 ```bash
 cd console && npm install && npm run dev    # http://localhost:5173
+npm test                                    # promotion-readiness rules (console/src/promotion.js)
 ```
 
 Vite proxies `/api` to the hub on `:8000`, so the hub needs no CORS config. After

@@ -31,6 +31,7 @@ Named for a bird that only becomes active after dark, which is when this system 
 - [Where things run](#where-things-run)
 - [Staging for client stacks](#staging-for-client-stacks)
   - [Seeing and controlling stacks](#seeing-and-controlling-stacks)
+  - [Promotion readiness](#promotion-readiness)
   - [Capacity for ten stacks](#capacity-for-ten-stacks)
   - [Java apps](#java-apps)
 - [API reference](#api-reference)
@@ -253,7 +254,7 @@ The left sidebar has five tabs, with live count badges:
 | **Incidents** | Open and all issues. A drawer with Acknowledge, Resolve, Mute, Snooze and Reopen, and an audit-trail log |
 | **Requests** | Client requests (change, report, access) with overdue flagging. Logged by hand until email intake exists |
 | **Deploys** | Production deploy history, reported by CI |
-| **Staging** | A read-only view of each staging stack (state, memory against its limit, CPU, services), the staging sites' uptime checks, and staging deploys |
+| **Staging** | Whether each staging site is **ready to promote**, and how it differs from production. A read-only view of each stack (state, memory against its limit, disk, CPU, restarts, services), host disk, builds in flight, uptime checks and staging deploys |
 
 How the numbers are derived, so nothing is invented:
 
@@ -471,6 +472,44 @@ Setup is in [`deploy/staging/`](deploy/staging/) and the staging section of [`DE
 Dockge compose file bound to the Tailscale address only, a systemd timer for the reporter, and a client
 stack template with a `mem_limit` on every service.
 
+### Promotion readiness
+
+Each staging site gets a card answering "can this go to production, and what would change?"
+
+**Ready to promote** needs all of:
+
+- the latest deploy **succeeded** (a failed or unfinished one blocks, even if an older one succeeded)
+- a live health check with **99% or better uptime over 24 hours**
+- **no open P1 or P2** on the staging site
+- no stack that is **silent, degraded or restarting repeatedly**
+
+Any blocker wins, and the card lists each one. Otherwise the card compares the last successful ref on staging
+and production: **ahead** (ready), **in sync** ("nothing to promote"), or **behind** (production was deployed
+after staging, so promoting would go backwards).
+
+**Naming convention.** A staging site is paired with its production site **by name**: `<production>-staging`
+belongs to `<production>`, so `agrovet-api-staging` is compared with `agrovet-api`. It is a convention and not a
+database column, which keeps sites independent. An unpaired site is still checked, it just cannot be compared.
+
+The tab also watches the machine itself:
+
+- **Host disk free**, amber under 20% and red under 10%. Disk was the unknown in the capacity plan.
+- **Builds running**, warning when more than one is in flight at once. That is the "one build at a time" rule.
+  A report still "running" after an hour is treated as a job that never finished, not as a live build.
+- **Restart loops.** A container restarting again and again still reads as running between crashes, so three or
+  more restarts in ten minutes is flagged separately.
+
+**Stack problems become issues.** A stack going degraded, entering a restart loop, nearing its memory limit
+(85%), or the host disk falling under 10% free opens an issue through the normal pipeline. It is
+**edge-triggered**: only a problem that has *just started* opens an event. One per one-minute report would be
+1,440 a day and would trip the spike detector, which is exactly the noise this project exists to prevent.
+Degraded and restart loops are P2. Memory is a P3 warning, so it can never wake anyone. These issues are not
+auto-resolved when the stack recovers, and sending them to your phone waits for chunk 2.
+
+**Decommissioned stacks.** A stack that stops reporting stays visible as `reporter silent`, because silence looks
+like health, and it blocks promotion. Use **Remove** on the card once you know it was retired. The hub refuses
+unless the stack really is silent.
+
 ### Capacity for ten stacks
 
 The ThinkCentre has 6 cores and 24 GB of RAM (8 GB plus the planned 16 GB module). Roughly 7 GB goes to
@@ -562,6 +601,7 @@ Console writes. **These have no authentication yet** (see [Known gaps](#known-ga
 | `POST /api/issues/{id}/actions` | `{"action": "ack \| resolve \| mute \| snooze \| reopen", "hours": 24}` |
 | `POST /api/tickets` | Log a client request |
 | `PATCH /api/tickets/{id}` | Close or reopen one |
+| `DELETE /api/stacks?site=&stack=` | Forget a decommissioned stack. Refused (409) unless its reporter is silent |
 
 Planned: `POST /pushover/ack` and `POST /presence` (chunk 2), `POST /ingest/email` (chunk 4), `GET /wall`
 (chunk 5), `POST /ingest/gitea` (chunk 7).
@@ -588,6 +628,7 @@ In a second terminal:
 
 ```bash
 cd console && npm install && npm run dev             # http://localhost:5173
+npm test                                             # the promotion-readiness rules
 ```
 
 Vite proxies `/api` to the hub, so there is no CORS to configure. The dev database is a **separate
@@ -672,7 +713,7 @@ background uptime probe, which serverless platforms freeze between requests.
 | 6 | Pico companion: status strip, fingerprint, watchdog | Designed |
 | 7 | Gitea integration | Designed. The generic deploy webhook exists |
 | 8 | Read-only client status page | Build when a client asks twice |
-| - | Staging host for client stacks | **Partly built:** read-only stack view, reporter, Dockge setup. Caddy routing and CI deploys planned. Measure real stacks first |
+| - | Staging host for client stacks | **Partly built:** stack view, reporter, Dockge setup, promotion readiness, disk, build and restart signals. Caddy routing and CI deploys planned. Measure real stacks first |
 
 ---
 
@@ -702,6 +743,8 @@ Recorded here so nothing looks finished that is not.
     would narrow the reporter and is a possible later hardening.
 11. **A stack that exited uncleanly reads as `degraded`.** On Docker Desktop, stopping the VM does this to
     every container, so expect false positives on a laptop. On Linux it means a real crash.
+12. **Stack issues are not auto-resolved on recovery.** A degraded stack that comes back leaves its issue open until
+    you resolve it, and a later relapse then counts as a regression.
 
 ---
 

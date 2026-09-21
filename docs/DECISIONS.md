@@ -616,3 +616,58 @@ one-directory-per-client layout with the least machinery.
 and the reporter. Docker publishes ports straight through `ufw`, so the Dockge
 compose file binds to the Tailscale address only and refuses to start without one.
 
+---
+
+## 37. Promotion readiness is derived, and pairing is by name
+
+**Decision:** the Staging tab says whether a staging site can go to production,
+computed from data already collected: deploys, uptime, open incidents and stack
+state. Any blocker wins. A staging site is paired with its production site by
+name (`<production>-staging`).
+
+**Rejected:** a column linking the two sites. It is heavier, and a naming
+convention is enough at this scale. It is a convention someone can get wrong, so
+an unpaired site still gets every check and is only unable to be *compared*.
+
+**Rules carried in:** a silent reporter blocks promotion (silence is not health,
+#10); "in sync" never overrides a blocker, so a broken staging is never reported
+as nothing to promote; uptime is floored, so 98.96% does not read as 99.
+
+**Not a gate:** it advises, it does not stop anyone deploying. Nothing here can
+block a deploy or suppress an alert.
+
+---
+
+## 38. Stack problems become issues, but only on the edge
+
+**Decision:** a stack turning degraded, a restart loop, memory near its limit, or
+low host disk opens an issue through the normal pipeline.
+
+**Edge-triggered, deliberately.** A stack that stays degraded for an hour would
+otherwise open sixty events, and 1,440 a day would trip the spike detector. Only
+a problem that *just started* opens an event. This is #3 applied to the hub's own
+checks: alert on state change, not on events.
+
+To share the pipeline, the body of `ingest_event` was extracted unchanged into
+`record_event`. Verified afterwards: the same fingerprint on the 200-crash harness,
+and resolve-then-crash still returns a regression.
+
+**Severity:** degraded and restart loops are P2. Memory is a warning, so P3 and
+digest-only, and can never wake anyone.
+
+**Not done:** issues are not auto-resolved on recovery. That is a behaviour
+change worth deciding on its own.
+
+---
+
+## 39. Decommissioned stacks are removed by hand
+
+**Decision:** a stack that stops reporting stays on the page as `reporter silent`
+and blocks promotion until someone presses Remove. The hub refuses unless it is
+really silent.
+
+**Rejected:** hiding old stacks automatically, or pruning them faster. A stack
+that has died looks exactly like one that was retired, and quietly making it
+vanish is the failure this project is built to avoid (#10). An explicit act costs
+one click and cannot hide a real outage.
+

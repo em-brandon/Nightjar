@@ -193,6 +193,10 @@ key). Install `stack-reporter.service` and `stack-reporter.timer` from
 - **Run it as a dedicated user in the `docker` group.** Reading `docker ps` needs
   the socket, which is root-equivalent. A read-only socket proxy would narrow this
   and is a reasonable later hardening.
+- **Name the staging site `<production>-staging`.** That is how the Staging tab pairs it with the production
+  site to compare refs and judge whether it can be promoted.
+- **Disk space** is read from the filesystem Docker writes to (`/var/lib/docker` if present). Set
+  `NIGHTJAR_DISK_PATH` in `stack-reporter.env` if yours lives elsewhere.
 - **Every service in a stack needs a `mem_limit`.** The Staging tab flags any
   running stack without one. See `client-stack.example.yml`.
 - **If the reporter dies**, the tab shows the stack as `reporter silent` rather
