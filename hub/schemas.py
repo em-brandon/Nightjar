@@ -145,6 +145,8 @@ class ServiceIn(BaseModel):
     state: ServiceState
     mem_mb: int | None = Field(default=None, ge=0)
     restarts: int | None = Field(default=None, ge=0)
+    # why it is in this state, e.g. "exited 137 (stopped or killed), 34 days ago"
+    note: str | None = Field(default=None, max_length=160)
 
 
 class StackReportIn(BaseModel):

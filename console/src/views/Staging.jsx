@@ -133,7 +133,10 @@ function StackCard({ s, deploy, now, onRemove }) {
           s.services.map((v) => (
             <li key={v.name}>
               <Dot state={v.state === "running" ? "up" : v.state === "unhealthy" ? "down" : "idle"} />
-              <span>{v.name}</span>
+              <span className="svc-name">
+                {v.name}
+                {v.note && <small className="svc-note">{v.note}</small>}
+              </span>
               <span className="svc-mem">
                 {v.mem_mb == null ? v.state : mem(v.mem_mb)}
                 {v.restarts > 0 && <span className="c-warn"> · {plural(v.restarts, "restart", "restarts")}</span>}

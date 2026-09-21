@@ -40,11 +40,22 @@ import subprocess
 import sys
 import time
 import urllib.request
+from datetime import datetime, timezone
 
 TIMEOUT = 10
 # A container with no limit reports the host's whole memory as its limit.
 UNLIMITED_FRACTION = 0.95
 MIB = 1024**2  # docker prints MiB, so report MiB, not decimal megabytes
+
+# Exit codes that mean "something stopped it", not "it crashed": a clean exit,
+# SIGKILL, SIGTERM, and 255. Docker Desktop stopping its VM, a host reboot and
+# `docker compose stop` all produce these, and none is a failure. A real crash
+# is 1, 2, 139 (segfault), 134 (abort) and so on.
+STOP_CODES = {0, 137, 143, 255}
+# A crash older than this is a container that is simply down, not a fresh
+# failure. The crash was reported when it happened (as an issue) and is not
+# re-announced for ever. The note on the service still says what happened.
+CRASH_WINDOW = int(os.environ.get("NIGHTJAR_CRASH_WINDOW_MIN", "15")) * 60
 
 _UNITS = {
     "b": 1, "kb": 1e3, "mb": 1e6, "gb": 1e9, "tb": 1e12,
@@ -105,23 +116,44 @@ def volume_sizes() -> dict[str, float] | None:
     return totals
 
 
-def restart_counts(container_ids: list[str]) -> dict[str, int]:
-    """Cumulative restarts per container name."""
+def parse_time(text: str) -> float | None:
+    """Docker's RFC 3339 timestamp (nanoseconds, trailing Z) -> epoch seconds.
+    Python before 3.11 cannot read a bare Z, and none can read 9 fractional digits."""
+    text = (text or "").strip()
+    if not text or text.startswith("0001-01-01"):
+        return None  # "never finished"
+    text = re.sub(r"(\.\d{6})\d+", r"\1", text).replace("Z", "+00:00")
+    try:
+        return datetime.fromisoformat(text).astimezone(timezone.utc).timestamp()
+    except ValueError:
+        return None
+
+
+def inspect_containers(container_ids: list[str]) -> dict[str, dict]:
+    """Restart count, exit code, out-of-memory flag and finish time, by name."""
     if not container_ids:
         return {}
+    fmt = "{{.Name}}|{{.RestartCount}}|{{.State.ExitCode}}|{{.State.OOMKilled}}|{{.State.FinishedAt}}"
     try:
         result = subprocess.run(
-            ["docker", "inspect", "-f", "{{.Name}}|{{.RestartCount}}", *container_ids],
+            ["docker", "inspect", "-f", fmt, *container_ids],
             capture_output=True, text=True, timeout=TIMEOUT, check=True,
         )
     except (OSError, subprocess.SubprocessError):
         return {}
-    counts = {}
+    info = {}
     for line in result.stdout.splitlines():
-        name, _, n = line.partition("|")
-        if n.strip().isdigit():
-            counts[name.lstrip("/")] = int(n)
-    return counts
+        parts = line.split("|")
+        if len(parts) != 5:
+            continue
+        name, restarts, code, oom, finished = parts
+        info[name.lstrip("/")] = {
+            "restarts": int(restarts) if restarts.isdigit() else None,
+            "exit_code": int(code) if code.lstrip("-").isdigit() else None,
+            "oom": oom.strip().lower() == "true",
+            "finished_at": parse_time(finished),
+        }
+    return info
 
 
 def host_disk() -> tuple[int, int] | None:
@@ -136,18 +168,48 @@ def host_disk() -> tuple[int, int] | None:
     return usage.total, usage.free
 
 
-def service_state(container: dict) -> str:
-    """running | stopped | unhealthy. A clean exit is a stack someone stopped on
-    purpose, which is normal here; a crash or a failing health check is not."""
+def humanize(seconds: float) -> str:
+    seconds = int(max(0, seconds))
+    for unit, size in (("day", 86400), ("hour", 3600), ("minute", 60)):
+        if seconds >= size:
+            n = seconds // size
+            return f"{n} {unit}{'' if n == 1 else 's'} ago"
+    return "just now"
+
+
+def service_state(container: dict, info: dict | None = None, now: float | None = None) -> tuple[str, str | None]:
+    """(state, note). state is running | stopped | unhealthy.
+
+    Telling a stop from a crash is the whole point. A container that exited with
+    137, 143 or 255 was stopped (Docker Desktop's VM, a reboot, `compose stop`),
+    which is normal and must not raise an alarm. A real crash code is unhealthy
+    while it is fresh; once it is old the container is simply down, and the note
+    keeps the facts visible either way."""
+    now = time.time() if now is None else now
     state, status = container.get("State", ""), container.get("Status", "")
     if state == "running":
-        return "unhealthy" if "(unhealthy)" in status else "running"
-    if state == "restarting" or state == "dead":
-        return "unhealthy"
-    if state == "exited":
+        return ("unhealthy", "failing its health check") if "(unhealthy)" in status else ("running", None)
+    if state == "restarting":
+        return "unhealthy", "restarting"
+    if state == "dead":
+        return "unhealthy", "dead"
+    if state != "exited":
+        return "stopped", None  # created, paused, removing
+
+    info = info or {}
+    code, oom, finished = info.get("exit_code"), info.get("oom"), info.get("finished_at")
+    if code is None:  # no inspect data: fall back to the status text
         m = re.search(r"Exited \((\d+)\)", status)
-        return "stopped" if m and m.group(1) == "0" else "unhealthy"
-    return "stopped"  # created, paused, removing
+        code = int(m.group(1)) if m else None
+    when = f", {humanize(now - finished)}" if finished else ""
+    fresh = finished is not None and now - finished <= CRASH_WINDOW
+
+    if oom:
+        note = f"killed for running out of memory{when}"
+        return ("unhealthy" if fresh else "stopped"), note
+    if code in STOP_CODES:
+        return "stopped", (None if code == 0 else f"exited {code} (stopped or killed){when}")
+    return ("unhealthy" if fresh else "stopped"), f"crashed with exit code {code}{when}"
 
 
 def stack_state(states: list[str]) -> str:
@@ -175,7 +237,8 @@ def collect(projects: list[str]) -> dict[str, dict]:
             by_project[project].append(c)
 
     vols = volume_sizes()
-    restarts = restart_counts([c["ID"] for cs in by_project.values() for c in cs])
+    info = inspect_containers([c["ID"] for cs in by_project.values() for c in cs])
+    now = time.time()
     disk = host_disk()
 
     reports = {}
@@ -194,11 +257,14 @@ def collect(projects: list[str]) -> dict[str, dict]:
                 limit = parse_size(limit_raw)
                 limits.append(limit if limit < host * UNLIMITED_FRACTION else None)
                 cpu += float((st.get("CPUPerc") or "0").strip("%") or 0)
+            meta = info.get(c.get("Names", ""), {})
+            state, note = service_state(c, meta, now)
             services.append({
                 "name": c["_service"],
-                "state": service_state(c),
+                "state": state,
                 "mem_mb": round(used / MIB) if used is not None else None,
-                "restarts": restarts.get(c.get("Names", "")),
+                "restarts": meta.get("restarts"),
+                "note": note,
             })
         # A stack only has a memory limit if every running container has one.
         # One unlimited service means one runaway can still take the host.
@@ -212,7 +278,7 @@ def collect(projects: list[str]) -> dict[str, dict]:
             "host_mem_mb": round(host / MIB),
             # volumes plus writable layers; None if volumes could not be read
             "disk_mb": round((vols.get(project, 0.0) + layers) / MIB) if vols is not None else None,
-            "restarts": sum(s["restarts"] or 0 for s in services) if restarts else None,
+            "restarts": sum(s["restarts"] or 0 for s in services) if info else None,
             "host_disk_total_mb": round(disk[0] / MIB) if disk else None,
             "host_disk_free_mb": round(disk[1] / MIB) if disk else None,
             "services": services,
