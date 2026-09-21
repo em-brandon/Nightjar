@@ -1,5 +1,7 @@
-import { ago, plural } from "../hooks.js";
+import { useState } from "react";
+import { ago, plural, send } from "../hooks.js";
 import { Dot, Odometer, Pill, SiteCard, Spark } from "../ui.jsx";
+import { readiness, runningBuilds } from "../promotion.js";
 import { DeployHowTo, DeployList } from "./Deploys.jsx";
 
 // Where "Manage stacks" points. Start, stop and logs live in Dockge or Portainer
@@ -28,20 +30,74 @@ function MemBar({ used, limit, host }) {
   );
 }
 
-function StackCard({ s, deploy, now }) {
+const VERDICT = {
+  ready: { tone: "ok", label: "Ready to promote" },
+  blocked: { tone: "bad", label: "Not ready" },
+  insync: { tone: "run", label: "Nothing to promote" },
+  behind: { tone: "warn", label: "Behind production" },
+};
+
+function RefLine({ label, d, now }) {
+  return (
+    <div className="ref-line">
+      <span className="k">{label}</span>
+      <span className="mono">{d ? d.ref || "no ref" : "no successful deploy"}</span>
+      {d && <span className="muted">{ago(d.created_at, now)}</span>}
+    </div>
+  );
+}
+
+// One staging site: can it go to production, and what would change if it did.
+function PromotionCard({ site, r, now }) {
+  const v = VERDICT[r.verdict];
+  return (
+    <div className={`card promo ${r.verdict}`}>
+      <div className="site-head">
+        <Dot state={r.verdict === "blocked" ? "down" : r.verdict === "ready" ? "up" : r.verdict === "behind" ? "warn" : "idle"} />
+        <b>{site.name}</b>
+      </div>
+      <div className="stack-state">
+        <Pill tone={v.tone}>{v.label}</Pill>
+      </div>
+
+      {r.blockers.length > 0 ? (
+        <ul className="checks">
+          {r.blockers.map((b) => (
+            <li key={b}>
+              <span className="x" aria-hidden="true">✕</span> {b}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="checks-ok">
+          <span aria-hidden="true">✓</span> deploy succeeded · healthy · no open incidents
+        </p>
+      )}
+
+      <div className="compare">
+        <RefLine label="production" d={r.compare.production} now={now} />
+        <RefLine label="staging" d={r.compare.staging} now={now} />
+        <p className="hint">{r.compare.text}</p>
+      </div>
+    </div>
+  );
+}
+
+function StackCard({ s, deploy, now, onRemove }) {
   const silent = s.stale;
   const running = s.state === "running" || s.state === "degraded";
   const unlimited = running && s.mem_limit_mb == null;
   return (
-    <div className={`card stack ${silent ? "silent" : s.state}`}>
+    <div className={`card stack ${silent ? "silent" : s.restart_loop ? "loop" : s.state}`}>
       <div className="site-head">
-        <Dot state={silent ? "warn" : STATE_DOT[s.state]} />
+        <Dot state={silent ? "warn" : s.restart_loop ? "down" : STATE_DOT[s.state]} />
         <b>{s.stack}</b>
         <span className="env">{s.site}</span>
       </div>
 
       <div className="stack-state">
         {silent ? <Pill tone="warn">reporter silent</Pill> : <Pill tone={TONE[s.state]}>{s.state}</Pill>}
+        {!silent && s.restart_loop && <Pill tone="bad">restart loop · {s.restarts_10m} in 10 min</Pill>}
         {deploy && <Pill tone={DEPLOY_TONE[deploy.status]}>deploy {deploy.status}</Pill>}
       </div>
 
@@ -52,6 +108,10 @@ function StackCard({ s, deploy, now }) {
             {s.mem_mb == null ? "—" : mem(s.mem_mb)}
             {s.mem_limit_mb != null && <small> / {mem(s.mem_limit_mb)}</small>}
           </span>
+        </div>
+        <div className="metric">
+          <span className="k">disk</span>
+          <span className="v">{s.disk_mb == null ? "—" : mem(s.disk_mb)}</span>
         </div>
         <div className="metric">
           <span className="k">cpu</span>
@@ -74,7 +134,10 @@ function StackCard({ s, deploy, now }) {
             <li key={v.name}>
               <Dot state={v.state === "running" ? "up" : v.state === "unhealthy" ? "down" : "idle"} />
               <span>{v.name}</span>
-              <span className="svc-mem">{v.mem_mb == null ? v.state : mem(v.mem_mb)}</span>
+              <span className="svc-mem">
+                {v.mem_mb == null ? v.state : mem(v.mem_mb)}
+                {v.restarts > 0 && <span className="c-warn"> · {plural(v.restarts, "restart", "restarts")}</span>}
+              </span>
             </li>
           ))
         )}
@@ -85,6 +148,11 @@ function StackCard({ s, deploy, now }) {
           {silent ? "last report " : "reported "}
           {ago(s.reported_at, now)}
         </span>
+        {silent && (
+          <button className="btn" onClick={() => onRemove(s)} title="Forget this stack, if it was decommissioned">
+            Remove
+          </button>
+        )}
       </div>
     </div>
   );
@@ -113,7 +181,21 @@ function StackHowTo() {
 }
 
 export default function Staging({ f }) {
-  const { sites, deploys, stacks, now } = f;
+  const { sites, deploys, stacks, now, reloadStacks } = f;
+  const [error, setError] = useState(null);
+
+  // Only offered for a silent stack: a stack that stops reporting stays visible
+  // until someone says it was decommissioned.
+  const remove = async (s) => {
+    if (!confirm(`Forget stack "${s.stack}"? Its history is deleted. Only do this if it was decommissioned.`)) return;
+    setError(null);
+    try {
+      await send("DELETE", `/api/stacks?site=${encodeURIComponent(s.site)}&stack=${encodeURIComponent(s.stack)}`);
+      await reloadStacks();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
   const staging = sites.filter((s) => s.env === "staging");
   const stagingDeploys = deploys.filter((d) => d.env === "staging");
   const stagingStacks = stacks.filter((s) => s.env === "staging");
@@ -125,6 +207,12 @@ export default function Staging({ f }) {
   const unlimited = live.filter((s) => s.state !== "stopped" && s.mem_limit_mb == null).length;
   const silent = stagingStacks.filter((s) => s.stale).length;
   const hostPct = host ? (used / host) * 100 : 0;
+
+  // Host disk is a property of the machine, so any live report will do.
+  const disk = live.find((s) => s.host_disk_total_mb);
+  const diskFreePct = disk ? (disk.host_disk_free_mb / disk.host_disk_total_mb) * 100 : null;
+  const builds = runningBuilds(deploys, now).length;
+  const promotions = staging.map((site) => ({ site, r: readiness({ site, sites, deploys, stacks, now }) }));
 
   const latestDeploy = (site) => stagingDeploys.find((d) => d.site === site);
 
@@ -141,11 +229,26 @@ export default function Staging({ f }) {
           </a>
         )}
       </div>
+      {error && <p className="form-error">{error}</p>}
       {!CONTROL_URL && (
         <p className="hint control-hint">
           This view is read-only. Start, stop and logs live in Dockge or Portainer on the staging host.
           Set <code>VITE_STACK_CONTROL_URL</code> to link it here.
         </p>
+      )}
+
+      {promotions.length > 0 && (
+        <>
+          <div className="sec">
+            <h2>Promotion</h2>
+            <span className="count">can it go to production?</span>
+          </div>
+          <div className="site-grid">
+            {promotions.map(({ site, r }) => (
+              <PromotionCard key={site.id} site={site} r={r} now={now} />
+            ))}
+          </div>
+        </>
       )}
 
       {stagingStacks.length === 0 ? (
@@ -168,6 +271,20 @@ export default function Staging({ f }) {
               <span className="big"><Odometer value={unlimited} /></span>
               <span className="sub">{unlimited ? "running with no memory limit" : "every stack is limited"}</span>
             </div>
+            <div className={`card stat ${diskFreePct == null ? "" : diskFreePct < 10 ? "bad" : diskFreePct < 20 ? "warn" : ""}`}>
+              <span className="k">Host disk free</span>
+              <span className="big">{diskFreePct == null ? "—" : `${Math.round(diskFreePct)}%`}</span>
+              <span className="sub">
+                {disk ? `${gb(disk.host_disk_free_mb)} of ${gb(disk.host_disk_total_mb)}` : "not reported"}
+              </span>
+            </div>
+            <div className={`card stat ${builds > 1 ? "warn" : ""}`}>
+              <span className="k">Builds running</span>
+              <span className="big"><Odometer value={builds} /></span>
+              <span className="sub">
+                {builds > 1 ? "more than one at once: watch RAM and heat" : builds === 1 ? "one at a time is the rule" : "idle"}
+              </span>
+            </div>
           </section>
 
           <div className="sec">
@@ -176,7 +293,7 @@ export default function Staging({ f }) {
           </div>
           <div className="site-grid">
             {stagingStacks.map((s) => (
-              <StackCard key={`${s.site}/${s.stack}`} s={s} deploy={latestDeploy(s.site)} now={now} />
+              <StackCard key={`${s.site}/${s.stack}`} s={s} deploy={latestDeploy(s.site)} now={now} onRemove={remove} />
             ))}
           </div>
         </>

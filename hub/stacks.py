@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .db import get_session
@@ -238,3 +238,32 @@ async def list_stacks(session: AsyncSession = Depends(get_session)) -> list[Stac
     ]
     out.sort(key=lambda o: (o.site, o.stack))
     return out
+
+
+@router.delete("/stacks", status_code=204)
+async def forget_stack(site: str, stack: str, session: AsyncSession = Depends(get_session)) -> None:
+    """Forget a stack whose reporter has gone quiet, for one that was decommissioned.
+
+    Old stacks are deliberately not hidden automatically: a stack that stops
+    reporting must stay visible as "reporter silent", because silence looks the
+    same as health. So removal is an explicit act, and only for a stack that really
+    is silent. A live one would just reappear, and deleting it by mistake would
+    throw away its history.
+    """
+    site_id = await session.scalar(select(Site.id).where(Site.name == site))
+    if site_id is None:
+        raise HTTPException(404, "unknown site")
+    latest = await session.scalar(
+        select(func.max(StackReport.reported_at)).where(
+            StackReport.site_id == site_id, StackReport.stack == stack
+        )
+    )
+    if latest is None:
+        raise HTTPException(404, "unknown stack")
+    if datetime.now(UTC) - latest <= STALE_AFTER:
+        raise HTTPException(409, "this stack is still reporting; only a silent stack can be removed")
+    await session.execute(
+        delete(StackReport).where(StackReport.site_id == site_id, StackReport.stack == stack)
+    )
+    await session.commit()
+

@@ -61,6 +61,7 @@ export default function App() {
     updatedAt,
     reloadIssues: () => Promise.all([issues.reload(), health.reload(), rising.reload()]),
     reloadTickets: tickets.reload,
+    reloadStacks: stacks.reload,
   };
 
   const openIssues = f.issues.filter((i) => i.status === "open");

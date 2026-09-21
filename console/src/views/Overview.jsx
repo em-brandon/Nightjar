@@ -1,4 +1,5 @@
 import { ago, fmtPct, plural } from "../hooks.js";
+import { readiness } from "../promotion.js";
 import { Dot, Empty, Odometer, Pill, Sev, SiteCard, Spark } from "../ui.jsx";
 
 const DEPLOY_TONE = { success: "ok", failed: "bad", running: "run" };
@@ -73,7 +74,7 @@ function Tile({ title, to, go, children, tone = "" }) {
 }
 
 export default function Overview({ f }) {
-  const { sites, issues, rising, tickets, deploys, now, go, hubError, updatedAt, loaded } = f;
+  const { sites, issues, rising, tickets, deploys, stacks, now, go, hubError, updatedAt, loaded } = f;
 
   const prod = sites.filter((s) => s.env !== "staging");
   const staging = sites.filter((s) => s.env === "staging");
@@ -84,6 +85,9 @@ export default function Overview({ f }) {
   const overdue = openTickets.filter((t) => t.overdue);
   const prodDeploys = deploys.filter((d) => d.env === "production");
   const stagingDeploys = deploys.filter((d) => d.env === "staging");
+  const verdicts = staging.map((s) => readiness({ site: s, sites, deploys, stacks, now }).verdict);
+  const ready = verdicts.filter((v) => v === "ready").length;
+  const blocked = verdicts.filter((v) => v === "blocked").length;
 
   const monitored = prod.filter((s) => s.monitored);
   const upCount = prod.filter((s) => s.state === "up").length;
@@ -256,6 +260,10 @@ export default function Overview({ f }) {
                 <span className="t-num">
                   <Odometer value={staging.filter((s) => s.state === "up").length} />
                   <small> / {staging.length} up</small>
+                </span>
+                <span className="t-chips">
+                  {ready > 0 && <Pill tone="ok">{ready} ready to promote</Pill>}
+                  {blocked > 0 && <Pill tone="bad">{blocked} not ready</Pill>}
                 </span>
               </div>
               <ul className="t-list">

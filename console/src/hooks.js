@@ -92,7 +92,7 @@ export async function send(method, url, body) {
     }
     throw new Error(why);
   }
-  return res.json();
+  return res.status === 204 ? null : res.json();
 }
 
 export function ago(iso, now) {
