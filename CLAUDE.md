@@ -259,7 +259,8 @@ published package.
 
 Two halves, and the second matters more:
 
-*Published reporters.* `@brandon/nightjar` on npm and `nightjar-reporter` on
+*Published reporters.* `@brandon/nightjar` on npm (**the scope is unverified and plain
+`nightjar` is taken**: see `docs/CLIENT-INTEGRATION.md`) and `nightjar-reporter` on
 PyPI, so a bug fix is `npm update` rather than editing N copies. Both read
 `NIGHTJAR_URL` and `NIGHTJAR_SECRET` from the environment, so installing in a
 new app is: install, set two vars, done.
@@ -272,6 +273,12 @@ A Nightjar outage must be invisible to a client's checkout page.
 *Onboarding CLI.* `nightjar add-site <name> --client <client>` — creates the
 site, prints the key and secret, optionally writes them into the app's `.env`.
 Ten seconds instead of five minutes of fiddling, done N times.
+
+**Expanded plan:** `docs/CLIENT-INTEGRATION.md` adds push checks (results from a probe inside a
+private network), heartbeats (alert on silence), an add-site form, and a `nightjar` CLI plus a
+dependency-free `nightjar.sh`. Two rules for any of it: the package runs with a client's site
+secret, so it has **zero runtime dependencies** and is published with provenance; and CI or cron
+holds **ingest-scoped credentials only**. The console token never goes in a client's CI.
 
 The real friction at scale is not the reporter code — it is N key pairs, N sets
 of environment variables, and N deploys to remember. Keep secrets in Gitea

@@ -784,3 +784,35 @@ are marked as estimates or community-reported in the doc. Six open questions (Pi
 the archive disk, camera formats, where it lives, how files arrive, a second copy) must
 be answered before any of it is built.
 
+---
+
+## 45. A client integration kit fixes the two limits of the probe
+
+**Decision:** plan push checks and heartbeats for apps the hub cannot reach, an add-site
+form and a monitoring warning for the "forgot to set the URL" failure, and a `nightjar`
+CLI, libraries and a dependency-free shell script to make installing on clients easy.
+Documented in `docs/CLIENT-INTEGRATION.md`. Nothing is built.
+
+**Two mechanisms, deliberately:** a push check is the operator measuring the app from
+outside (so it gives an uptime ring and latency); a heartbeat is the app saying it is
+alive, and alerts on silence (so it catches a dead host). They reuse the existing
+pipeline: results go into `checks`, silence shows as `probe silent` and never as
+healthy (#10), issues are edge-triggered and resolve strictly (#38, #43), and severity
+is derived from what the heartbeat is, never chosen by hand.
+
+**#20 still holds.** The packages wait for three or four apps. What is not a package,
+the hub endpoints, the form, the warning and `nightjar.sh`, is small and worth doing
+early.
+
+**The trade-off accepted, stated plainly:** a published package runs with every
+client's site secret, so one compromised release exposes them all. That is why the plan
+requires zero runtime dependencies, trusted publishing with provenance, exact-version
+pinning by clients, ingest-only credentials (the console token never goes in a client's
+CI), and a vendorable script for anyone who would rather read than trust.
+
+**Checked, and what was not:** plain `nightjar` is taken on npm, so the package is
+scoped. Ownership of `@brandon` is unverified (an account can own a scope with nothing
+published, and the profile page blocks automated checks), so the scope must be chosen and
+created first. `nightjar-reporter` is free on PyPI. Trusted publishing supports GitHub
+Actions and not self-hosted runners such as the Gitea one, so packages publish from GitHub.
+

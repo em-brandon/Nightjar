@@ -35,6 +35,7 @@ Named for a bird that only becomes active after dark, which is when this system 
   - [Capacity for ten stacks](#capacity-for-ten-stacks)
   - [Java apps](#java-apps)
 - [Media ingest and archive (planned)](#media-ingest-and-archive-planned)
+- [Client integration kit (planned)](#client-integration-kit-planned)
 - [API reference](#api-reference)
 - [Quick start](#quick-start)
   - [Configuration](#configuration)
@@ -60,6 +61,7 @@ Named for a bird that only becomes active after dark, which is when this system 
 | Alerting: alert policy, presence, Pushover, speaker (chunk 2) | **Not written.** Deferred until the Pushover licence, a domain and a VPS are paid for |
 | Email intake and the 07:30 digest (chunk 4) | Not started |
 | Media ingest and archive on a Raspberry Pi (side project) | **Planned, not built.** Research and design in [`docs/MEDIA-ARCHIVE.md`](docs/MEDIA-ARCHIVE.md) |
+| Client integration kit: push checks, heartbeats, an npm CLI (chunk 4b, extended) | **Planned, not built.** Design in [`docs/CLIENT-INTEGRATION.md`](docs/CLIENT-INTEGRATION.md) |
 | Wall display route, Pico companion, Gitea integration, client status page (chunks 5 to 8) | Designed, not built. The idle screen is the software precursor to the wall display |
 
 > **Nightjar cannot yet interrupt you.** Until chunk 2 exists it deduplicates crashes and shows them
@@ -640,6 +642,43 @@ Six questions block the design, starting with which Raspberry Pi models you have
 
 ---
 
+## Client integration kit (planned)
+
+> **Planned, not built.** Nothing here is in the code. This extends chunk 4b (fleet onboarding). The full plan
+> is in [`docs/CLIENT-INTEGRATION.md`](docs/CLIENT-INTEGRATION.md).
+
+Two limits of the current uptime probe, and the pieces planned to fix them:
+
+| Limit | Planned fix |
+|---|---|
+| **A private app cannot be probed from the VPS.** | A **push check**: a small job inside the client's network fetches the private URL and pushes the result, so the app still gets an uptime ring, latency and ribbon. And a **heartbeat**: the app or a cron job pings Nightjar, and the alert fires when the pings **stop**, which also catches a dead host. Both need only outbound traffic. |
+| **A site is not monitored until its `url` is set by hand.** | A warning on the Overview for any site with no monitoring, an **add-site form** in the console, and `nightjar add-site` in the CLI. |
+
+**What works today with no new code:** a cron job on the client's host checks the private URL and, on failure,
+posts a `fatal` event to `/ingest/{key}/event`. Its limit is that if the whole host dies, nothing is sent.
+
+**Can it go on npm? Yes, as `@<scope>/nightjar`.** The kit is a `nightjar` CLI (`deploy`, `heartbeat`, `check`,
+`add-site`), a Node error reporter, the existing reporter packaged for PyPI, and a dependency-free `nightjar.sh` for
+hosts without Node or Python. What was checked:
+
+- **Plain `nightjar` is taken** on npm by an unrelated library, so the package must be scoped. Whether `@brandon` is
+  yours is **unverified**: choose and create the scope first, ideally a free organisation.
+- **`nightjar-reporter` is free** on PyPI.
+- **Publish from GitHub Actions**, not the Gitea runner: npm's trusted publishing supports GitHub-hosted runners and
+  not self-hosted ones, and gives signed provenance with no long-lived token.
+
+**The risk to take seriously:** the package runs with a client's site secret, so a compromised release would expose
+every client that installed it. The plan is zero runtime dependencies, trusted publishing with provenance, clients
+pinning an exact version with a lockfile, ingest-only credentials (a site key cannot read the console or mute an issue,
+and the console token never goes in a client's CI), and a vendorable `nightjar.sh` for anyone who would rather read one
+short script than trust a package.
+
+**Order:** the small hub pieces and `nightjar.sh` first, since they are useful before there are four apps. The npm and
+PyPI packages wait for three or four apps, as decision #20 already says. Five open questions are in the design doc,
+starting with which stacks your clients run.
+
+---
+
 ## API reference
 
 Ingest, called by client apps and CI. Authenticated by the per-site key in the URL. With
@@ -812,7 +851,7 @@ background uptime probe, which serverless platforms freeze between requests.
 | 3 | React console, uptime probe, incident actions, tickets, deploys, idle screen | Done |
 | 2 | Alert policy, presence, Pushover, speaker | **Next, blocked on cost.** The whole point of the project |
 | 4 | Email intake and the 07:30 digest | Not started |
-| 4b | Fleet onboarding: published reporters and an `add-site` CLI | Only worth doing at the third or fourth app |
+| 4b | Fleet onboarding: published reporters and an `add-site` CLI, extended into a client integration kit (push checks, heartbeats, an npm CLI, `nightjar.sh`) | The small hub pieces and the shell script are worth doing early. The packages wait for the third or fourth app. See [`docs/CLIENT-INTEGRATION.md`](docs/CLIENT-INTEGRATION.md) |
 | 5 | Wall display route and kiosk | Designed. The idle screen exists |
 | 6 | Pico companion: status strip, fingerprint, watchdog | Designed |
 | 7 | Gitea integration | Designed. The generic deploy webhook exists |
@@ -848,6 +887,8 @@ Recorded here so nothing looks finished that is not.
 10. **A crash the reporter never saw reads as `stopped`.** A container that crashed before the reporter
     started, or crashed more than 15 minutes ago and stayed down, shows as stopped with a note saying so. A
     crash the reporter did see was raised as an issue when it happened.
+11. **A private app cannot be probed from the VPS.** The probe only reaches what the internet can. Push checks and
+    heartbeats are planned to fix it; see [the integration kit](#client-integration-kit-planned).
 
 ---
 
@@ -884,6 +925,7 @@ job is narrow: deduplicate, decide, deliver.
 | [`docs/DECISIONS.md`](docs/DECISIONS.md) | Every decision, what was rejected, and why. Read before reversing anything |
 | [`docs/FULL-DESIGN.md`](docs/FULL-DESIGN.md) | Hardware, access tiers, and the later chunks |
 | [`docs/MEDIA-ARCHIVE.md`](docs/MEDIA-ARCHIVE.md) | Planned side project: what a Raspberry Pi can be, and whether media can share the staging machine |
+| [`docs/CLIENT-INTEGRATION.md`](docs/CLIENT-INTEGRATION.md) | Planned: push checks, heartbeats and an npm CLI for client apps, and the supply-chain rules for publishing it |
 | [`DEPLOY.md`](DEPLOY.md) | Getting onto a VPS |
 | [`INTEGRATE.md`](INTEGRATE.md) | Wiring in client apps, uptime monitors, Sentry and Gitea |
 | [`mockups/`](mockups/) | Working HTML: console, wall display, boot splash, detail drawer |
