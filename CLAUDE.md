@@ -359,7 +359,7 @@ The console, in a second terminal:
 
 ```bash
 cd console && npm install && npm run dev    # http://localhost:5173
-npm test                                    # promotion-readiness rules (console/src/promotion.js)
+npm test                                    # promotion-readiness rules + CSS collision guard (console/src/*.test.mjs)
 python -m unittest discover -s tests        # migrations, auth, stack policy (needs the dev db up)
 python -m unittest discover -s client       # the stack reporter
 ```

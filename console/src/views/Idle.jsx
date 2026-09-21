@@ -118,7 +118,7 @@ export default function Idle({ f, go }) {
   const stagingDeploys = f.deploys.filter((d) => d.env === "staging");
 
   return (
-    <div className="idle">
+    <div className="idle-screen">
       <header className="idle-top">
         <div className="brand">
           night<span>jar</span>

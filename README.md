@@ -755,7 +755,7 @@ broken. Open the console afterwards: one site in `warn` and one open issue.
 ```bash
 python -m unittest discover -s tests -v    # migrations (needs the dev database up), auth, stack policy
 python -m unittest discover -s client -v   # the stack reporter's stop-versus-crash rules
-cd console && npm test                     # promotion readiness
+cd console && npm test                     # promotion readiness, and a guard against CSS class-name collisions
 ```
 
 The schema is managed by **Alembic** and migrates automatically every time the hub starts, so a new column no
