@@ -136,6 +136,47 @@ class DeployOut(BaseModel):
     created_at: datetime
 
 
+ServiceState = Literal["running", "stopped", "unhealthy"]
+StackState = Literal["running", "stopped", "degraded"]
+
+
+class ServiceIn(BaseModel):
+    name: str = Field(max_length=120)
+    state: ServiceState
+    mem_mb: int | None = Field(default=None, ge=0)
+
+
+class StackReportIn(BaseModel):
+    stack: str = Field(min_length=1, max_length=120)
+    state: StackState
+    mem_mb: int | None = Field(default=None, ge=0)
+    mem_limit_mb: int | None = Field(default=None, ge=0)
+    cpu_pct: float | None = Field(default=None, ge=0)
+    host_mem_mb: int | None = Field(default=None, ge=0)
+    services: list[ServiceIn] = Field(default_factory=list, max_length=60)
+
+
+class StackAck(BaseModel):
+    id: int
+
+
+class StackOut(BaseModel):
+    site: str
+    env: str
+    stack: str
+    state: StackState
+    # the reporter has stopped reporting: the numbers below are old, and a
+    # silent reporter must never read as a healthy stack
+    stale: bool
+    reported_at: datetime
+    mem_mb: int | None
+    mem_limit_mb: int | None
+    cpu_pct: float | None
+    host_mem_mb: int | None
+    services: list[ServiceIn]
+    mem_series: list[int | None]  # oldest first
+
+
 class IngestOut(BaseModel):
     issue_id: int
     fingerprint: str

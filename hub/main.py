@@ -11,6 +11,8 @@ from .deploys import router as deploys_router
 from .incidents import router as incidents_router
 from .ingest import router as ingest_router
 from .probe import probe_loop
+from .stacks import ingest_router as stack_ingest_router
+from .stacks import router as stacks_router
 from .tickets import router as tickets_router
 
 
@@ -35,6 +37,8 @@ app.include_router(incidents_router)
 app.include_router(tickets_router)
 app.include_router(deploy_ingest_router)
 app.include_router(deploys_router)
+app.include_router(stack_ingest_router)
+app.include_router(stacks_router)
 
 
 @app.get("/healthz")

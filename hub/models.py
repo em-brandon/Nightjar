@@ -5,6 +5,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -190,3 +191,28 @@ class IssueAction(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class StackReport(Base):
+    """One snapshot of a staging stack (a Docker Compose project) from the host
+    it runs on. The hub cannot see that machine's Docker, and must not be given
+    access to it, so a small reporter on the host pushes these in. Pruned on a
+    short schedule: this is a live view, not a metrics store."""
+
+    __tablename__ = "stack_reports"
+    __table_args__ = (Index("ix_stack_site_time", "site_id", "reported_at"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    reported_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    stack: Mapped[str] = mapped_column(String(120))
+    # running | stopped | degraded
+    state: Mapped[str] = mapped_column(String(20))
+    mem_mb: Mapped[int | None] = mapped_column(Integer)
+    # None means the stack has no memory limit, which is worth flagging
+    mem_limit_mb: Mapped[int | None] = mapped_column(Integer)
+    cpu_pct: Mapped[float | None] = mapped_column(Float)
+    host_mem_mb: Mapped[int | None] = mapped_column(Integer)
+    services: Mapped[list] = mapped_column(JSONB, default=list)

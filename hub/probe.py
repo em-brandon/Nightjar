@@ -8,7 +8,7 @@ from sqlalchemy import delete, select
 
 from .config import settings
 from .db import SessionLocal
-from .models import Check, Site
+from .models import Check, Site, StackReport
 
 log = logging.getLogger("nightjar.probe")
 
@@ -16,6 +16,8 @@ log = logging.getLogger("nightjar.probe")
 # empty. Pruned once every PRUNE_EVERY rounds rather than on each one.
 RETENTION = timedelta(days=100)
 PRUNE_EVERY = 60
+# Stack reports are a live view, not history: a week is plenty.
+STACK_RETENTION = timedelta(days=7)
 
 
 async def _probe(client: httpx.AsyncClient, site_id: int, url: str) -> Check:
@@ -56,6 +58,11 @@ async def _prune() -> None:
     cutoff = datetime.now(UTC) - RETENTION
     async with SessionLocal() as session:
         await session.execute(delete(Check).where(Check.checked_at < cutoff))
+        await session.execute(
+            delete(StackReport).where(
+                StackReport.reported_at < datetime.now(UTC) - STACK_RETENTION
+            )
+        )
         await session.commit()
 
 
