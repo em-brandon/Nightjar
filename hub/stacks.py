@@ -237,6 +237,11 @@ async def record_stack(
     )
     session.add(report)
     await session.commit()
+    # Read the id NOW. Both branches below can roll the session back, which expires
+    # every object on it, and touching `report.id` afterwards is a lazy load that an
+    # async session cannot do: it raised MissingGreenlet and answered a saved report
+    # with a 500. The report itself was stored; only the response failed.
+    report_id = report.id
 
     # Edge-triggered: only a problem that has just STARTED opens an event. One per
     # report while a stack stays degraded would be 1,440 a day and would trip the
@@ -266,7 +271,7 @@ async def record_stack(
     except Exception:
         log.exception("could not auto-resolve for %s", payload.stack)
         await session.rollback()
-    return StackAck(id=report.id)
+    return StackAck(id=report_id)
 
 
 @router.get("/stacks", response_model=list[StackOut])
