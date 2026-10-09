@@ -148,6 +148,44 @@ class Sites(unittest.IsolatedAsyncioTestCase):
         health = {s["name"]: s for s in (await self.http.get("/api/sites/health")).json()}
         self.assertFalse(health["kubasu-motors"]["monitored"])
 
+    async def test_allowing_an_origin_turns_browser_reporting_on_and_makes_a_public_key(self):
+        created = (await self.http.post("/api/sites", json=site())).json()
+        self.assertIsNone(created["public_key"])
+        r = await self.http.patch(f"/api/sites/{created['id']}", json={"allowed_origins": ["https://Kubasu.example/"]})
+        self.assertEqual(r.status_code, 200, r.text)
+        body = r.json()
+        self.assertEqual(body["allowed_origins"], ["https://kubasu.example"])  # lowercased, slash dropped
+        self.assertTrue(body["public_key"])
+        self.assertNotEqual(body["public_key"], created["ingest_key"], "the public key must not be the ingest key")
+        # asking again keeps the same key: it is in pages already deployed
+        again = (await self.http.patch(f"/api/sites/{created['id']}", json={"allowed_origins": ["https://kubasu.example", "https://www.kubasu.example"]})).json()
+        self.assertEqual(again["public_key"], body["public_key"])
+
+    async def test_emptying_the_origins_revokes_the_key_and_the_next_one_is_new(self):
+        sid = (await self.http.post("/api/sites", json=site())).json()["id"]
+        first = (await self.http.patch(f"/api/sites/{sid}", json={"allowed_origins": ["https://a.example"]})).json()["public_key"]
+        off = (await self.http.patch(f"/api/sites/{sid}", json={"allowed_origins": []})).json()
+        self.assertIsNone(off["public_key"])
+        second = (await self.http.patch(f"/api/sites/{sid}", json={"allowed_origins": ["https://a.example"]})).json()["public_key"]
+        self.assertNotEqual(first, second)
+
+    async def test_an_origin_is_not_a_url_or_a_pattern(self):
+        sid = (await self.http.post("/api/sites", json=site())).json()["id"]
+        for bad in ("https://*.example.com", "https://a.example/path", "https://a.example?x=1", "a.example",
+                    "http://a.example", "ftp://a.example", "https://u:p@a.example"):
+            r = await self.http.patch(f"/api/sites/{sid}", json={"allowed_origins": [bad]})
+            self.assertEqual(r.status_code, 422, bad)
+
+    async def test_plain_http_is_allowed_for_local_development_only(self):
+        sid = (await self.http.post("/api/sites", json=site())).json()["id"]
+        r = await self.http.patch(f"/api/sites/{sid}", json={"allowed_origins": ["http://localhost:5173"]})
+        self.assertEqual((r.status_code, r.json()["allowed_origins"]), (200, ["http://localhost:5173"]))
+
+    async def test_a_patch_without_a_url_leaves_the_url_alone(self):
+        sid = (await self.http.post("/api/sites", json=site(url="https://kubasu.example/"))).json()["id"]
+        r = await self.http.patch(f"/api/sites/{sid}", json={"allowed_origins": ["https://kubasu.example"]})
+        self.assertEqual(r.json()["url"], "https://kubasu.example/")
+
     async def test_an_unknown_site_is_404(self):
         r = await self.http.patch("/api/sites/999", json={"url": "https://x.example/"})
         self.assertEqual(r.status_code, 404)

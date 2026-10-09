@@ -96,10 +96,51 @@ class SiteIn(BaseModel):
     _check_url = field_validator("url")(_http_url)
 
 
+MAX_ORIGINS = 10
+_LOCAL_HOSTS = {"localhost", "127.0.0.1"}
+
+
+def _origins(v: list[str] | None) -> list[str] | None:
+    """Reduce each entry to scheme://host[:port], lowercase. An origin is not a URL: a path, a query
+    or a wildcard would mean something the browser's Origin header can never match, and a silent
+    mismatch looks exactly like a working allowlist until the first real error is dropped."""
+    if v is None:
+        return None
+    from urllib.parse import urlsplit
+
+    out: list[str] = []
+    for raw in v:
+        parts = urlsplit(raw.strip().lower())
+        host = parts.hostname or ""
+        local = host in _LOCAL_HOSTS
+        if (
+            parts.scheme not in ("http", "https")
+            or not host
+            or "*" in raw
+            or parts.path not in ("", "/")
+            or parts.query
+            or parts.fragment
+            or parts.username
+            or (parts.scheme == "http" and not local)  # a plain-http page is only for local development
+        ):
+            raise ValueError(f"not an origin: {raw!r} (use https://example.com, with no path or wildcard)")
+        origin = f"{parts.scheme}://{parts.netloc}"
+        if origin not in out:
+            out.append(origin)
+    if len(out) > MAX_ORIGINS:
+        raise ValueError(f"at most {MAX_ORIGINS} origins")
+    return out
+
+
 class SitePatch(BaseModel):
-    url: str | None = Field(max_length=500)  # null stops monitoring, and the console says so
+    # Only the fields sent are changed. url null stops monitoring, and the console says so.
+    url: str | None = Field(default=None, max_length=500)
+    # The pages allowed to report errors from a browser. A non-empty list turns browser reporting
+    # on (and makes the public key on first use); an empty list turns it off and revokes the key.
+    allowed_origins: list[str] | None = Field(default=None, max_length=MAX_ORIGINS)
 
     _check_url = field_validator("url")(_http_url)
+    _check_origins = field_validator("allowed_origins")(_origins)
 
 
 class SiteOut(BaseModel):
@@ -108,6 +149,9 @@ class SiteOut(BaseModel):
     client: str
     env: str
     url: str | None
+    # public, unlike the ingest secret: it is in every page that reports
+    public_key: str | None = None
+    allowed_origins: list[str] = []
 
 
 class SiteCreated(SiteOut):

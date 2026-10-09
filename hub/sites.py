@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from .db import get_session
-from .models import Client, Site
+from .models import Client, Site, _key
 from .schemas import SiteCreated, SiteIn, SiteOut, SitePatch
 
 # Creating a site used to be seed.py plus a hand-run UPDATE for the url, and forgetting the
@@ -15,7 +15,15 @@ STAGING_SUFFIX = "-staging"
 
 
 def _out(site: Site) -> SiteOut:
-    return SiteOut(id=site.id, name=site.name, client=site.client.name, env=site.env, url=site.url)
+    return SiteOut(
+        id=site.id,
+        name=site.name,
+        client=site.client.name,
+        env=site.env,
+        url=site.url,
+        public_key=site.public_key,
+        allowed_origins=site.allowed_origins or [],
+    )
 
 
 @router.post("", response_model=SiteCreated, status_code=201)
@@ -49,6 +57,8 @@ async def create_site(body: SiteIn, session: AsyncSession = Depends(get_session)
         client=client.name,
         env=site.env,
         url=site.url,
+        public_key=site.public_key,
+        allowed_origins=site.allowed_origins or [],
         ingest_key=site.ingest_key,
         ingest_secret=site.ingest_secret,
     )
@@ -64,6 +74,15 @@ async def update_site(
     # media and home hosts are not client sites, and have no url to set
     if site is None or site.env not in ("production", "staging"):
         raise HTTPException(404, "unknown site")
-    site.url = body.url
+    if "url" in body.model_fields_set:
+        site.url = body.url
+    if body.allowed_origins is not None:
+        site.allowed_origins = body.allowed_origins
+        if body.allowed_origins and site.public_key is None:
+            site.public_key = _key()
+        elif not body.allowed_origins:
+            # Turning it off revokes the key. Turning it on again makes a new one, which is the
+            # rotation path: a key that leaked stops working the moment its pages are removed.
+            site.public_key = None
     await session.commit()
     return _out(site)
