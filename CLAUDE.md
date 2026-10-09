@@ -51,6 +51,8 @@ Everything else waits.
 
 **Planned, not started:** moving the console to TypeScript, with API types generated from the hub's own schemas.
 Plan and order in `docs/TYPESCRIPT-MIGRATION.md`. Until it lands, write new console files as `.ts` or `.tsx`.
+n**Next up:** an onboarding screen in the console: add a site, see its keys once with a ready-made setup snippet for its
+stack, and watch for its first report. The API half exists; the plan is in `docs/ONBOARDING-DASHBOARD.md`.
 
 ---
 
