@@ -6,3 +6,6 @@ node_modules/
 dist/
 *.log
 .vite/
+
+# ingest keys and secrets printed when sites are created: never commit
+.site-keys
