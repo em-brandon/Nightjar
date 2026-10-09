@@ -68,12 +68,20 @@ def _reachable() -> bool:
 # its line number differs) and returns the prepared request: {"url", "headers", "body"}.
 
 
-def run_node(key: str, secret: str, pad: int = 0) -> dict:
+DEFAULT_MESSAGE = "x is undefined"
+
+
+def reporter_env(key: str, secret: str, message: str) -> dict:
+    # The message travels in the environment so no language needs to quote it inside source code.
+    return {**os.environ, "NIGHTJAR_URL": HUB, "NIGHTJAR_KEY": key, "NIGHTJAR_SECRET": secret, "NJ_TEST_MESSAGE": message}
+
+
+def run_node(key: str, secret: str, pad: int = 0, message: str = DEFAULT_MESSAGE) -> dict:
     lib = os.path.join(ROOT, "client", "node", "nightjar.ts").replace("\\", "/")
     script = (
         f'import {{ prepare }} from "file:///{lib}";\n'
         + "\n" * pad
-        + 'function render() { throw new TypeError("x is undefined"); }\n'
+        + 'function render() { throw new TypeError(process.env.NJ_TEST_MESSAGE); }\n'
         "try { render(); } catch (e) {\n"
         '  console.log(JSON.stringify(prepare({}, e, "error", { method: "GET", path: "/cart?token=SECRET" })));\n'
         "}\n"
@@ -82,8 +90,9 @@ def run_node(key: str, secret: str, pad: int = 0) -> dict:
         ["node", "--input-type=module", "-e", script],
         capture_output=True,
         text=True,
+        encoding="utf-8",
         timeout=60,
-        env={**os.environ, "NIGHTJAR_URL": HUB, "NIGHTJAR_KEY": key, "NIGHTJAR_SECRET": secret},
+        env=reporter_env(key, secret, message),
     )
     if done.returncode != 0:
         raise AssertionError(done.stderr)
@@ -115,27 +124,70 @@ def docker_php(version: str) -> list[str] | None:
 
 
 def make_run_php(cmd: list[str], lib: str):
-    def run(key: str, secret: str, pad: int = 0) -> dict:
+    def run(key: str, secret: str, pad: int = 0, message: str = DEFAULT_MESSAGE) -> dict:
         code = (
             f'require "{lib}"; '
             + "\n" * pad
-            + 'function render() { throw new TypeError("x is undefined"); }\n'
+            + 'function render() { throw new TypeError(getenv("NJ_TEST_MESSAGE")); }\n'
             "try { render(); } catch (Throwable $e) {\n"
             "  echo json_encode(Nightjar\\Reporter::prepare([], $e, 'error', ['method' => 'GET', 'path' => '/cart?token=SECRET']));\n"
             "}\n"
         )
-        env = {**os.environ, "NIGHTJAR_URL": HUB, "NIGHTJAR_KEY": key, "NIGHTJAR_SECRET": secret}
-        passthrough = [] if cmd[0] != "docker" else ["-e", "NIGHTJAR_URL", "-e", "NIGHTJAR_KEY", "-e", "NIGHTJAR_SECRET"]
-        if passthrough:
-            cmd_full = cmd[:2] + passthrough + cmd[2:]
-        else:
-            cmd_full = cmd
-        done = subprocess.run(cmd_full + ["-r", code], capture_output=True, text=True, timeout=120, env=env)
+        env = reporter_env(key, secret, message)
+        # Docker only passes through the variables it is told to
+        passthrough = [] if cmd[0] != "docker" else [
+            a for name in ("NIGHTJAR_URL", "NIGHTJAR_KEY", "NIGHTJAR_SECRET", "NJ_TEST_MESSAGE") for a in ("-e", name)
+        ]
+        cmd_full = cmd[:2] + passthrough + cmd[2:] if passthrough else cmd
+        done = subprocess.run(cmd_full + ["-r", code], capture_output=True, text=True, timeout=120, env=env, encoding="utf-8")
         if done.returncode != 0:
             raise AssertionError(done.stderr + done.stdout)
         return json.loads(done.stdout.strip().splitlines()[-1])
 
     return run
+
+
+_java_classes: list[str] = []
+
+
+def java_classes() -> str:
+    """Compile the reporter once, for Java 11 exactly, and keep the output for the whole run."""
+    if not _java_classes:
+        out = tempfile.mkdtemp(prefix="nj_java_")
+        lib = os.path.join(ROOT, "client", "java", "Nightjar.java")
+        built = subprocess.run(["javac", "--release", "11", "-d", out, lib], capture_output=True, text=True, timeout=120)
+        if built.returncode != 0:
+            raise AssertionError(built.stderr)
+        _java_classes.append(out)
+    return _java_classes[0]
+
+
+def run_java(key: str, secret: str, pad: int = 0, message: str = DEFAULT_MESSAGE) -> dict:
+    driver = (
+        "import nightjar.Nightjar;\n"
+        "public class Driver {\n"
+        + "\n" * pad
+        + "  static void render() { throw new IllegalStateException(System.getenv(\"NJ_TEST_MESSAGE\")); }\n"
+        "  public static void main(String[] a) {\n"
+        "    try { render(); } catch (Exception e) {\n"
+        '      Nightjar.Prepared p = Nightjar.prepare(new Nightjar.Options(), e, Nightjar.Level.ERROR, "GET", "/cart?token=SECRET");\n'
+        '      System.out.println(p.url + "\\n" + p.headers.get("X-Hub-Signature") + "\\n" + p.body);\n'
+        "    }\n"
+        "  }\n"
+        "}\n"
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "Driver.java")
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(driver)
+        done = subprocess.run(
+            ["java", "-Dfile.encoding=UTF-8", "-Dstdout.encoding=UTF-8", "-cp", java_classes(), path],
+            capture_output=True, text=True, timeout=120, env=reporter_env(key, secret, message), encoding="utf-8",
+        )
+    if done.returncode != 0:
+        raise AssertionError(done.stderr)
+    url, signature, body = done.stdout.strip().split("\n", 2)
+    return {"url": url, "headers": {"Content-Type": "application/json", "X-Hub-Signature": signature}, "body": body}
 
 
 PHP = find_php()
@@ -144,6 +196,7 @@ PHP83 = docker_php("8.3")
 PHP_LIB = os.path.join(ROOT, "client", "php", "Nightjar.php")
 
 RUNNERS = {"node": (run_node, shutil.which("node") is not None, "node is not installed")}
+RUNNERS["java"] = (run_java, bool(shutil.which("javac") and shutil.which("java")), "a JDK is not installed")
 RUNNERS["php (native)"] = (make_run_php(PHP or ["php"], PHP_LIB), PHP is not None, "php is not installed")
 RUNNERS["php 7.4 (docker)"] = (make_run_php(PHP74 or ["docker"], "/app/client/php/Nightjar.php"), PHP74 is not None, "docker image php:7.4-cli-alpine is not pulled")
 RUNNERS["php 8.3 (docker)"] = (make_run_php(PHP83 or ["docker"], "/app/client/php/Nightjar.php"), PHP83 is not None, "docker image php:8.3-cli-alpine is not pulled")
@@ -198,8 +251,8 @@ class ServerReporters(unittest.IsolatedAsyncioTestCase):
         async with self.engine.connect() as conn:
             return (await conn.execute(text("SELECT title, culprit, event_count, level, severity FROM issues"))).all()
 
-    def prepared(self, runner, pad=0):
-        return runner(self.key, self.secret, pad)
+    def prepared(self, runner, pad=0, message=DEFAULT_MESSAGE):
+        return runner(self.key, self.secret, pad, message)
 
     # ---- one set of checks, run once per language ---------------------------------------------
 
@@ -222,7 +275,7 @@ class ServerReporters(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(r.json()["state_change"], "new")
             rows = await self.issues()
             self.assertEqual(len(rows), 1, name)
-            self.assertTrue(rows[0].title.startswith("TypeError: x is undefined"), f"{name}: {rows[0].title}")
+            self.assertIn("x is undefined", rows[0].title, f"{name}: {rows[0].title}")
             self.assertEqual(rows[0].severity, "P2")
 
         await self.each(check)
@@ -255,6 +308,19 @@ class ServerReporters(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(r.status_code, 200, f"{name}: {r.text}")
             rows = await self.issues()
             self.assertEqual((len(rows), rows[0].event_count), (1, 3), f"{name}: {rows}")
+
+        await self.each(check)
+
+    async def test_awkward_text_arrives_exactly_as_written(self):
+        # every language builds its JSON a different way, and hand-written JSON is where escaping goes wrong
+        awkward = 'quote" back\\slash and a\nnew line,\ttab, "nested \\"quotes\\"", emoji \U0001F600, accents café, </script>'
+
+        async def check(name, runner):
+            r = await self.post(self.prepared(runner, message=awkward))
+            self.assertEqual(r.status_code, 200, f"{name}: {r.text}")
+            async with self.engine.connect() as conn:
+                payload = (await conn.execute(text("SELECT payload FROM events ORDER BY id DESC LIMIT 1"))).scalar()
+            self.assertEqual(payload["message"], awkward, name)
 
         await self.each(check)
 
