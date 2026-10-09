@@ -1005,3 +1005,59 @@ The header's icon area is also locked to two rows of height, so a wrapping icon 
 **The exchange rate** reads "$1 = 129.57 KES" (and "£1", "¥1"), the symbol as large as the number and "KES"
 readable, after the first version's "KES/$" was too small to make out. Each currency has its own fill: dollar
 green, pound a blue to red gradient, yuan red fading to white.
+
+---
+
+## 50. Browser errors have no secret, so the route is bounded instead
+
+**Decision:** web pages report to `POST /ingest/browser/{public_key}`. It has no HMAC. A page's source is public,
+so any secret in it is public too. The route trusts nothing about the caller and limits what any caller can do.
+The full picture, with diagrams, is in `docs/KEYS.md`.
+
+**The key is separate from the ingest key.** A site gets a `public_key` only when the operator lists
+`allowed_origins` (`PATCH /api/sites/{id}`). It can report errors for its own site and opens no other route, so
+leaking it never exposes the signed routes. Emptying the origins revokes it, and listing them again makes a new
+one, which is the rotation path. It is kept stable across edits because it is baked into pages already deployed.
+
+**The bounds, and what each is for:**
+
+- **Origin allowlist.** Stops another website using a key copied from your page. It does not stop `curl`, which
+  can send any header, so it is a filter and not authentication. A missing Origin is refused, since a browser
+  always sends one on a cross-origin POST.
+- **Level clamped to `warning` or `error`.** A page can never ask for `fatal`, so can never raise a P1. This is
+  the severity-derived-from-source rule applied to a source nobody can vouch for.
+- **A cap on NEW issues, 10 an hour per site.** Fingerprinting collapses repeats of one error but cannot collapse
+  a flood of *different* ones, and once alerting exists each new issue is a possible notification. A known
+  fingerprint is always counted, so a real bug still shows its volume. The excess is dropped quietly and the
+  caller still gets 202, so nothing is learned from probing.
+- **Rate limits** per key (120 a minute) and per visitor (20), a 16 KB body cap, capped strings, free-form
+  fields dropped, and the page's query string and fragment removed before storing (they can hold tokens).
+
+All four numbers are settings (`BROWSER_*`) and are working figures, not measurements.
+
+**Quiet by default, on both ends.** A page error is usually noise: extensions, bots, a flaky third-party script.
+The reporter sends uncaught errors as `warning`, which is P3 and reaches the morning digest and never wakes
+anyone. Escalating is deliberate: `captureException(err, "error")` for a failed checkout. It also drops browser
+quirks (`Script error.`, `ResizeObserver loop`), extension errors and errors that happened only in other people's
+scripts, sends the same error at most once in 10 minutes and at most 6 reports a minute. This follows the first
+rule in CLAUDE.md: a notification that did not need to be sent is a bug.
+
+**Bundler hashes are stripped from the fingerprint** (`hub/fingerprint.py`, `frame_module`). A build names files
+`index-3fa9c1B2.js` and changes the hash every build. Left in, every deploy would make every browser error new
+and look like a regression storm. Two shapes are stripped, before the extension: exactly 8 characters that are
+not all lowercase letters (Vite), and 8 to 32 hex digits (webpack). The all-lowercase exception keeps a real
+name such as `index-database.js` intact; a Vite hash is all lowercase about once in 1,500 builds, and then that
+one build's errors look new. Python frames hash exactly as before.
+
+**Rejected:**
+
+- **Signed short-lived tokens issued by the site's backend.** Sound, but Bird Box has no backend to issue them.
+- **A CAPTCHA or proof of work.** Adds friction for the visitor to protect an error log. Wrong trade.
+- **A Cloudflare Worker that holds a secret and signs for the page.** The right upgrade if abuse becomes real,
+  and noted in `KEYS.md`. It is another thing to deploy and maintain, and the bounds suffice for now.
+- **Reusing the ingest key with a flag.** One leaked page would then be one step from the signed routes.
+
+**Known limits:** the browser limits are in memory per process, so a restart resets them. The per-visitor limit
+reads the address from `CF-Connecting-IP` or `X-Forwarded-For`, which a caller can fake; the per-key limit and
+the new-issue cap still hold. A page's own errors are reported only while the visitor's browser runs the script,
+so a page that never loads reports nothing. The uptime probe covers that case.

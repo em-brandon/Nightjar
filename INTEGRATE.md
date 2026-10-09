@@ -19,6 +19,9 @@ signature is what proves the report is genuine. Both are needed in production.
 
 ## 1. Your own apps
 
+> **Keys, secrets and what each can do:** [`docs/KEYS.md`](docs/KEYS.md), with diagrams. For a **web page**
+> (a site with no backend, or any frontend) use the browser reporter in section 1b, which holds no secret.
+
 > **At three or four apps, stop copying this file.** Publish it as
 > `@brandon/nightjar` (npm) and `nightjar-reporter` (PyPI) so a fix is one
 > `update` rather than N edits, and add an onboarding CLI for the key pairs.
@@ -136,6 +139,34 @@ process.on('unhandledRejection', err => report(err, null));
 No exception handler to install. These are covered entirely by uptime checks
 below — which is usually enough, because what breaks is the server or the
 certificate, not application code you control.
+
+---
+
+### 1b. Web pages (browser)
+
+A page cannot keep a secret, so it uses a separate **public key** and the bounded route
+`POST /ingest/browser/{public_key}`. Copy `client/browser/nightjar.ts` into the site (it has no dependencies).
+
+1. List the pages that may report. This makes the public key (needs the console token):
+
+   ```bash
+   curl -X PATCH https://nightjar.yourdomain/api/sites/<id> \
+     -H "Authorization: Bearer $CONSOLE_TOKEN" -H "Content-Type: application/json" \
+     -d '{"allowed_origins": ["https://example.co.ke", "https://www.example.co.ke"]}'
+   ```
+
+2. Start it once, as early as possible in the page:
+
+   ```ts
+   import { init, captureException } from "./nightjar";
+   init({ hub: "https://nightjar.yourdomain", key: "<public_key>", release: "v1.4.2" });
+   ```
+
+3. Uncaught errors go as warnings, which reach the digest and never wake you. For the ones that matter, such as
+   a failed checkout, escalate on purpose: `captureException(err, "error")`.
+
+For TypeScript it type-checks under `--strict`. For plain JavaScript, compile it once with `tsc` or `esbuild`.
+Origins are scheme and host only: no path, no wildcard, `http://` only for `localhost`.
 
 ---
 

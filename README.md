@@ -683,6 +683,7 @@ Ingest, called by client apps and CI. Authenticated by the per-site key in the U
 | `POST /ingest/{key}/event` | Report a crash. Returns `issue_id`, `fingerprint`, `event_count`, `severity`, `state_change` |
 | `POST /ingest/{key}/deploy` | Report a deploy: `{"ref": "main@1f9c4a2", "status": "running \| success \| failed"}` |
 | `POST /ingest/{key}/stack` | Report a staging stack's state. Sent by `client/stack_reporter.py`, not by hand |
+| `POST /ingest/browser/{public_key}` | Report an error from a web page. No signature: the key is public, so it is Origin-checked, rate limited and capped. See [`docs/KEYS.md`](docs/KEYS.md) |
 
 Console feeds, read-only:
 
@@ -931,6 +932,7 @@ job is narrow: deduplicate, decide, deliver.
 | [`docs/CLIENT-INTEGRATION.md`](docs/CLIENT-INTEGRATION.md) | Planned: push checks, heartbeats and an npm CLI for client apps, and the supply-chain rules for publishing it |
 | [`DEPLOY.md`](DEPLOY.md) | Getting onto a VPS |
 | [`INTEGRATE.md`](INTEGRATE.md) | Wiring in client apps, uptime monitors, Sentry and Gitea |
+| [`docs/KEYS.md`](docs/KEYS.md) | Every key, secret and token: what it does, who holds it, what a leak costs, with diagrams |
 | [`mockups/`](mockups/) | Working HTML: console, wall display, boot splash, detail drawer |
 
 ---

@@ -26,6 +26,7 @@ Both get harder as the number of client apps grows, which is the point of chunk 
 | **Add-site form** | Create a site and set its URL from the console, no SQL | Setup friction | API yes (`POST /api/sites`, `PATCH /api/sites/{id}`); form no |
 | **`nightjar` CLI** (npm) | `deploy`, `heartbeat`, `check` for CI and cron, and `add-site` for the operator | Installing on each client | No |
 | **Node and Python libraries** | The error reporter for Node apps, and `reporter.py` packaged for PyPI | Non-Python apps have no reporter | No |
+| **Browser reporter** | `client/browser/nightjar.ts`: uncaught page errors, with a public key and no secret | Sites with no backend (Bird Box) and every site's frontend | **Yes**, see [`KEYS.md`](KEYS.md) |
 | **`nightjar.sh`** | The same calls in POSIX shell with `curl` and `openssl`, no runtime needed | Hosts without Node or Python, and anyone who wants to read every line | No |
 
 ### Push check versus heartbeat

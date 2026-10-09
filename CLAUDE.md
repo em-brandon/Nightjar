@@ -7,7 +7,7 @@ notifications come out.
 **This file covers the software.** Hardware — the cabinet, wall display, Pico
 companion — lives in `docs/FULL-DESIGN.md` and is not on the critical path.
 `docs/DECISIONS.md` is the history: every choice, what was rejected, and why.
-Read it before reversing anything here.
+Read it before reversing anything here. `docs/KEYS.md` explains every key, secret and token, with diagrams.
 
 ---
 
@@ -211,6 +211,7 @@ Data flows, all real tables:
 | Stacks | `client/stack_reporter.py` on the staging host *pushes* to `POST /ingest/{key}/stack` | `/api/stacks` |
 | Stack problems | degraded, restart loop, memory over 85%, host disk under 10% | an issue, **edge-triggered** (only when it starts), which **resolves itself** after 10 healthy minutes |
 | Home host | `client/home_reporter.py` on the ThinkCentre *pushes* CPU temperature, disk, memory, backup age and an hourly internet speed test to `POST /ingest/{key}/home` | `/api/home`, a dashboard tile and the idle screen's header icons (with live numbers and hover tooltips) |
+| Browser errors | `client/browser/nightjar.ts` in a site's page, with the site's *public* key | `POST /ingest/browser/{public_key}`: no HMAC, so Origin-checked, rate limited, level clamped (never P1) and capped at 10 new issues an hour per site. Same issues list |
 | Home media | `client/jellyfin_reporter.py` on the ThinkCentre *pushes* Jellyfin's sessions to `POST /ingest/{key}/media` | `/api/media`, `/api/media/history`, the Media tab and an idle-screen panel |
 
 **Staging promotion.** A staging site is paired with its production site by *name*: `<production>-staging`
@@ -308,6 +309,7 @@ hub/
   fingerprint.py   normalise + hash — the load-bearing file
   schemas.py       request/response models
   ingest.py        POST /ingest/{key}/event
+  browser.py       POST /ingest/browser/{public_key}: errors from web pages, no secret, so bounded (docs/KEYS.md)
   main.py          app factory, lifespan (starts the probe), healthz
   api.py           read-only console feeds: issues, site health, rising errors
   probe.py         uptime checker loop, writes checks
@@ -325,6 +327,7 @@ hub/
 console/           Vite + React 19 UI: src/views/* is one file per tab
 client/
   reporter.py      the whole "SDK" — drop into any managed FastAPI app
+  browser/nightjar.ts  the browser reporter: one dependency-free file, public key only (docs/KEYS.md)
   thermal_probe.py host thermals as ordinary tickets
   stack_reporter.py runs on the staging host, pushes Docker stack state to the hub
   jellyfin_reporter.py runs beside Jellyfin, pushes who is streaming what to the hub
@@ -408,6 +411,7 @@ signed against a hub with `VERIFY_SIGNATURES` on.
 | `STACK_HEALTHY_MIN` | minutes a stack problem must stay gone before it resolves itself (default 10) |
 | `MEDIA_HISTORY_DAYS` | how long the home media viewing history (personal data) is kept (default 365) |
 | `WEATHER_ENABLED` / `WEATHER_LAT` / `WEATHER_LON` / `WEATHER_NAME` / `WEATHER_TTL_MIN` | the wall's weather and altitude, from Open-Meteo (no key). Defaults to Nairobi; set the exact coordinates of the wall, since the elevation shown is the terrain model's value at that point |
+| `BROWSER_RATE_PER_KEY_MIN` / `BROWSER_RATE_PER_IP_MIN` / `BROWSER_NEW_ISSUES_PER_HOUR` | brakes on browser reporting: 120 and 20 reports a minute, and 10 new issues an hour per site |
 | `PRESENCE_TOKEN` | shared secret for the NFC presence tap (`POST /presence`). Empty disables that route |
 | `RATES_ENABLED` / `RATES_TTL_MIN` | the USD to KES rate on the wall, from open.er-api.com (no key) |
 | `VITE_STACK_CONTROL_URL` | console build-time: where the Staging tab's *Manage stacks* button points (Dockge over Tailscale). Optional |
