@@ -52,9 +52,9 @@ Everything else waits.
 **Planned, not started:** moving the console to TypeScript, with API types generated from the hub's own schemas.
 Plan and order in `docs/TYPESCRIPT-MIGRATION.md`. Until it lands, write new console files as `.ts` or `.tsx`.
 
-**Planned, not started:** the ingress moves from Caddy to nginx, and the sites go behind Cloudflare's free plan. Until then
-Caddy is what runs. The checklist, what Caddy did that nginx must now do (certificates above all), and a tested starting
-config are in `docs/CLOUDFLARE.md`. The hub's own hostname stays DNS-only.
+**Planned, not started:** the client sites go behind Cloudflare's free plan, with **Caddy staying** as the web server (nginx
+was considered and not needed, decision #53). The checklist and two small tested additions to the Caddyfile are in
+`docs/CLOUDFLARE.md`. The hub's own hostname stays DNS-only, so a bot rule can never turn an error report into silence.
 
 **Next up:** an onboarding screen in the console: add a site, see its keys once with a ready-made setup snippet for its
 stack, and watch for its first report. The API half exists; the plan is in `docs/ONBOARDING-DASHBOARD.md`.

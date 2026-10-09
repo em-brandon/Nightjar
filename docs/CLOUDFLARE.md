@@ -1,8 +1,8 @@
-# Cloudflare checklist (free plan) and the move to nginx
+# Cloudflare checklist (free plan)
 
-> **Status: planned, not applied.** No Cloudflare zone exists for these sites yet, and the hub still runs behind Caddy.
-> This is the checklist to follow when the domains are pointed at Cloudflare, written for the **Free plan**. It also
-> records the planned switch from Caddy to nginx, because the two decisions affect each other.
+> **Status: planned, not applied.** No Cloudflare zone exists for these sites yet. This is the checklist to follow when
+> the domains are pointed at Cloudflare, written for the **Free plan**, with **Caddy** staying as the web server in front
+> of the hub (decision #53; nginx was considered and is not needed).
 
 ## How much to trust this page
 
@@ -10,8 +10,8 @@ Each claim is marked by where it came from, because several Cloudflare limits ar
 
 | Mark | Meaning |
 |---|---|
-| **Checked** | Read in Cloudflare's own documentation while writing this (October 2026) |
-| **Tested** | Run here: nginx 1.27 in Docker, in front of an echo server |
+| **Checked** | Read in Cloudflare's or Caddy's own documentation while writing this (October 2026) |
+| **Tested** | Run here: Caddy 2 in Docker, in front of an echo server |
 | **Unchecked** | From general knowledge, not confirmed. Verify before relying on it |
 
 ## A correction first
@@ -30,7 +30,8 @@ Access Rule** that matches the request first, or keeping the hostname out of Clo
    uptime probe.
 4. **Never cache `/api` or health routes.** Send `Cache-Control: no-store` from the app, and do not use "Cache Everything".
 5. **Turn Always Online off**, or an outage can look like a working page.
-6. **Prove it with a test report** that contains awkward text, through the real path, before trusting a site.
+6. **Harden the hub's Caddyfile** with the two small additions below, which are tested but not yet applied.
+7. **Prove it with a test report** that contains awkward text, through the real path, before trusting a site.
 
 ## What goes where
 
@@ -42,7 +43,7 @@ flowchart LR
         MAIL["Email Routing<br/>support@ addresses"]
     end
     subgraph vps["VPS"]
-        NGX["nginx<br/>TLS, limits, real IP"]
+        CADDY["Caddy<br/>TLS, limits, real IP"]
         HUB["Nightjar hub"]
         APP["Client backends<br/>e.g. Kubasu API"]
         PROBE(["Uptime probe"])
@@ -50,18 +51,18 @@ flowchart LR
     HOME["Home server<br/>staging, Tailscale only"]
 
     V --> EDGE
-    EDGE -- "origin pull, Full strict" --> NGX
-    NGX --> APP
-    NGX --> HUB
-    SRV["Client servers and CI"] -- "signed reports, DNS-only host" --> NGX
-    PAGE["Visitors' browsers"] -- "page errors, DNS-only host" --> NGX
+    EDGE -- "origin pull, Full strict" --> CADDY
+    CADDY --> APP
+    CADDY --> HUB
+    SRV["Client servers and CI"] -- "signed reports, DNS-only host" --> CADDY
+    PAGE["Visitors' browsers"] -- "page errors, DNS-only host" --> CADDY
     PROBE -- "GET public URL" --> EDGE
-    MAIL -. "to a Worker, then the hub<br/>not built" .-> NGX
+    MAIL -. "to a Worker, then the hub<br/>not built" .-> CADDY
     HOME -. "no public URL" .-> HOME
 ```
 
 The probe goes **through** Cloudflare, so it measures what a visitor gets, including anything Cloudflare serves from
-cache. Reports and the console go **straight** to nginx on a hostname Cloudflare does not proxy.
+cache. Reports and the console go **straight** to Caddy on a hostname Cloudflare does not proxy.
 
 ### Decide each hostname
 
@@ -93,15 +94,16 @@ Put the hub on a domain **you** own, not under a client's zone, so a client's Cl
 
 - [ ] **Full (strict)** on every proxied zone. **Checked:** Cloudflare "strongly recommends" Full or Full (strict). Do not
       use Flexible: it sends traffic to the origin unencrypted, and **Unchecked:** it is commonly reported to cause
-      redirect loops when the origin redirects HTTP to HTTPS, which nginx will.
+      redirect loops when the origin redirects HTTP to HTTPS, which Caddy does by default.
 - [ ] **Certificates, per hostname:**
-  - Proxied hostname: a Cloudflare **Origin CA** certificate installed on nginx is the simplest, but it is trusted only
-    by Cloudflare. A Let's Encrypt certificate also works. **Unchecked:** the validity period of an Origin CA
-    certificate. Look at the options when issuing one.
-  - **DNS-only hostname (the hub): a public certificate is required**, because a browser connects straight to nginx and
-    does not trust an Origin CA certificate. Use Let's Encrypt with `certbot`. This is the cost of leaving Caddy,
-    which did this by itself.
-- [ ] Redirect HTTP to HTTPS in nginx, not in Cloudflare, so the hub (which is not proxied) gets it too.
+  - **The hub (DNS-only):** Caddy gets and renews a public certificate by itself, which is why Caddy was chosen
+    (`FULL-DESIGN.md`). Nothing to do. A DNS-only hostname cannot use a Cloudflare Origin CA certificate anyway, because
+    browsers do not trust it.
+  - **A proxied client hostname:** **Unchecked:** Caddy's automatic certificate should also work behind the proxy, but
+    confirm it on the first one. The fallback is a Cloudflare **Origin CA** certificate loaded with
+    `tls /path/cert.pem /path/key.pem`. **Unchecked:** its validity period; look at the options when issuing one.
+- [ ] Caddy redirects HTTP to HTTPS on its own, so the hub (which is not proxied) gets it with no Cloudflare setting.
+- [ ] Still monitor certificate expiry (`INTEGRATE.md` asks for it). Automatic renewal is not a guarantee.
 
 ### 4. Bot Fight Mode, challenges and blocks
 
@@ -134,20 +136,26 @@ Put the hub on a domain **you** own, not under a client's zone, so a client's Cl
       visitor's response to another.
 - [ ] **Checked:** **Always Online** exists on the Free plan and, when the origin is down, serves a stale copy or static
       parts from the Internet Archive, with a 30 day crawl interval on Free. That makes a dead origin return 200 and the
-      probe say up. Leave it off. The page I read only describes turning it on, with a toggle in the domain's settings, so confirm the off switch there.
+      probe say up. Leave it off. The page I read only describes turning it on, with a toggle in the domain's settings,
+      so confirm the off switch there.
 
 ### 7. The real visitor address
 
 - [ ] **Checked:** behind Cloudflare the socket address is Cloudflare's. The visitor is in `CF-Connecting-IP`, which
-      Cloudflare recommends over `X-Forwarded-For` (that can hold a chain). `X-Forwarded-Proto` is set by Cloudflare to the
-      protocol the visitor used, overwriting anything the visitor sent. nginx sets its own anyway (see below).
-- [ ] On a **proxied** hostname, tell nginx to trust only Cloudflare's published ranges (`set_real_ip_from` for each,
-      `real_ip_header CF-Connecting-IP`). **Do not paste the ranges into the repo.** They change. Fetch
-      `https://www.cloudflare.com/ips-v4` and `ips-v6` in a scheduled job. **Unchecked:** this snippet has not been run
-      here, only the DNS-only one below.
-- [ ] On the **hub's DNS-only hostname**, trust nothing: the config below overwrites `X-Forwarded-For` with the socket
-      address and clears `CF-Connecting-IP`. **Tested.** This matters because `hub/browser.py` reads `CF-Connecting-IP`
-      first for its per-visitor limit, which a direct caller could otherwise fake.
+      Cloudflare recommends over `X-Forwarded-For` (that can hold a chain). `X-Forwarded-Proto` is set by Cloudflare to
+      the protocol the visitor used, overwriting anything the visitor sent.
+- [ ] **On the hub's DNS-only hostname, trust nothing.** **Tested:** Caddy already replaces a faked `X-Forwarded-For`
+      with the socket address and sets `X-Forwarded-Proto` itself. It does **not** remove `CF-Connecting-IP` or
+      `True-Client-IP`, and `hub/browser.py` reads `CF-Connecting-IP` first for its per-visitor limit, so a direct caller
+      could fake it. The Caddyfile addition below strips both.
+- [ ] **On a proxied hostname**, tell Caddy to trust only Cloudflare's published ranges. **Checked:** Caddy's
+      `servers { trusted_proxies static <ranges> }` does this, nothing is trusted by default, and `client_ip_headers`
+      defaults to `X-Forwarded-For` only, so add `CF-Connecting-IP`. Caddy's docs recommend `trusted_proxies_strict`
+      for a proxy such as Cloudflare that adds addresses on the right of `X-Forwarded-For`. **Checked:** only the
+      `static` source ships with Caddy; a list that updates itself needs a plugin.
+- [ ] **Do not paste Cloudflare's ranges into the repository.** They change. Fetch `https://www.cloudflare.com/ips-v4` and
+      `ips-v6` in a scheduled job, write them to a file, and `import` it. **Unchecked:** the exact headers the hub sees once
+      this is on; verify with a test request.
 
 ### 8. Timeouts and sizes
 
@@ -193,101 +201,65 @@ curl -sI -A "python-httpx/0.27" https://client.example.co.ke/healthz | grep -iE 
 
 # 2. the hub is reachable directly and Cloudflare is not in the path
 curl -sI https://nightjar.example.co.ke/healthz | grep -iE "^(HTTP|server|cf-ray)"
-#    HTTP 200, server nginx, and NO cf-ray header.
+#    HTTP 200, server Caddy, and NO cf-ray header.
 
 # 3. a report with awkward text goes through. Use the onboarding screen's test event when it exists.
 ```
 
-## Switching from Caddy to nginx
+## Hardening the hub's Caddyfile
 
-**Status: planned.** The repository still uses Caddy: `deploy/Caddyfile`, a `caddy` service in `docker-compose.yml`, and
-mentions in `CLAUDE.md`, `README.md`, `DEPLOY.md`, `docs/FULL-DESIGN.md` and `docs/KEYS.md`. `docs/FULL-DESIGN.md` says Caddy
-was chosen over nginx because it **handles certificates automatically**. The reason for switching has not been recorded;
-when it is, it belongs in `docs/DECISIONS.md` next to this.
+`deploy/Caddyfile` does not have these yet. **Tested:** `caddy validate` passes on Caddy 2, and in front of an echo server
+this replaced a faked `X-Forwarded-For` with the real address, set `X-Forwarded-Proto` to the real scheme, removed a faked
+`CF-Connecting-IP` and `True-Client-IP`, and answered a 100 KB body with 413. **Not tested:** certificate issue, and a real
+Cloudflare in front.
 
-### What Caddy did, and what replaces it
+```caddyfile
+{$HUB_DOMAIN} {
+	encode zstd gzip
 
-| Caddy did | With nginx |
-|---|---|
-| Got and renewed TLS certificates by itself | `certbot` with a renewal timer, for the hub. An Origin CA certificate for proxied hostnames. **A failed renewal is a silent outage in 90 days, so monitor certificate expiry** (`INTEGRATE.md` already asks for it) |
-| Redirected HTTP to HTTPS | An explicit `server` block on port 80 |
-| `encode zstd gzip` | `gzip on`. nginx has no zstd out of the box |
-| One JSON access log | `log_format` set by hand. Ingest keys are in the URLs, so decide whether the log should keep them |
-| Passed `X-Forwarded-*` for us | Set explicitly with `proxy_set_header`. The hub reads `X-Forwarded-Proto` to mark its cookie `Secure` (`hub/auth.py`), so this one must be right |
-| One file for everything | A `conf.d` file per hostname |
+	# Reports are small. The browser route refuses anything over 16 KB itself; this stops the body being read at all.
+	request_body {
+		max_size 64KB
+	}
 
-### A starting configuration for the hub
+	handle /ingest/* {
+		reverse_proxy hub:8000 {
+			# The hub's hostname is DNS-only, so nobody in front of Caddy writes these: a caller did.
+			header_up -CF-Connecting-IP
+			header_up -True-Client-IP
+		}
+	}
 
-For the hub's DNS-only hostname. **Tested:** it passes `nginx -t` on 1.27, and run in front of an echo server it replaced
-a faked `X-Forwarded-For`, dropped a faked `CF-Connecting-IP`, forced `X-Forwarded-Proto` to `https`, refused a 100 KB body
-with 413, and answered a flood on the browser route with 429 after the first 30. **Not tested:** certificate issue and
-renewal, and a real Cloudflare in front.
-
-```nginx
-limit_req_zone $binary_remote_addr zone=browser_ingest:10m rate=30r/m;
-limit_req_status 429;   # nginx answers 503 by default; the hub's own brake says 429
-
-server {
-    listen 80;
-    server_name nightjar.example.co.ke;
-
-    location /.well-known/acme-challenge/ { root /var/www/certbot; }
-    location / { return 301 https://$host$request_uri; }
-}
-
-server {
-    listen 443 ssl;
-    http2 on;
-    server_name nightjar.example.co.ke;
-
-    ssl_certificate     /etc/letsencrypt/live/nightjar.example.co.ke/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/nightjar.example.co.ke/privkey.pem;
-    ssl_protocols       TLSv1.2 TLSv1.3;
-
-    gzip on;
-    gzip_types application/json text/css application/javascript;
-
-    # Reports are small. The browser route refuses anything over 16 KB itself; this stops the body being read at all.
-    client_max_body_size 64k;
-
-    proxy_set_header Host              $host;
-    proxy_set_header X-Real-IP         $remote_addr;
-    # DNS-only: the socket address IS the caller. Never pass on a chain the caller wrote.
-    proxy_set_header X-Forwarded-For   $remote_addr;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    # Nobody proxies this hostname, so a CF-Connecting-IP header was written by the caller.
-    proxy_set_header CF-Connecting-IP  "";
-
-    location /ingest/browser/ {
-        limit_req zone=browser_ingest burst=20 nodelay;
-        proxy_pass http://hub:8000;
-    }
-    location /ingest/ { proxy_pass http://hub:8000; }
-    location = /healthz { proxy_pass http://hub:8000; }
-    location / { proxy_pass http://hub:8000; }
+	# ... the existing handle blocks for /healthz and the console stay as they are
 }
 ```
 
-The `limit_req` is a second brake on top of the hub's own, not a replacement for it.
+**Caddy has no built-in rate limit. Tested:** 60 quick requests to the browser route all got 200. A third-party module
+exists (**Unchecked**). For now the hub's own limits are the only brake: 120 reports a minute per key, 20 per visitor, and
+10 new issues an hour per site (decision #50). That is enough for this scale, and it is the one thing nginx did better.
 
-### What changes in the repository, in order
+## Why Caddy stays, and nginx was not needed
 
-1. `deploy/nginx/` replaces `deploy/Caddyfile`, with this file and one for each proxied client hostname.
-2. `docker-compose.yml`: the `caddy` service becomes `nginx`, plus a way to run `certbot` (a container or a timer on the host).
-3. `DEPLOY.md` (step 2's "Caddy cannot issue a certificate until it resolves" and the TLS paragraph), `CLAUDE.md`'s stack table,
-   `README.md`, `docs/FULL-DESIGN.md` and `docs/KEYS.md`.
-4. `docs/DECISIONS.md`: a new entry that reverses the Caddy choice, with the reason.
-5. Test the whole path on a staging VPS first. A broken ingress is the one change that takes every alert path down at once.
+nginx was considered because it is common and well documented, not because anything needed it. Weighing them for one hub on
+one cheap VPS:
 
-### Open questions
+| | Caddy (kept) | nginx |
+|---|---|---|
+| Certificates | Automatic, including renewals | `certbot` plus a timer. A failed renewal is a silent outage in about 90 days |
+| The hub on a DNS-only hostname | Works as it is | Needs a public certificate, so `certbot` |
+| Rate limiting | None built in (**tested**) | `limit_req` built in. **Tested:** it answers 503 unless `limit_req_status 429` is set |
+| Config | A few lines, and already written | More verbose |
+| Risk of switching | None | The ingress is the one part every alert path crosses; a bad switch silences all of them |
 
-1. **Why nginx?** Whatever the reason is (a client app that needs it, familiarity, a module), it decides things like
-   whether client sites share this nginx or run their own.
-2. **Should the console sit on the same hostname as ingest?** The sketch above does, which exposes the console login to
-   the internet directly with no Cloudflare in front. A separate proxied hostname, ideally behind Cloudflare Access
-   (**Unchecked:** whether that is free for one user), would give the console a layer the ingest path deliberately does
-   not have.
-3. **`certbot` in a container or on the host?** Host is simpler to monitor; a container is simpler to reproduce.
+**Revisit it if** client PHP or WordPress sites are to be hosted on this VPS directly, a client app needs an nginx-only
+feature, or the lack of rate limiting in Caddy starts to matter. A tested nginx starting config for the hub is in this file's
+history at commit `a19ea81`.
+
+### Open question
+
+**Should the console sit on the same hostname as ingest?** The Caddyfile above does, which exposes the console login to the
+internet directly with no Cloudflare in front. A separate proxied hostname, ideally behind Cloudflare Access (**Unchecked:**
+whether that is free for one user), would give the console a layer the ingest path deliberately does not have.
 
 ## Sources
 
@@ -300,4 +272,7 @@ Read while writing this, in October 2026:
 [Always Online](https://developers.cloudflare.com/cache/how-to/always-online/),
 [HTTP headers](https://developers.cloudflare.com/fundamentals/reference/http-headers/),
 [connection limits](https://developers.cloudflare.com/fundamentals/reference/connection-limits/),
-[Email Routing](https://developers.cloudflare.com/email-routing/).
+[Email Routing](https://developers.cloudflare.com/email-routing/),
+[Caddy global options](https://caddyserver.com/docs/caddyfile/options),
+[Caddy reverse_proxy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy),
+[Caddy request_body](https://caddyserver.com/docs/caddyfile/directives/request_body).
