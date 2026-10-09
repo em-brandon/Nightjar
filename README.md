@@ -754,14 +754,14 @@ To give a site uptime checks, set its URL. It is probed every minute and appears
 
 ```bash
 docker compose -f docker-compose.dev.yml exec db \
-  psql -U hub -d hub -c "UPDATE sites SET url = 'https://client.example/healthz' WHERE name = 'demo-api';"
+  psql -U hub -d nightjar -c "UPDATE sites SET url = 'https://client.example/healthz' WHERE name = 'demo-api';"
 ```
 
 ### Configuration
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `DATABASE_URL` | `.env.example` sets `...@localhost:5433/hub` | Database connection. The built-in fallback is port 5432 |
+| `DATABASE_URL` | `.env.example` sets `...@localhost:5433/nightjar` | Database connection. The built-in fallback is port 5432 |
 | `VERIFY_SIGNATURES` | `false` | HMAC check on ingest. Off in dev, **on in prod** |
 | `SPIKE_THRESHOLD` | `50` | Events inside the window that count as a spike |
 | `SPIKE_WINDOW_MIN` | `10` | The window, in minutes |
