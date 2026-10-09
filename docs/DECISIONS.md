@@ -1176,3 +1176,65 @@ feature, or the missing rate limit starts to matter. A tested nginx starting con
 body, and strip `CF-Connecting-IP` and `True-Client-IP` on the DNS-only hub hostname, because `hub/browser.py` reads the
 first of them for its per-visitor limit and a direct caller could otherwise fake it. They are not applied to the
 Caddyfile yet.
+
+---
+
+## 54. Direction: a tool for the operator first, a cheap product later
+
+**Decision (2026-10-09):** Nightjar is built first as the operator's own tool for the client sites they look after, and
+may later become a product for other solo developers and small agencies, priced below Sentry and cheap enough to run
+on a small VPS. The order matters: the tool must earn the operator's trust before anything is built for other people.
+This is a direction, not a commitment to ship a product.
+
+**Why it is worth pursuing.** One service and one Postgres is a real difference from self-hosted Sentry, which is
+heavy to run. The operator also wants a product that fits the same constraint they live under: a cheap VPS and a
+day job. The pitch is not error capture, which Sentry and others do far better. It is **attention**: alert on a
+state change and not on every event, derive severity from the source, respect quiet hours, and put uptime, errors,
+deploys, staging, the home server and client requests in one view for one person.
+
+**Constraints that follow, and are kept:**
+
+- **Stay cheap to run.** Postgres is the only datastore. No Redis, no queue and no search engine without a clear need.
+  If a feature cannot run on a small VPS it needs a very good reason.
+- **Quiet by default** (#50, #52). A notification that did not need to be sent is a bug, and that is also the product.
+- **Never break the app it watches.** The reporters' rule is a selling point as well as a safety rule.
+
+**The order of work:**
+
+1. **Finish it as a personal tool.** Alerting through Pushover (chunk 2), the onboarding screen
+   (`docs/ONBOARDING-DASHBOARD.md`), and a month on the three real sites. It cannot alert anyone yet, so today it is a
+   place to look and not a reason to be interrupted.
+2. **Test the idea with a few other solo developers or agencies**, before building for them. The question is whether
+   "it buzzes rarely and correctly" is something they would pay for.
+3. **Only then build multi-tenancy, signup and billing.**
+
+**What this does not decide:** pricing, licence, hosted versus self-hosted, or how many customers it should serve.
+Those wait for step 2.
+
+**Cautions recorded now so they are not forgotten:**
+
+- **"Cheaper than Sentry" is not a position on its own.** Sentry has a free plan (one user, 5,000 errors a month, email
+  alerts only, as of October 2026), self-hosting it has no event cap, and there are lighter open-source trackers. The
+  competing products have not been researched here. Do that before choosing the pitch.
+- **Customers' error data can contain personal information.** Storing it for other people brings legal duties. Kenya's
+  rules have not been checked. Check them before taking anyone else's data.
+- **Several things have to change.** The hub has one console token and no accounts. Per-customer data separation,
+  retention limits, quotas and billing do not exist.
+
+**Tensions with earlier rules, left open on purpose:**
+
+- `CLAUDE.md`'s **Out of scope** list names client logins, multi-user auth and a custom SDK per language. Those hold
+  until step 3. A product would revisit multi-user auth and a customer-facing status page, and the operator already
+  overrode "a custom SDK per language" for Node, PHP and Java in #52.
+- **"Do not rebuild tools that exist"** (exception capture belongs to Sentry or GlitchTip) sits awkwardly with competing
+  with Sentry. For now Nightjar's capture stays deliberately thin: type, message, frames and request, with no
+  breadcrumbs, local variables or source maps. Whether to deepen it, or to accept Sentry's wire format so any official
+  SDK can report (considered and set aside in #52), is a question for after step 2.
+
+**Rejected:**
+
+- **Building for other customers now.** Multi-tenancy and billing before the tool works for its own author would be
+  work on a guess.
+- **Competing on price alone.** See above.
+- **Dropping it and using Sentry, Uptime Kuma and Pushover.** That is a legitimate way to get most of the result, and
+  the fallback if step 1 does not make the tool worth keeping. It is not chosen because the operator wants the product.
