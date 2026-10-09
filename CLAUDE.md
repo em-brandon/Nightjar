@@ -56,6 +56,9 @@ Plan and order in `docs/TYPESCRIPT-MIGRATION.md`. Until it lands, write new cons
 was considered and not needed, decision #53). The checklist and two small tested additions to the Caddyfile are in
 `docs/CLOUDFLARE.md`. The hub's own hostname stays DNS-only, so a bot rule can never turn an error report into silence.
 
+**Planned, not started:** two small hardening changes: the reporters refuse a plain `http://` hub (and say so in the app's log, never silently),
+and HSTS goes on the hub's Caddyfile. See `docs/DATA-PROTECTION.md`, which also records what is and is not encrypted today.
+
 **Next up:** an onboarding screen in the console: add a site, see its keys once with a ready-made setup snippet for its
 stack, and watch for its first report. The API half exists; the plan is in `docs/ONBOARDING-DASHBOARD.md`.
 

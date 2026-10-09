@@ -1153,6 +1153,7 @@ job is narrow: deduplicate, decide, deliver.
 | [`docs/KEYS.md`](docs/KEYS.md) | Every key, secret and token: what it does, who holds it, what a leak costs, with diagrams |
 | [`docs/TYPESCRIPT-MIGRATION.md`](docs/TYPESCRIPT-MIGRATION.md) | Planned: moving the console to TypeScript, with API types generated from the hub's schemas |
 | [`docs/ONBOARDING-DASHBOARD.md`](docs/ONBOARDING-DASHBOARD.md) | Planned, next up: a console screen to add a client app, see its keys once and confirm it is reporting |
+| [`docs/DATA-PROTECTION.md`](docs/DATA-PROTECTION.md) | Planned: what is encrypted today, refusing plain `http://` in the reporters, HSTS, and the case for key pairs |
 | [`docs/CLOUDFLARE.md`](docs/CLOUDFLARE.md) | Planned: a free-plan Cloudflare checklist (what to proxy, what to leave DNS-only, bot rules, caching), with Caddy staying as the web server |
 | [`mockups/`](mockups/) | Working HTML: console, wall display, boot splash, detail drawer |
 
