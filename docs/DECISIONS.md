@@ -1005,3 +1005,174 @@ The header's icon area is also locked to two rows of height, so a wrapping icon 
 **The exchange rate** reads "$1 = 129.57 KES" (and "£1", "¥1"), the symbol as large as the number and "KES"
 readable, after the first version's "KES/$" was too small to make out. Each currency has its own fill: dollar
 green, pound a blue to red gradient, yuan red fading to white.
+
+---
+
+## 50. Browser errors have no secret, so the route is bounded instead
+
+**Decision:** web pages report to `POST /ingest/browser/{public_key}`. It has no HMAC. A page's source is public,
+so any secret in it is public too. The route trusts nothing about the caller and limits what any caller can do.
+The full picture, with diagrams, is in `docs/KEYS.md`.
+
+**The key is separate from the ingest key.** A site gets a `public_key` only when the operator lists
+`allowed_origins` (`PATCH /api/sites/{id}`). It can report errors for its own site and opens no other route, so
+leaking it never exposes the signed routes. Emptying the origins revokes it, and listing them again makes a new
+one, which is the rotation path. It is kept stable across edits because it is baked into pages already deployed.
+
+**The bounds, and what each is for:**
+
+- **Origin allowlist.** Stops another website using a key copied from your page. It does not stop `curl`, which
+  can send any header, so it is a filter and not authentication. A missing Origin is refused, since a browser
+  always sends one on a cross-origin POST.
+- **Level clamped to `warning` or `error`.** A page can never ask for `fatal`, so can never raise a P1. This is
+  the severity-derived-from-source rule applied to a source nobody can vouch for.
+- **A cap on NEW issues, 10 an hour per site.** Fingerprinting collapses repeats of one error but cannot collapse
+  a flood of *different* ones, and once alerting exists each new issue is a possible notification. A known
+  fingerprint is always counted, so a real bug still shows its volume. The excess is dropped quietly and the
+  caller still gets 202, so nothing is learned from probing.
+- **Rate limits** per key (120 a minute) and per visitor (20), a 16 KB body cap, capped strings, free-form
+  fields dropped, and the page's query string and fragment removed before storing (they can hold tokens).
+
+All four numbers are settings (`BROWSER_*`) and are working figures, not measurements.
+
+**Quiet by default, on both ends.** A page error is usually noise: extensions, bots, a flaky third-party script.
+The reporter sends uncaught errors as `warning`, which is P3 and reaches the morning digest and never wakes
+anyone. Escalating is deliberate: `captureException(err, "error")` for a failed checkout. It also drops browser
+quirks (`Script error.`, `ResizeObserver loop`), extension errors and errors that happened only in other people's
+scripts, sends the same error at most once in 10 minutes and at most 6 reports a minute. This follows the first
+rule in CLAUDE.md: a notification that did not need to be sent is a bug.
+
+**Bundler hashes are stripped from the fingerprint** (`hub/fingerprint.py`, `frame_module`). A build names files
+`index-3fa9c1B2.js` and changes the hash every build. Left in, every deploy would make every browser error new
+and look like a regression storm. Two shapes are stripped, before the extension: exactly 8 characters that are
+not all lowercase letters (Vite), and 8 to 32 hex digits (webpack). The all-lowercase exception keeps a real
+name such as `index-database.js` intact; a Vite hash is all lowercase about once in 1,500 builds, and then that
+one build's errors look new. Python frames hash exactly as before.
+
+**Rejected:**
+
+- **Signed short-lived tokens issued by the site's backend.** Sound, but Bird Box has no backend to issue them.
+- **A CAPTCHA or proof of work.** Adds friction for the visitor to protect an error log. Wrong trade.
+- **A Cloudflare Worker that holds a secret and signs for the page.** The right upgrade if abuse becomes real,
+  and noted in `KEYS.md`. It is another thing to deploy and maintain, and the bounds suffice for now.
+- **Reusing the ingest key with a flag.** One leaked page would then be one step from the signed routes.
+
+**Known limits:** the browser limits are in memory per process, so a restart resets them. The per-visitor limit
+reads the address from `CF-Connecting-IP` or `X-Forwarded-For`, which a caller can fake; the per-key limit and
+the new-issue cap still hold. A page's own errors are reported only while the visitor's browser runs the script,
+so a page that never loads reports nothing. The uptime probe covers that case.
+
+---
+
+## 51. The console moves to TypeScript, later, with its types generated from the hub
+
+**Decision:** the console (React, plain `.jsx`) will be migrated to TypeScript as planned future work, in
+`docs/TYPESCRIPT-MIGRATION.md`. It is not started. New console files are written as `.ts` or `.tsx` from now on,
+which needs only a small tooling step first.
+
+**Why:** the console reads about a dozen JSON shapes from the hub and nothing checks that the two agree. The rules
+that stop silence reading as all-clear (a silent probe, a silent stack reporter, a stale media snapshot) each depend
+on a particular field, so a renamed field would produce a wrong verdict quietly. With generated types that is a
+compile error instead. The browser reporter is already TypeScript, which showed the toolchain works here.
+
+**Types come from the hub, not by hand.** The hub's Pydantic models are the contract, so the plan exports
+`app.openapi()` to a committed snapshot, generates the TypeScript from it, and adds a Python test that fails when
+the snapshot is stale. A hub change that the console has not caught up with then fails the existing suite.
+
+**Rejected:**
+
+- **Writing the types by hand.** Two copies of one contract drift, and the drift is silent, which is the failure
+  this exists to prevent.
+- **Runtime validation (zod and similar).** The API is same-origin and ours. Validation adds weight to a screen
+  that runs all day on a wall for a risk that types already cover.
+- **Doing it now.** About 4,000 lines in 30 files, with no behaviour to gain. It waits until the Gitea CI work, so a
+  CI job can run the type check and the drift test on every push.
+- **Migrating in one commit.** It goes phase by phase, one view per commit, with the app working after each.
+
+---
+
+## 52. Server reporters for Node, PHP and Java: copied in, one contract, never breaking the app
+
+**Decision:** each stack in use gets a reporter that is one file with no dependencies, copied into the client's
+repository: `client/node/nightjar.ts`, `client/php/Nightjar.php`, `client/java/Nightjar.java`. They send the same
+signed request to `POST /ingest/{key}/event` as `client/reporter.py`, so the hub needed no change. The contract,
+the levels and the install steps are in `docs/REPORTERS.md`, and `tests/test_server_reporters.py` runs every
+reporter for real against the real hub with signature checking on.
+
+**Copied, not published.** This keeps decision #20: below three or four apps, copying is less work than maintaining
+packages, and a reporter with no dependencies leaves nothing upstream to poison while it holds a client's secret.
+Publishing to npm, Packagist and Maven Central is still the later step, and the files are shaped to be published
+as they are.
+
+**Every one follows the rule in `client/reporter.py`: it must never break the app.** Everything is wrapped and
+swallowed, a send has a three second timeout and no retry, and nothing can queue without a limit: Node caps sends in
+flight and reports a minute, Java runs one daemon thread behind a queue of five, and PHP holds five reports a request
+and trips a 30 second circuit breaker after a failed send, so a dead hub is not paid for on every request. A crash
+must also behave as it did: after reporting, Node exits 1, PHP fails with its own "Uncaught" fatal error and exit
+code, and Java calls the previous handler or prints the trace as the JVM does. With no configuration at all, none of
+them changes anything.
+
+**Levels follow what actually died.** Only Node's process crash is `fatal` (P1), because the whole service is gone.
+A PHP uncaught exception or fatal error, and a Java thread death, are `error` (P2): one request or one pool thread is
+not the service. Java's is configurable. This applies the first rule in CLAUDE.md: a notification that did not need
+to be sent is a bug.
+
+**Java reports the root cause.** A Spring or servlet wrapper's own stack trace points only at the wrapping, so the
+event carries the deepest cause's type, message and frames, and lists the wrappers under `extra.wrapped_by`. Class
+names that change on every JVM start (CGLIB proxies, lambdas, JDK proxies, generated accessors) are normalised in the
+reporter, as bundler hashes are in the hub (#50), so a restart does not make every error new. This is done in the
+reporter and not in `hub/fingerprint.py` because those names are a Java fact, and the hub stays language-neutral.
+
+**Rejected:**
+
+- **A hand-written `process.on('uncaughtException')`, which `INTEGRATE.md` used to suggest for Node.** Registering any
+  handler stops Node from exiting, so the app keeps running in an undefined state and the crash is hidden. The
+  reporter replaces the exit itself, after a two second flush, and only when nothing else is listening.
+- **Accepting Sentry's wire format at the hub, so any official SDK could report.** It would cover every language at
+  once, but it is a protocol to parse and a weaker auth model, and it bends the rule against rebuilding Sentry. It is
+  a fair option if a third non-Python stack appears. Not now.
+- **One shell script for every stack.** It cannot produce a stack trace, which is what the fingerprint hashes.
+- **Capturing warnings and notices in PHP, or logging calls in Java.** Noise. Uncaught failures and what the app
+  chooses to report are enough.
+
+**Real processes found bugs that unit tests could not.** In PHP, calling `install()` twice made handlers that hand
+the exception to each other forever, and calling `restore_exception_handler()` inside the handler put the handler
+back and looped; both are fixed and covered. The tests also run real PHP crashes against a local server, and send
+text with quotes, newlines and emoji through all five runtimes (Node, Java, and PHP natively, on 7.4 and on 8.3),
+because hand-built JSON is where escaping goes wrong.
+
+**Not verified:** the Laravel, WordPress and Spring snippets in `REPORTERS.md` use those frameworks' documented hooks
+but have not been run against a real install. PHP has one exception handler and the last one set wins, so `install()`
+must come after the app sets its own, or the app's handler must call `captureException()`; a test pins that limit.
+
+---
+
+## 53. Caddy stays in front of the hub; nginx was considered and is not needed
+
+**Decision:** the hub keeps Caddy as its web server and sole ingress, including when the client sites move behind
+Cloudflare's free plan. nginx was proposed (2026-10-09) and then set aside by the operator once it was clear there was no
+concrete need for it, only an impression that it is the better-known choice.
+
+**Why Caddy is the right fit here.** It gets and renews certificates by itself, which is why it was chosen in the first
+place (`FULL-DESIGN.md`). That matters twice over with Cloudflare: the hub's own hostname is DNS-only, so it cannot use a
+Cloudflare Origin CA certificate and needs a public one, and with nginx that means `certbot` and a renewal job whose
+failure is a silent outage about 90 days later. The ingress is also the one component every alert path crosses, so
+changing it without a reason is a risk with nothing to gain.
+
+**What nginx would have given us.** Built-in rate limiting. Tested here, Caddy has none: 60 quick requests to the browser
+route all passed, where nginx with `limit_req` answered 429 after about 30 (it answers 503 unless
+`limit_req_status 429` is set). The hub's own limits (decision #50) are the brake instead, which is enough at this scale.
+
+**Rejected:**
+
+- **Switching now.** Work and risk for a feature the hub already covers in its own code.
+- **Running both**, nginx for client sites and Caddy for the hub. Two proxies to patch and two places for TLS to fail.
+
+**Revisit if** client PHP or WordPress sites are to be hosted on this VPS directly, a client app needs an nginx-only
+feature, or the missing rate limit starts to matter. A tested nginx starting config for the hub is in the history of
+`docs/CLOUDFLARE.md` at commit `a19ea81`.
+
+**What changes now:** `docs/CLOUDFLARE.md` carries two small, tested additions for `deploy/Caddyfile`: cap the request
+body, and strip `CF-Connecting-IP` and `True-Client-IP` on the DNS-only hub hostname, because `hub/browser.py` reads the
+first of them for its per-visitor limit and a direct caller could otherwise fake it. They are not applied to the
+Caddyfile yet.

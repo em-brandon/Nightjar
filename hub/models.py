@@ -56,6 +56,13 @@ class Site(Base):
     # signs the request body — proves the sender is really them
     ingest_secret: Mapped[str] = mapped_column(String(64), default=_key)
 
+    # Browser reporting. A page cannot keep a secret, so a browser gets this separate PUBLIC key
+    # instead, which can only report errors (never deploys, checks or anything else) and only
+    # from the origins listed. None means browser reporting is off for the site. It is not the
+    # ingest key: leaking it must not open the signed routes.
+    public_key: Mapped[str | None] = mapped_column(String(64), unique=True)
+    allowed_origins: Mapped[list[str]] = mapped_column(JSONB, default=list, server_default="[]")
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

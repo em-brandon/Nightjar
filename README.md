@@ -12,6 +12,7 @@ Named for a bird that only becomes active after dark, which is when this system 
 - [Status at a glance](#status-at-a-glance)
 - [Why Nightjar exists](#why-nightjar-exists)
 - [How it works](#how-it-works)
+  - [How the uptime probe and the reporters fit together](#how-the-uptime-probe-and-the-reporters-fit-together)
 - [The stack](#the-stack)
 - [Core concepts](#core-concepts)
   - [Fingerprint](#fingerprint)
@@ -102,6 +103,106 @@ What Nightjar deliberately does **not** do:
   asks twice.
 - **Share a failure domain with what it watches.** It lives on a VPS, never on client
   infrastructure and never on the machine at home.
+
+### How the uptime probe and the reporters fit together
+
+Two kinds of source feed the hub, and they work in opposite directions. The **uptime probe pulls**: the hub
+itself requests each site's `url`. Every **reporter pushes**: something that knows about a problem sends it in.
+Neither can see everything, so each covers the other's blind spot.
+
+```mermaid
+flowchart LR
+    subgraph clients["Client sites"]
+        PAGE["Web page<br/>browser/nightjar.ts"]
+        APP["App server<br/>reporter.py, Node, PHP, Java"]
+        CI["CI deploys<br/>Gitea Actions (planned wiring)"]
+        SITE["Public URL<br/>the site itself"]
+    end
+
+    subgraph home["Home server"]
+        STK["stack_reporter.py<br/>staging containers"]
+        HOME["home_reporter.py<br/>CPU, disk, backup, speed"]
+        JF["jellyfin_reporter.py<br/>who is streaming"]
+    end
+
+    subgraph hub["Hub on the VPS"]
+        PROBE(["Uptime probe<br/>every 60 s, 10 s timeout"])
+        subgraph ingest["Ingest, one route per source"]
+            EV["POST /ingest/key/event<br/>signed with the secret"]
+            BR["POST /ingest/browser/public_key<br/>Origin checked, rate limited"]
+            DEP["POST /ingest/key/deploy"]
+            STR["POST /ingest/key/stack"]
+            HM["POST /ingest/key/home"]
+            MD["POST /ingest/key/media"]
+        end
+        FP["record_event<br/>fingerprint, dedupe, state_change"]
+        EDGE["edge-triggered problems<br/>open once, resolve themselves"]
+        DB[("Postgres<br/>checks, issues, events,<br/>deploys, reports")]
+        DERIVE["Site state, derived<br/>never stored"]
+        API["/api, console token"]
+    end
+
+    CON["Console and wall display<br/>poll every 30 s"]
+    PUSH["Pushover<br/>chunk 2, not built"]
+
+    PROBE -- "GET url, follows redirects,<br/>under 400 is up" --> SITE
+    PROBE -- "ok, status, latency" --> DB
+
+    APP -- "crashes" --> EV
+    PAGE -- "page errors, never P1" --> BR
+    CI -- "running, success, failed" --> DEP
+    STK -- "every minute" --> STR
+    HOME -- "every minute" --> HM
+    JF -- "every minute" --> MD
+
+    EV --> FP
+    BR --> FP
+    STR --> EDGE
+    HM --> EDGE
+    MD --> EDGE
+    EDGE --> FP
+    FP --> DB
+    DEP --> DB
+    STR --> DB
+    HM --> DB
+    MD --> DB
+
+    DB --> DERIVE
+    DERIVE --> API
+    API --> CON
+    DERIVE -. "state_change" .-> PUSH
+```
+
+**What each source can and cannot see.** This is why there are several, and why silence is treated as a fault:
+
+| Source | Direction | Sees | Blind to |
+|---|---|---|---|
+| Uptime probe | Hub pulls | Whether the public URL answers, and how fast | Errors inside a working page, and anything on a private network |
+| Server reporters (Python, Node, PHP, Java) | App pushes | Crashes with a stack trace | A dead app: it cannot report that it is dead |
+| Browser reporter | Page pushes | JavaScript errors on real visitors' screens | A page that never loads |
+| Stack, home and media reporters | Home server pushes | Container health, host health, streaming | A dead reporter, which is shown as `reporter silent` |
+
+A dead app is the case the two halves cover together: the server reporter goes quiet, and the probe's next
+request fails.
+
+**How a site's state is decided.** It is derived from issues and probe results every time the console asks, and
+never stored, so it cannot drift out of date:
+
+```mermaid
+flowchart TD
+    A["Open P1 issue?"] -- yes --> DOWN(["down"])
+    A -- no --> B{"Last 2 probes<br/>both failed?"}
+    B -- yes --> DOWN
+    B -- no --> C{"Open P2 issue, or the last<br/>probe failed, or the probe is silent?"}
+    C -- yes --> WARN(["warn"])
+    C -- no --> D{"Site has a url?"}
+    D -- "no: never checked" --> NOTE["up, but the Overview says<br/>it is not being checked"]
+    D -- yes --> UP(["up"])
+```
+
+A probe counts as silent when no check has arrived for the longer of 5 minutes or three intervals, and a silent
+probe is never `up`. A staging site has no `url` the VPS can reach, so it is watched by its stack reporter
+instead. See [`docs/KEYS.md`](docs/KEYS.md) for who is allowed to send what.
 
 ---
 
@@ -470,9 +571,10 @@ Compose with Caddy in front**, which hides the language differences behind conta
 to Nightjar with the deploy webhook (`running`, then `success` or `failed`). Each staging stack is a site
 with `env=staging` and a `url`, so it gets the same uptime checks and appears on the Staging tab.
 
-**Other stacks need a reporter.** [`client/reporter.py`](client/reporter.py) is Python only. A Node or Java
-app needs either the Sentry SDK forwarding by webhook, or a small client posting to
-`/ingest/{key}/event`. The uptime probe and deploy reports work for any language.
+**Reporters.** [`client/reporter.py`](client/reporter.py) covers FastAPI, and there is one dependency-free file
+each for [Node](client/node/nightjar.ts), [PHP](client/php/Nightjar.php), [Java](client/java/Nightjar.java) and
+[web pages](client/browser/nightjar.ts). They share one contract, described in
+[`docs/REPORTERS.md`](docs/REPORTERS.md). The uptime probe and deploy reports work for any language.
 
 ### Seeing and controlling stacks
 
@@ -683,6 +785,7 @@ Ingest, called by client apps and CI. Authenticated by the per-site key in the U
 | `POST /ingest/{key}/event` | Report a crash. Returns `issue_id`, `fingerprint`, `event_count`, `severity`, `state_change` |
 | `POST /ingest/{key}/deploy` | Report a deploy: `{"ref": "main@1f9c4a2", "status": "running \| success \| failed"}` |
 | `POST /ingest/{key}/stack` | Report a staging stack's state. Sent by `client/stack_reporter.py`, not by hand |
+| `POST /ingest/browser/{public_key}` | Report an error from a web page. No signature: the key is public, so it is Origin-checked, rate limited and capped. See [`docs/KEYS.md`](docs/KEYS.md) |
 
 Console feeds, read-only:
 
@@ -754,14 +857,14 @@ To give a site uptime checks, set its URL. It is probed every minute and appears
 
 ```bash
 docker compose -f docker-compose.dev.yml exec db \
-  psql -U hub -d hub -c "UPDATE sites SET url = 'https://client.example/healthz' WHERE name = 'demo-api';"
+  psql -U hub -d nightjar -c "UPDATE sites SET url = 'https://client.example/healthz' WHERE name = 'demo-api';"
 ```
 
 ### Configuration
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `DATABASE_URL` | `.env.example` sets `...@localhost:5433/hub` | Database connection. The built-in fallback is port 5432 |
+| `DATABASE_URL` | `.env.example` sets `...@localhost:5433/nightjar` | Database connection. The built-in fallback is port 5432 |
 | `VERIFY_SIGNATURES` | `false` | HMAC check on ingest. Off in dev, **on in prod** |
 | `SPIKE_THRESHOLD` | `50` | Events inside the window that count as a spike |
 | `SPIKE_WINDOW_MIN` | `10` | The window, in minutes |
@@ -931,6 +1034,11 @@ job is narrow: deduplicate, decide, deliver.
 | [`docs/CLIENT-INTEGRATION.md`](docs/CLIENT-INTEGRATION.md) | Planned: push checks, heartbeats and an npm CLI for client apps, and the supply-chain rules for publishing it |
 | [`DEPLOY.md`](DEPLOY.md) | Getting onto a VPS |
 | [`INTEGRATE.md`](INTEGRATE.md) | Wiring in client apps, uptime monitors, Sentry and Gitea |
+| [`docs/REPORTERS.md`](docs/REPORTERS.md) | The reporter for each stack (Python, Node, PHP, Java, browser), the shared contract and how they are tested |
+| [`docs/KEYS.md`](docs/KEYS.md) | Every key, secret and token: what it does, who holds it, what a leak costs, with diagrams |
+| [`docs/TYPESCRIPT-MIGRATION.md`](docs/TYPESCRIPT-MIGRATION.md) | Planned: moving the console to TypeScript, with API types generated from the hub's schemas |
+| [`docs/ONBOARDING-DASHBOARD.md`](docs/ONBOARDING-DASHBOARD.md) | Planned, next up: a console screen to add a client app, see its keys once and confirm it is reporting |
+| [`docs/CLOUDFLARE.md`](docs/CLOUDFLARE.md) | Planned: a free-plan Cloudflare checklist (what to proxy, what to leave DNS-only, bot rules, caching), with Caddy staying as the web server |
 | [`mockups/`](mockups/) | Working HTML: console, wall display, boot splash, detail drawer |
 
 ---

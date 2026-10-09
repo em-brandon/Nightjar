@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class Frame(BaseModel):
@@ -22,6 +22,21 @@ class EventIn(BaseModel):
     request: dict[str, Any] | None = None
     extra: dict[str, Any] | None = None
     occurred_at: datetime | None = None
+
+
+class BrowserEventIn(BaseModel):
+    """What a page may send. Narrower than EventIn on purpose: this arrives from code running on
+    anyone's computer, so there is no `fatal`, no free-form `extra`, and every string has a cap."""
+
+    exception_type: str = Field(min_length=1, max_length=200)
+    message: str = Field(default="", max_length=2000)
+    frames: list[Frame] = Field(default_factory=list, max_length=50)
+    # only "warning" is believed; anything else is an error. Never fatal, so a page cannot ask for P1.
+    level: str = Field(default="error", max_length=20)
+    release: str | None = Field(default=None, max_length=80)
+    environment: str = Field(default="production", max_length=40)
+    # the page the error happened on. The query string and fragment are dropped before storing.
+    page: str | None = Field(default=None, max_length=500)
 
 
 class IssueOut(BaseModel):
@@ -67,6 +82,97 @@ class SiteHealthOut(BaseModel):
     latency_series: list[int | None]
     # 90 days, oldest first. gap = no checks that day (not "all good").
     ribbon: list[DayState]
+
+
+SITE_NAME = r"^[a-z0-9][a-z0-9-]{1,118}$"
+
+
+def _http_url(v: str | None) -> str | None:
+    # The probe requests this from the VPS, so it must be a plain web address: no file:, no bare host.
+    if v is None:
+        return None
+    v = v.strip()
+    if not v.lower().startswith(("http://", "https://")) or " " in v or len(v) < 10:
+        raise ValueError("url must start with http:// or https://")
+    return v
+
+
+class SiteIn(BaseModel):
+    # lowercase on purpose: a staging site is paired with its production site by name
+    # (<production>-staging), and a pairing that depends on capitalisation is a bug waiting
+    name: str = Field(pattern=SITE_NAME)
+    client: str = Field(min_length=1, max_length=120)
+    contact_email: str | None = Field(default=None, max_length=255)
+    # the media and home hosts are made by their own reporters, never from here
+    env: Literal["production", "staging"] = "production"
+    # None leaves the site unmonitored, which the console says out loud
+    url: str | None = Field(default=None, max_length=500)
+
+    _check_url = field_validator("url")(_http_url)
+
+
+MAX_ORIGINS = 10
+_LOCAL_HOSTS = {"localhost", "127.0.0.1"}
+
+
+def _origins(v: list[str] | None) -> list[str] | None:
+    """Reduce each entry to scheme://host[:port], lowercase. An origin is not a URL: a path, a query
+    or a wildcard would mean something the browser's Origin header can never match, and a silent
+    mismatch looks exactly like a working allowlist until the first real error is dropped."""
+    if v is None:
+        return None
+    from urllib.parse import urlsplit
+
+    out: list[str] = []
+    for raw in v:
+        parts = urlsplit(raw.strip().lower())
+        host = parts.hostname or ""
+        local = host in _LOCAL_HOSTS
+        if (
+            parts.scheme not in ("http", "https")
+            or not host
+            or "*" in raw
+            or parts.path not in ("", "/")
+            or parts.query
+            or parts.fragment
+            or parts.username
+            or (parts.scheme == "http" and not local)  # a plain-http page is only for local development
+        ):
+            raise ValueError(f"not an origin: {raw!r} (use https://example.com, with no path or wildcard)")
+        origin = f"{parts.scheme}://{parts.netloc}"
+        if origin not in out:
+            out.append(origin)
+    if len(out) > MAX_ORIGINS:
+        raise ValueError(f"at most {MAX_ORIGINS} origins")
+    return out
+
+
+class SitePatch(BaseModel):
+    # Only the fields sent are changed. url null stops monitoring, and the console says so.
+    url: str | None = Field(default=None, max_length=500)
+    # The pages allowed to report errors from a browser. A non-empty list turns browser reporting
+    # on (and makes the public key on first use); an empty list turns it off and revokes the key.
+    allowed_origins: list[str] | None = Field(default=None, max_length=MAX_ORIGINS)
+
+    _check_url = field_validator("url")(_http_url)
+    _check_origins = field_validator("allowed_origins")(_origins)
+
+
+class SiteOut(BaseModel):
+    id: int
+    name: str
+    client: str
+    env: str
+    url: str | None
+    # public, unlike the ingest secret: it is in every page that reports
+    public_key: str | None = None
+    allowed_origins: list[str] = []
+
+
+class SiteCreated(SiteOut):
+    # Shown here and nowhere else in the API: these go into the app's environment, not a screenshot
+    ingest_key: str
+    ingest_secret: str
 
 
 class RisingOut(BaseModel):

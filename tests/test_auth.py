@@ -33,6 +33,8 @@ PROTECTED = [
     ("GET", "/api/stacks"),
     ("POST", "/api/issues/1/actions"),
     ("POST", "/api/tickets"),
+    ("POST", "/api/sites"),
+    ("PATCH", "/api/sites/1"),
     ("PATCH", "/api/tickets/1"),
     ("DELETE", "/api/stacks?site=a&stack=b"),
 ]
@@ -83,7 +85,7 @@ class Rejects(AuthTestCase):
             for path, methods in schema["paths"].items():
                 if path == "/healthz" or path.startswith("/ingest/") or path.startswith("/api/auth/"):
                     continue  # public by design: probes, per-site-key ingest, and login itself
-                url = path.replace("{ingest_key}", "x").replace("{issue_id}", "1").replace("{ticket_id}", "1")
+                url = path.replace("{ingest_key}", "x").replace("{issue_id}", "1").replace("{ticket_id}", "1").replace("{site_id}", "1")
                 for method in methods:
                     if method not in ("get", "post", "patch", "put", "delete"):
                         continue

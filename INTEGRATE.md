@@ -19,6 +19,9 @@ signature is what proves the report is genuine. Both are needed in production.
 
 ## 1. Your own apps
 
+> **Keys, secrets and what each can do:** [`docs/KEYS.md`](docs/KEYS.md), with diagrams. For a **web page**
+> (a site with no backend, or any frontend) use the browser reporter in section 1b, which holds no secret.
+
 > **At three or four apps, stop copying this file.** Publish it as
 > `@brandon/nightjar` (npm) and `nightjar-reporter` (PyPI) so a fix is one
 > `update` rather than N edits, and add an onboarding CLI for the key pairs.
@@ -52,7 +55,8 @@ Same idea, as middleware:
 import hashlib, hmac, json, os, traceback
 import httpx
 
-URL    = os.environ["NIGHTJAR_URL"]
+# NIGHTJAR_URL is the hub (https://nightjar.example.co.ke), the same meaning as in every other reporter
+URL    = os.environ["NIGHTJAR_URL"].rstrip("/") + "/ingest/" + os.environ["NIGHTJAR_KEY"] + "/event"
 SECRET = os.environ["NIGHTJAR_SECRET"].encode()
 
 
@@ -90,52 +94,79 @@ Add `"nightjar_middleware.NightjarMiddleware"` to `MIDDLEWARE`.
 
 ### Node / Express
 
-```js
-const crypto = require('crypto');
+Copy `client/node/nightjar.ts` (no dependencies, Node 18 or newer):
 
-const URL    = process.env.NIGHTJAR_URL;
-const SECRET = process.env.NIGHTJAR_SECRET;
+```ts
+import { init, expressErrorHandler, installProcessHandlers } from "./nightjar";
 
-function report(err, req) {
-  const body = JSON.stringify({
-    exception_type: err.name || 'Error',
-    message: err.message || '',
-    frames: (err.stack || '').split('\n').slice(1, 12).map(line => {
-      const m = line.match(/at (\S+) \((.*):(\d+):\d+\)/);
-      return m
-        ? { function: m[1], file: m[2], module: m[2].split('/').pop(), lineno: +m[3] }
-        : { function: line.trim().slice(0, 120) };
-    }),
-    level: 'error',
-    environment: process.env.NODE_ENV || 'production',
-    request: req ? { method: req.method, path: req.path } : null,
-  });
-
-  const sig = 'sha256=' + crypto.createHmac('sha256', SECRET).update(body).digest('hex');
-
-  fetch(URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Hub-Signature': sig },
-    body,
-  }).catch(() => {});      // swallow — reporting must never break the app
-}
-
-// Express error handler: must be registered LAST, after all routes
-app.use((err, req, res, next) => {
-  report(err, req);
-  res.status(500).json({ error: 'internal server error' });
-});
-
-// and the two things Express will not catch for you
-process.on('uncaughtException',  err => report(err, null));
-process.on('unhandledRejection', err => report(err, null));
+init();                          // reads NIGHTJAR_URL, NIGHTJAR_KEY, NIGHTJAR_SECRET
+installProcessHandlers();        // report a crash that kills the process
+// ... your routes ...
+app.use(expressErrorHandler());  // after the routes; it reports, then calls next(err)
 ```
 
-### Static sites and WordPress
+It reports the error and then gets out of the way: your own error handler still sends the response, and a crash
+still exits with code 1. (An older version of this page suggested `process.on('uncaughtException', ...)`, which
+stops Node from exiting and so hides a crash instead of reporting it. Do not use that.)
 
-No exception handler to install. These are covered entirely by uptime checks
-below — which is usually enough, because what breaks is the server or the
-certificate, not application code you control.
+### PHP, Laravel and WordPress
+
+Copy `client/php/Nightjar.php` (no dependencies, PHP 7.4 or newer):
+
+```php
+require __DIR__ . '/Nightjar.php';
+\Nightjar\Reporter::install(['hub' => 'https://nightjar.yourdomain', 'key' => '<ingest key>', 'secret' => '<ingest secret>']);
+```
+
+Laravel and WordPress snippets, and the PHP-FPM environment gotcha, are in [`docs/REPORTERS.md`](docs/REPORTERS.md).
+
+### Java and Spring
+
+Copy `client/java/Nightjar.java` (JDK only, Java 11 or newer):
+
+```java
+Nightjar.init();                    // reads NIGHTJAR_URL, NIGHTJAR_KEY, NIGHTJAR_SECRET
+Nightjar.installUncaughtHandler();
+```
+
+The Spring resolver snippet is in [`docs/REPORTERS.md`](docs/REPORTERS.md).
+
+### Static sites
+
+There is no server code to install a reporter in, so these are covered by uptime checks (below) and, for errors in
+the page itself, the browser reporter in section 1b. That is usually enough, because what breaks is the server or
+the certificate, not code you control.
+
+All of the above send the same signed request. The contract, the levels and the safety rules every reporter
+follows are in [`docs/REPORTERS.md`](docs/REPORTERS.md).
+
+---
+
+### 1b. Web pages (browser)
+
+A page cannot keep a secret, so it uses a separate **public key** and the bounded route
+`POST /ingest/browser/{public_key}`. Copy `client/browser/nightjar.ts` into the site (it has no dependencies).
+
+1. List the pages that may report. This makes the public key (needs the console token):
+
+   ```bash
+   curl -X PATCH https://nightjar.yourdomain/api/sites/<id> \
+     -H "Authorization: Bearer $CONSOLE_TOKEN" -H "Content-Type: application/json" \
+     -d '{"allowed_origins": ["https://example.co.ke", "https://www.example.co.ke"]}'
+   ```
+
+2. Start it once, as early as possible in the page:
+
+   ```ts
+   import { init, captureException } from "./nightjar";
+   init({ hub: "https://nightjar.yourdomain", key: "<public_key>", release: "v1.4.2" });
+   ```
+
+3. Uncaught errors go as warnings, which reach the digest and never wake you. For the ones that matter, such as
+   a failed checkout, escalate on purpose: `captureException(err, "error")`.
+
+For TypeScript it type-checks under `--strict`. For plain JavaScript, compile it once with `tsc` or `esbuild`.
+Origins are scheme and host only: no path, no wildcard, `http://` only for `localhost`.
 
 ---
 

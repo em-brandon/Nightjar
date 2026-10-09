@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    database_url: str = "postgresql+asyncpg://hub:hub@localhost:5432/hub"
+    database_url: str = "postgresql+asyncpg://hub:hub@localhost:5432/nightjar"
     verify_signatures: bool = False
     spike_threshold: int = 50
     spike_window_min: int = 10
@@ -36,6 +36,13 @@ class Settings(BaseSettings):
     # Shared secret for the presence tap (POST /presence, from an iOS Shortcuts NFC automation).
     # Empty disables the route. Generate one with: openssl rand -base64 24
     presence_token: str = ""
+    # Browser reporting (POST /ingest/browser/{public_key}) has no secret to prove who is calling,
+    # so it is bounded instead: per key, per visitor, and how many NEW issues one site may open
+    # from browsers in an hour. A flood of varied junk is the one thing fingerprinting cannot
+    # collapse, and once alerting exists every new issue is a possible notification.
+    browser_rate_per_key_min: int = 120
+    browser_rate_per_ip_min: int = 20
+    browser_new_issues_per_hour: int = 10
 
 
 settings = Settings()

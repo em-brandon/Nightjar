@@ -1,5 +1,6 @@
 import { ago, fmtPct, plural, send } from "../hooks.js";
 import { readiness } from "../promotion.js";
+import { unwatched } from "../monitoring.js";
 import { backupView, hostView, netView, presenceView } from "../home.js";
 import { label, mediaState } from "../media.js";
 import { Dot, Empty, Odometer, Pill, Sev, SiteCard, Spark } from "../ui.jsx";
@@ -13,6 +14,8 @@ const mean = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : nu
 export function Verdict({ prod, hubError, updatedAt, now }) {
   const down = prod.filter((s) => s.state === "down").length;
   const warn = prod.filter((s) => s.state === "warn").length;
+  // silence must not read as all-clear: a site nothing checks cannot be called quiet
+  const blind = unwatched(prod).length;
 
   let tone = "ok";
   let headline = "All quiet";
@@ -29,6 +32,9 @@ export function Verdict({ prod, hubError, updatedAt, now }) {
   } else if (warn) {
     tone = "warn";
     headline = `${plural(warn, "site needs", "sites need")} a look`;
+  } else if (blind) {
+    tone = "warn";
+    headline = `${plural(blind, "site isn't", "sites aren't")} being checked`;
   }
 
   let sub = `${plural(prod.length, "production site", "production sites")} · updated ${ago(updatedAt, now)}`;
@@ -269,8 +275,14 @@ export default function Overview({ f }) {
         <h2>Site checks</h2>
         <span className="count">production · probed every minute</span>
       </div>
+      {unwatched(prod).length > 0 && (
+        <p className="unwatched" role="alert">
+          Not being checked: <b>{unwatched(prod).join(", ")}</b>. Set a <code>url</code> with{" "}
+          <code>PATCH /api/sites/&lt;id&gt;</code> to start uptime checks.
+        </p>
+      )}
       {prod.length === 0 ? (
-        <Empty>No production sites yet. Run seed.py, then set a url on the site to start checks.</Empty>
+        <Empty>No production sites yet. Create one with POST /api/sites, then give it a url to start checks.</Empty>
       ) : (
         <div className="site-grid">
           {prod.map((s) => (
