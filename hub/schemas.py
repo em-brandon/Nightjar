@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class Frame(BaseModel):
@@ -67,6 +67,53 @@ class SiteHealthOut(BaseModel):
     latency_series: list[int | None]
     # 90 days, oldest first. gap = no checks that day (not "all good").
     ribbon: list[DayState]
+
+
+SITE_NAME = r"^[a-z0-9][a-z0-9-]{1,118}$"
+
+
+def _http_url(v: str | None) -> str | None:
+    # The probe requests this from the VPS, so it must be a plain web address: no file:, no bare host.
+    if v is None:
+        return None
+    v = v.strip()
+    if not v.lower().startswith(("http://", "https://")) or " " in v or len(v) < 10:
+        raise ValueError("url must start with http:// or https://")
+    return v
+
+
+class SiteIn(BaseModel):
+    # lowercase on purpose: a staging site is paired with its production site by name
+    # (<production>-staging), and a pairing that depends on capitalisation is a bug waiting
+    name: str = Field(pattern=SITE_NAME)
+    client: str = Field(min_length=1, max_length=120)
+    contact_email: str | None = Field(default=None, max_length=255)
+    # the media and home hosts are made by their own reporters, never from here
+    env: Literal["production", "staging"] = "production"
+    # None leaves the site unmonitored, which the console says out loud
+    url: str | None = Field(default=None, max_length=500)
+
+    _check_url = field_validator("url")(_http_url)
+
+
+class SitePatch(BaseModel):
+    url: str | None = Field(max_length=500)  # null stops monitoring, and the console says so
+
+    _check_url = field_validator("url")(_http_url)
+
+
+class SiteOut(BaseModel):
+    id: int
+    name: str
+    client: str
+    env: str
+    url: str | None
+
+
+class SiteCreated(SiteOut):
+    # Shown here and nowhere else in the API: these go into the app's environment, not a screenshot
+    ingest_key: str
+    ingest_secret: str
 
 
 class RisingOut(BaseModel):

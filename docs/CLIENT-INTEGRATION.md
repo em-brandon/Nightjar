@@ -23,7 +23,7 @@ Both get harder as the number of client apps grows, which is the point of chunk 
 | **Push check** | A small job inside the client's network fetches the private URL and pushes the result to the hub | Unreachable apps still get an uptime ring, latency and a 90-day ribbon | No |
 | **Heartbeat** | An app or cron job pings the hub every N minutes. The hub alerts when the pings stop | Detects a dead host or network, which a probe from inside cannot | No |
 | **Monitoring warning** | A site with no `url` and no pushed checks is flagged on the Overview | "Forgot to set the URL" | No |
-| **Add-site form** | Create a site and set its URL from the console, no SQL | Setup friction | No |
+| **Add-site form** | Create a site and set its URL from the console, no SQL | Setup friction | API yes (`POST /api/sites`, `PATCH /api/sites/{id}`); form no |
 | **`nightjar` CLI** (npm) | `deploy`, `heartbeat`, `check` for CI and cron, and `add-site` for the operator | Installing on each client | No |
 | **Node and Python libraries** | The error reporter for Node apps, and `reporter.py` packaged for PyPI | Non-Python apps have no reporter | No |
 | **`nightjar.sh`** | The same calls in POSIX shell with `curl` and `openssl`, no runtime needed | Hosts without Node or Python, and anyone who wants to read every line | No |

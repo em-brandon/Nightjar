@@ -236,8 +236,9 @@ stop and logs live in Dockge over Tailscale. A reporter that has gone quiet is s
 silent`, never as healthy.
 
 A site with no `url` is not monitored: it still reports crashes but has no ring
-or ribbon. Sites are created by `seed.py`; set `url` with SQL until the chunk 4b
-onboarding CLI exists.
+or ribbon. Sites are created with `POST /api/sites` (console token; returns the ingest key and secret once)
+and `PATCH /api/sites/{id}` sets or clears the `url`. No SQL. A staging site must be named
+`<production>-staging`, which is how promotion pairs them. `seed.py` remains for the first demo site.
 
 The **idle screen** (`#/idle`, `console/src/views/Idle.jsx`) starts by itself after 5
 minutes with no input and doubles as the wall display. Two production sites at a
@@ -311,6 +312,7 @@ hub/
   api.py           read-only console feeds: issues, site health, rising errors
   probe.py         uptime checker loop, writes checks
   incidents.py     issue actions + audit log
+  sites.py         create a site, set its url: POST/PATCH /api/sites
   tickets.py       client requests
   deploys.py       CI deploy reports
   stacks.py        staging stack reports in, /api/stacks out
