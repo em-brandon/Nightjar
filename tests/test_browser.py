@@ -10,6 +10,8 @@ not a well-behaved page can and cannot do.
 import asyncio
 import json
 import os
+import shutil
+import subprocess
 import sys
 import unittest
 import uuid
@@ -143,6 +145,36 @@ class BrowserIngest(unittest.IsolatedAsyncioTestCase):
             payload = (await conn.execute(text("SELECT payload FROM events"))).scalar()
         self.assertNotIn("SECRET", json.dumps(payload))
         self.assertEqual(payload["request"]["url"], "https://birdbox.example/cart")
+
+    @unittest.skipUnless(shutil.which("node"), "node is not installed")
+    async def test_what_the_real_reporter_sends_is_accepted_and_grouped(self):
+        """The contract between client/browser/nightjar.ts and this route: run the real reporter
+        under Node, feed its output to the hub, and check a rebuild is still one issue."""
+        script = """
+        import { createReporter } from './client/browser/nightjar.ts';
+        const out = [];
+        const r = createReporter({ hub: 'https://h.example', key: 'K', release: 'v1' },
+          { send: (u, b) => out.push(b), now: () => 0, page: () => 'https://birdbox.example/cart?x=1', origin: () => 'https://birdbox.example' });
+        for (const hash of ['3fa9c1B2', 'Zq81mK0p']) {
+          const e = new TypeError('x is undefined');
+          e.stack = `TypeError: x
+    at render (https://birdbox.example/assets/index-${hash}.js:10:5)
+    at run (https://birdbox.example/assets/index-${hash}.js:30:9)`;
+          r.capture(e);
+          r.capture(new Error('flush the dedupe window'), 'warning'); // distinct, to prove it is not merged in
+        }
+        console.log(JSON.stringify(out));
+        """
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        done = subprocess.run(["node", "--input-type=module", "-e", script], cwd=root, capture_output=True, text=True, timeout=60)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        bodies = json.loads(done.stdout.strip().splitlines()[-1])
+        self.assertGreaterEqual(len(bodies), 2, bodies)
+        for body in bodies:
+            r = await self.send(None, raw=body.encode())
+            self.assertEqual(r.status_code, 202, f"{r.text} for {body}")
+        titles = [row.title for row in await self.issues()]
+        self.assertEqual(sum(t.startswith("TypeError") for t in titles), 1, titles)
 
     # ---- who may call ---------------------------------------------------------------------
 
