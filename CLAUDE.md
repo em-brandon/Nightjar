@@ -214,6 +214,7 @@ Data flows, all real tables:
 | Stacks | `client/stack_reporter.py` on the staging host *pushes* to `POST /ingest/{key}/stack` | `/api/stacks` |
 | Stack problems | degraded, restart loop, memory over 85%, host disk under 10% | an issue, **edge-triggered** (only when it starts), which **resolves itself** after 10 healthy minutes |
 | Home host | `client/home_reporter.py` on the ThinkCentre *pushes* CPU temperature, disk, memory, backup age and an hourly internet speed test to `POST /ingest/{key}/home` | `/api/home`, a dashboard tile and the idle screen's header icons (with live numbers and hover tooltips) |
+| Server errors, any stack | `client/reporter.py` (FastAPI), `client/node`, `client/php`, `client/java`, signed with the site's ingest secret | `POST /ingest/{key}/event`. The same contract in every language (`docs/REPORTERS.md`), proven by `tests/test_server_reporters.py` |
 | Browser errors | `client/browser/nightjar.ts` in a site's page, with the site's *public* key | `POST /ingest/browser/{public_key}`: no HMAC, so Origin-checked, rate limited, level clamped (never P1) and capped at 10 new issues an hour per site. Same issues list |
 | Home media | `client/jellyfin_reporter.py` on the ThinkCentre *pushes* Jellyfin's sessions to `POST /ingest/{key}/media` | `/api/media`, `/api/media/history`, the Media tab and an idle-screen panel |
 
@@ -331,6 +332,7 @@ console/           Vite + React 19 UI: src/views/* is one file per tab
 client/
   reporter.py      the whole "SDK" — drop into any managed FastAPI app
   browser/nightjar.ts  the browser reporter: one dependency-free file, public key only (docs/KEYS.md)
+  node/nightjar.ts, php/Nightjar.php, java/Nightjar.java  server reporters: dependency-free, signed with the ingest secret (docs/REPORTERS.md)
   thermal_probe.py host thermals as ordinary tickets
   stack_reporter.py runs on the staging host, pushes Docker stack state to the hub
   jellyfin_reporter.py runs beside Jellyfin, pushes who is streaming what to the hub

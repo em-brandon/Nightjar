@@ -571,9 +571,10 @@ Compose with Caddy in front**, which hides the language differences behind conta
 to Nightjar with the deploy webhook (`running`, then `success` or `failed`). Each staging stack is a site
 with `env=staging` and a `url`, so it gets the same uptime checks and appears on the Staging tab.
 
-**Other stacks need a reporter.** [`client/reporter.py`](client/reporter.py) is Python only. A Node or Java
-app needs either the Sentry SDK forwarding by webhook, or a small client posting to
-`/ingest/{key}/event`. The uptime probe and deploy reports work for any language.
+**Reporters.** [`client/reporter.py`](client/reporter.py) covers FastAPI, and there is one dependency-free file
+each for [Node](client/node/nightjar.ts), [PHP](client/php/Nightjar.php), [Java](client/java/Nightjar.java) and
+[web pages](client/browser/nightjar.ts). They share one contract, described in
+[`docs/REPORTERS.md`](docs/REPORTERS.md). The uptime probe and deploy reports work for any language.
 
 ### Seeing and controlling stacks
 
@@ -1033,6 +1034,7 @@ job is narrow: deduplicate, decide, deliver.
 | [`docs/CLIENT-INTEGRATION.md`](docs/CLIENT-INTEGRATION.md) | Planned: push checks, heartbeats and an npm CLI for client apps, and the supply-chain rules for publishing it |
 | [`DEPLOY.md`](DEPLOY.md) | Getting onto a VPS |
 | [`INTEGRATE.md`](INTEGRATE.md) | Wiring in client apps, uptime monitors, Sentry and Gitea |
+| [`docs/REPORTERS.md`](docs/REPORTERS.md) | The reporter for each stack (Python, Node, PHP, Java, browser), the shared contract and how they are tested |
 | [`docs/KEYS.md`](docs/KEYS.md) | Every key, secret and token: what it does, who holds it, what a leak costs, with diagrams |
 | [`docs/TYPESCRIPT-MIGRATION.md`](docs/TYPESCRIPT-MIGRATION.md) | Planned: moving the console to TypeScript, with API types generated from the hub's schemas |
 | [`mockups/`](mockups/) | Working HTML: console, wall display, boot splash, detail drawer |

@@ -53,6 +53,8 @@ flowchart LR
 ## Signed ingest: servers, CI and reporters
 
 Everything that runs on a machine you or the client control uses the **ingest key** and the **ingest secret**.
+That includes the server reporters in `client/` (Python, Node, PHP and Java), which read `NIGHTJAR_URL` (the hub),
+`NIGHTJAR_KEY` and `NIGHTJAR_SECRET`. See [`REPORTERS.md`](REPORTERS.md).
 
 ```mermaid
 sequenceDiagram

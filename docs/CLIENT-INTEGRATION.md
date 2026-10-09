@@ -25,7 +25,8 @@ Both get harder as the number of client apps grows, which is the point of chunk 
 | **Monitoring warning** | A site with no `url` and no pushed checks is flagged on the Overview | "Forgot to set the URL" | No |
 | **Add-site form** | Create a site and set its URL from the console, no SQL | Setup friction | API yes (`POST /api/sites`, `PATCH /api/sites/{id}`); form no |
 | **`nightjar` CLI** (npm) | `deploy`, `heartbeat`, `check` for CI and cron, and `add-site` for the operator | Installing on each client | No |
-| **Node and Python libraries** | The error reporter for Node apps, and `reporter.py` packaged for PyPI | Non-Python apps have no reporter | No |
+| **Node, PHP and Java reporters** | One dependency-free file each: `client/node`, `client/php`, `client/java` | Non-Python apps had no reporter | **Yes**, copied in. See [`REPORTERS.md`](REPORTERS.md) |
+| **Packages on npm and PyPI** | The same files published, so a fix is one `update` | Editing N copies | No: still copying, until the third or fourth app |
 | **Browser reporter** | `client/browser/nightjar.ts`: uncaught page errors, with a public key and no secret | Sites with no backend (Bird Box) and every site's frontend | **Yes**, see [`KEYS.md`](KEYS.md) |
 | **`nightjar.sh`** | The same calls in POSIX shell with `curl` and `openssl`, no runtime needed | Hosts without Node or Python, and anyone who wants to read every line | No |
 
