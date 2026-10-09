@@ -9,3 +9,6 @@ dist/
 
 # ingest keys and secrets printed when sites are created: never commit
 .site-keys
+
+# a JDK unpacked here by an editor extension: never source
+client/java/oracleJdk-*/
