@@ -933,6 +933,7 @@ job is narrow: deduplicate, decide, deliver.
 | [`DEPLOY.md`](DEPLOY.md) | Getting onto a VPS |
 | [`INTEGRATE.md`](INTEGRATE.md) | Wiring in client apps, uptime monitors, Sentry and Gitea |
 | [`docs/KEYS.md`](docs/KEYS.md) | Every key, secret and token: what it does, who holds it, what a leak costs, with diagrams |
+| [`docs/TYPESCRIPT-MIGRATION.md`](docs/TYPESCRIPT-MIGRATION.md) | Planned: moving the console to TypeScript, with API types generated from the hub's schemas |
 | [`mockups/`](mockups/) | Working HTML: console, wall display, boot splash, detail drawer |
 
 ---
