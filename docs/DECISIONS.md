@@ -1144,3 +1144,35 @@ because hand-built JSON is where escaping goes wrong.
 **Not verified:** the Laravel, WordPress and Spring snippets in `REPORTERS.md` use those frameworks' documented hooks
 but have not been run against a real install. PHP has one exception handler and the last one set wins, so `install()`
 must come after the app sets its own, or the app's handler must call `captureException()`; a test pins that limit.
+
+---
+
+## 53. Caddy stays in front of the hub; nginx was considered and is not needed
+
+**Decision:** the hub keeps Caddy as its web server and sole ingress, including when the client sites move behind
+Cloudflare's free plan. nginx was proposed (2026-10-09) and then set aside by the operator once it was clear there was no
+concrete need for it, only an impression that it is the better-known choice.
+
+**Why Caddy is the right fit here.** It gets and renews certificates by itself, which is why it was chosen in the first
+place (`FULL-DESIGN.md`). That matters twice over with Cloudflare: the hub's own hostname is DNS-only, so it cannot use a
+Cloudflare Origin CA certificate and needs a public one, and with nginx that means `certbot` and a renewal job whose
+failure is a silent outage about 90 days later. The ingress is also the one component every alert path crosses, so
+changing it without a reason is a risk with nothing to gain.
+
+**What nginx would have given us.** Built-in rate limiting. Tested here, Caddy has none: 60 quick requests to the browser
+route all passed, where nginx with `limit_req` answered 429 after about 30 (it answers 503 unless
+`limit_req_status 429` is set). The hub's own limits (decision #50) are the brake instead, which is enough at this scale.
+
+**Rejected:**
+
+- **Switching now.** Work and risk for a feature the hub already covers in its own code.
+- **Running both**, nginx for client sites and Caddy for the hub. Two proxies to patch and two places for TLS to fail.
+
+**Revisit if** client PHP or WordPress sites are to be hosted on this VPS directly, a client app needs an nginx-only
+feature, or the missing rate limit starts to matter. A tested nginx starting config for the hub is in the history of
+`docs/CLOUDFLARE.md` at commit `a19ea81`.
+
+**What changes now:** `docs/CLOUDFLARE.md` carries two small, tested additions for `deploy/Caddyfile`: cap the request
+body, and strip `CF-Connecting-IP` and `True-Client-IP` on the DNS-only hub hostname, because `hub/browser.py` reads the
+first of them for its per-visitor limit and a direct caller could otherwise fake it. They are not applied to the
+Caddyfile yet.
