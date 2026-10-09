@@ -1,7 +1,8 @@
-# Data protection (planned)
+so# Data protection (planned)
 
-> **Status: planned, not started.** This records what is and is not encrypted today, and the four changes that are planned:
-> two small ones, then encrypted backups and derived secrets. The rest is listed so it is not forgotten, and is not committed to.
+> **Status: planned, not started.** This records what is and is not encrypted today, and the eight changes that are
+> planned: two small ones, encrypted backups, derived secrets, a secret scanner, secrets as mounted files, an audit trail and a leak
+> runbook. The rest is listed so it is not forgotten, and is not committed to.
 
 ## Where things stand
 
@@ -103,6 +104,64 @@ with the rotate endpoint.
 derived and legacy sites, and that rotating invalidates the old secret; `docs/KEYS.md` is updated; and a production hub
 refuses to start without the master key.
 
+### 5. A secret scanner before every commit
+
+**Problem.** Nothing stops a real secret being committed. `.env` and `.site-keys` are git-ignored, and the history was checked
+by hand before the last push, but that depends on remembering. OWASP's secrets guidance asks for detection at the developer's
+machine, with more than one tool where possible.
+
+**Change.** A pre-commit hook that scans the staged changes, and the same scan in the Gitea pipeline so a commit made without the
+hook is still caught. `detect-secrets` and `gitleaks` are the usual choices and OWASP names `detect-secrets` as mature; pick one
+and check its current setup before relying on it.
+
+**Care needed.** The repository has harmless look-alikes: the `hub:hub` password in `.env.example`, test keys such as `s3cret`,
+and long example tokens in the docs. A baseline or allow list is needed or the hook gets switched off, which is worse than none.
+
+**Done when:** a deliberately fake secret in a throwaway commit is blocked, the existing history scans clean, and the allow list
+is short and commented.
+
+### 6. Production secrets as mounted files, not environment variables
+
+**Problem.** `docker-compose.yml` takes `POSTGRES_PASSWORD` and `CONSOLE_TOKEN` from `.env` as environment variables. OWASP rates
+environment variables as a last resort: they show up in `docker inspect`, in process listings and in crash dumps.
+
+**Change.** Compose `secrets:` that mount each value as a file with strict permissions under `/run/secrets`. The hub reads them
+through `pydantic-settings`' `secrets_dir`, and the official Postgres image already reads `POSTGRES_PASSWORD_FILE`. Local development
+keeps using `.env`.
+
+**Care needed.**
+- `DATABASE_URL` has the password inside it, so production must build it from the parts or read it from a file.
+- The hub already refuses to start in production without a console token. That check must still hold when the token comes from a file.
+
+**Done when:** a production-shaped Compose file runs with no secret in `.env` and none visible in `docker inspect`, the hub still
+refuses to start without them, and `DEPLOY.md` says how to create the files.
+
+### 7. An audit trail for sites and secrets
+
+**Problem.** Issue actions are logged ("who muted that, and why is it quiet?"). Creating a site, changing its URL or browser origins,
+and above all rotating a secret leave no record, so "who changed that and when?" has no answer.
+
+**Change.** An append-only `audit_log` table (what, which site, when, and who, which is just "the console" while there is one
+token) for site creation, URL and origin changes, secret rotation and revocation. **It never stores a secret value.**
+
+**Care needed.** OWASP asks that audit logs resist tampering. The hub offers no way to edit or delete rows, and a copy should
+leave the machine with the backups. Trustworthy timestamps come from the server clock, so the VPS must keep time in sync.
+
+**Done when:** each of those actions writes a row, a test proves no row ever contains a secret, and the console can show the
+trail for a site.
+
+### 8. A runbook for a leaked secret
+
+**Problem.** `docs/KEYS.md` says what each leak costs and gives one SQL statement for rotation, but there is no single set of
+steps to follow under stress, and none has been practised.
+
+**Change.** A short runbook in `KEYS.md`, in the order OWASP gives: **revoke** the exposed secret, **rotate** it and update the app,
+**delete** it from wherever it was exposed (a commit, a log, a chat, a screenshot), then **record** what happened. It is written
+for each credential: ingest secret, browser key, console token, presence token.
+
+**Done when:** the steps are written, and have been tried once for real by rotating one site's secret with the apps updated and the
+old secret refused. Doing this together with the rotate endpoint (items 4 and the onboarding plan) saves a second round of work.
+
 ## Considered, not planned
 
 These came up in the same conversation. None is decided.
@@ -138,3 +197,10 @@ operator and a lot with many customers (decision #54), where the hub would other
 
 **A middle path** if the hub ever holds many customers' secrets: keep HMAC, but store each secret encrypted with a key held
 outside the database, so a database leak alone is not enough.
+
+## Source
+
+The secret-handling items follow the [OWASP Secrets Management Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html),
+read in October 2026: central and least-privilege handling, regular and automated rotation, keys not stored beside the data they
+protect, environment variables as a last resort, CI treated as production, secrets never logged, tamper-resistant audit logs,
+leak detection early, and revoke then rotate then delete then record when one leaks.
