@@ -43,6 +43,8 @@ Named for a bird that only becomes active after dark, which is when this system 
   - [Prove it works](#prove-it-works)
   - [Tests and migrations](#tests-and-migrations)
 - [Wiring up apps](#wiring-up-apps)
+  - [Reporters by stack](#reporters-by-stack)
+  - [Deploys](#deploys)
 - [Deploying](#deploying)
 - [Roadmap](#roadmap)
 - [Known gaps](#known-gaps)
@@ -918,11 +920,124 @@ If it has drifted, the hub refuses to start and says so, rather than declaring a
 
 ## Wiring up apps
 
-**Crash reports.** Copy [`client/reporter.py`](client/reporter.py) into any FastAPI app you manage and call
-`install_reporter(app, url, secret)`. That is the whole integration. It must never break the app it
-reports on: every outbound call is wrapped and swallowed, with a short timeout and no retry pile-up.
+### Reporters by stack
 
-**Deploys.** Add one step to the end of a pipeline, using the site's ingest key:
+A **reporter** is a small file inside a client's app that sends its errors to the hub. There is one for each stack. Each
+is a single file with no dependencies that you copy in, and all of them follow the rule in `client/reporter.py`: **it must
+never break the app it reports on.** Every path is wrapped and swallowed, a send has a short timeout and no retry, and
+nothing can queue without a limit. Details, the shared wire format and the levels are in
+[`docs/REPORTERS.md`](docs/REPORTERS.md). Which key each one holds is in [`docs/KEYS.md`](docs/KEYS.md).
+
+| Stack | Reporter | Credential | Install |
+|---|---|---|---|
+| Python: FastAPI | [`client/reporter.py`](client/reporter.py) | ingest secret | `install_reporter(app, url, secret)` |
+| Python: Django | a middleware snippet in [`INTEGRATE.md`](INTEGRATE.md) | ingest secret | add to `MIDDLEWARE` |
+| Node: Express | [`client/node/nightjar.ts`](client/node/nightjar.ts) | ingest secret | `init()` and one middleware |
+| PHP: plain, Laravel, WordPress | [`client/php/Nightjar.php`](client/php/Nightjar.php) | ingest secret | `Reporter::install([...])` |
+| Java: Spring and others | [`client/java/Nightjar.java`](client/java/Nightjar.java) | ingest secret | `Nightjar.init()` |
+| Web pages: React, Astro, Vite, plain JS | [`client/browser/nightjar.ts`](client/browser/nightjar.ts) | **public key, no secret** | `init({ hub, key })` |
+| Static site with no code | none needed | none | the uptime probe covers it |
+
+The first five run on a **server** and hold the site's ingest secret, so they never go in a web page. A page cannot keep
+a secret, so it uses its own route and its own key.
+
+#### Python: FastAPI and Django
+
+```python
+from reporter import install_reporter
+install_reporter(app, url="https://nightjar.example.co.ke/ingest/<key>/event", secret=os.environ["NIGHTJAR_SECRET"])
+```
+
+This is the original reporter. It takes the full event URL; the others take the hub's address and the key separately.
+Unhandled errors are reported and the visitor still gets a clean 500. Django uses a middleware, shown in `INTEGRATE.md`.
+
+#### Node: Express
+
+```ts
+import { init, expressErrorHandler, installProcessHandlers } from "./nightjar";
+
+init();                          // reads NIGHTJAR_URL, NIGHTJAR_KEY, NIGHTJAR_SECRET
+installProcessHandlers();        // report a crash that kills the process
+// ... your routes ...
+app.use(expressErrorHandler());  // after the routes; it reports, then calls next(err)
+```
+
+- Your own error handler still sends the response, and a crash still exits with code 1.
+- A process crash is the one thing reported as `fatal` (P1), because the whole service is gone.
+- Only Express has a ready-made middleware. For Fastify, Koa or anything else, call `captureException(err)` from that
+  framework's error hook.
+- Node 18 or newer. It runs directly on Node 22.18 and up; on older Node, compile it with `tsc` or `esbuild`.
+
+#### PHP: plain PHP, Laravel and WordPress
+
+```php
+require __DIR__ . '/Nightjar.php';
+\Nightjar\Reporter::install(['hub' => 'https://nightjar.example.co.ke', 'key' => '<ingest key>', 'secret' => '<ingest secret>']);
+```
+
+- PHP 7.4 or newer, using `curl` if it is there and plain streams if not.
+- Reports are sent when the request ends, and under PHP-FPM after the response has gone out, so a slow hub costs the
+  visitor nothing. After a failed send, nothing is sent for 30 seconds.
+- **Pass the options in code.** PHP-FPM clears environment variables by default, so `NIGHTJAR_*` may be empty there.
+- **Call `install()` after the app sets its own exception handler.** PHP keeps only the last one.
+- **Laravel:** report from `$exceptions->report(...)` in `bootstrap/app.php`. **WordPress:** a must-use plugin. Both
+  snippets are in `docs/REPORTERS.md` and **have not been run against a real install**, so try them on staging first.
+
+#### Java: Spring and others
+
+```java
+Nightjar.init();                    // reads NIGHTJAR_URL, NIGHTJAR_KEY, NIGHTJAR_SECRET
+Nightjar.installUncaughtHandler();  // report a thread that dies
+Nightjar.captureException(e);       // an exception you caught yourself
+```
+
+- Java 11 or newer, JDK only. Reports go through one daemon thread behind a queue of five, so the JVM exits freely and a
+  hung hub costs the app nothing.
+- **A wrapped exception is reported as its root cause**, with the wrappers listed alongside, because a wrapper's own stack
+  trace only points at the wrapping.
+- **Names that change on every start** (CGLIB proxies, lambdas) are normalised, so a restart does not make every error new.
+- **Spring:** a `HandlerExceptionResolver` that reports and then declines to handle the exception is in `docs/REPORTERS.md`.
+  It **has not been run against a real Spring application**.
+
+#### Web pages: React, Astro, Vite and plain JavaScript
+
+```ts
+import { init, captureException } from "./nightjar";
+init({ hub: "https://nightjar.example.co.ke", key: "<the site's public key>", release: "v1.4.2" });
+```
+
+First list the pages allowed to report, which makes the public key:
+`PATCH /api/sites/<id>` with `{"allowed_origins": ["https://example.co.ke", "https://www.example.co.ke"]}`.
+
+- **The key is public by design.** It can only report errors for its own site, only from the listed origins, and never as
+  P1. The Origin check stops other websites but not `curl`, so the hub also rate limits and caps the number of new
+  issues a site can open from browsers in an hour.
+- **Quiet by default.** Uncaught page errors go as warnings, which reach the morning digest and never wake you. Escalate
+  on purpose with `captureException(err, "error")` for something like a failed checkout.
+- It drops browser quirks, extension errors and errors that happened only in other people's scripts, and sends the same
+  error at most once in ten minutes.
+
+#### Which reporter for which app
+
+| Client app | Server errors | Page errors |
+|---|---|---|
+| StoryPro Film (Astro, FastAPI backend) | Python reporter | browser reporter |
+| Kubasu Motors (React, FastAPI backend) | Python reporter | browser reporter |
+| Bird Box Systems (vanilla TypeScript and React, no backend) | none, there is no server | browser reporter |
+
+If the Astro site renders on a server rather than being built to static files, its server-side errors can use the Node
+reporter as well.
+
+#### Testing the reporters
+
+`python -m unittest tests.test_server_reporters -v` runs every server reporter for real against the real hub with signature
+checking on, and crashes real PHP processes against a local server. A runtime that is not installed is skipped by name.
+Each reporter also has its own suite: `node client/node/nightjar.test.mjs`, `php client/php/test.php`, and the Java test
+described in `docs/REPORTERS.md`.
+
+### Deploys
+
+Add one step to the end of a pipeline, using the site's ingest key:
 
 ```bash
 curl -s -X POST "$NIGHTJAR_URL/ingest/$NIGHTJAR_KEY/deploy" \
