@@ -49,6 +49,9 @@ monitoring.
 
 Everything else waits.
 
+**Planned, not started:** moving the console to TypeScript, with API types generated from the hub's own schemas.
+Plan and order in `docs/TYPESCRIPT-MIGRATION.md`. Until it lands, write new console files as `.ts` or `.tsx`.
+
 ---
 
 ## Architecture

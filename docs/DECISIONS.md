@@ -1061,3 +1061,30 @@ one build's errors look new. Python frames hash exactly as before.
 reads the address from `CF-Connecting-IP` or `X-Forwarded-For`, which a caller can fake; the per-key limit and
 the new-issue cap still hold. A page's own errors are reported only while the visitor's browser runs the script,
 so a page that never loads reports nothing. The uptime probe covers that case.
+
+---
+
+## 51. The console moves to TypeScript, later, with its types generated from the hub
+
+**Decision:** the console (React, plain `.jsx`) will be migrated to TypeScript as planned future work, in
+`docs/TYPESCRIPT-MIGRATION.md`. It is not started. New console files are written as `.ts` or `.tsx` from now on,
+which needs only a small tooling step first.
+
+**Why:** the console reads about a dozen JSON shapes from the hub and nothing checks that the two agree. The rules
+that stop silence reading as all-clear (a silent probe, a silent stack reporter, a stale media snapshot) each depend
+on a particular field, so a renamed field would produce a wrong verdict quietly. With generated types that is a
+compile error instead. The browser reporter is already TypeScript, which showed the toolchain works here.
+
+**Types come from the hub, not by hand.** The hub's Pydantic models are the contract, so the plan exports
+`app.openapi()` to a committed snapshot, generates the TypeScript from it, and adds a Python test that fails when
+the snapshot is stale. A hub change that the console has not caught up with then fails the existing suite.
+
+**Rejected:**
+
+- **Writing the types by hand.** Two copies of one contract drift, and the drift is silent, which is the failure
+  this exists to prevent.
+- **Runtime validation (zod and similar).** The API is same-origin and ours. Validation adds weight to a screen
+  that runs all day on a wall for a risk that types already cover.
+- **Doing it now.** About 4,000 lines in 30 files, with no behaviour to gain. It waits until the Gitea CI work, so a
+  CI job can run the type check and the drift test on every push.
+- **Migrating in one commit.** It goes phase by phase, one view per commit, with the app working after each.
