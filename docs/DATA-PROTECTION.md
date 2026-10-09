@@ -1,7 +1,7 @@
 # Data protection (planned)
 
-> **Status: planned, not started.** This records what is and is not encrypted today, and the two small changes that are
-> planned. The rest is listed so it is not forgotten, and is not committed to.
+> **Status: planned, not started.** This records what is and is not encrypted today, and the four changes that are planned:
+> two small ones, then encrypted backups and derived secrets. The rest is listed so it is not forgotten, and is not committed to.
 
 ## Where things stand
 
@@ -53,11 +53,60 @@ exposes the console login.
 **Done when:** `curl -I` against the hub shows the header, and the change was tried on Caddy in a throwaway container the way
 the other Caddyfile additions in `docs/CLOUDFLARE.md` were.
 
+### 3. Encrypt backups before they leave the machine
+
+**Problem.** `deploy/backup.sh` writes a gzip of the whole database, which holds every site's ingest secret and all the
+error text. The optional `rclone` copy goes to the remote readable unless that remote encrypts. A backup is the likeliest
+place for a copy to escape, so this comes before the other secret-protection work.
+
+**Change.** Encrypt the dump before it is written or copied, and choose one tool:
+- **`age` with a public key.** The server holds only the public key, so a stolen server cannot read its own backups. It
+  adds one small tool.
+- **`rclone crypt`.** It wraps the existing `RCLONE_REMOTE`, so the off-site copy is encrypted with no new tool, but the
+  local copy under `/var/backups` would still be readable unless it is encrypted too.
+
+**Care needed.**
+- **Key custody.** The key that decrypts must live somewhere other than the VPS, such as a password manager. Lose it and the
+  backups are useless, and the failure only shows up on the day you need them.
+- The script already says it: *a backup you have never restored is a hypothesis*. Encrypting adds a way to fail, so the test is
+  a real restore from an encrypted file onto a clean database.
+
+**Done when:** the script writes encrypted files, a restore from one has been done and checked, and `DEPLOY.md` says how
+to hold the key.
+
+### 4. Derive each site's secret instead of storing it (before other people's secrets are stored)
+
+**Problem.** The hub keeps every ingest secret readable in the database, because verifying a signature needs the secret
+itself (a hash is no use, unlike a password). A leaked database therefore lets an attacker forge reports as every site. See
+"Where things stand".
+
+**Change.** The hub keeps **one master key in its environment, never in the database**, and works out each site's secret
+from it: roughly `HMAC-SHA256(master, "nightjar-site-secret-v1|" + site_id + "|" + version)`. The apps keep a secret string
+exactly as now, so **no reporter changes**. A database leak alone then exposes nothing.
+
+**What it needs.**
+- a `SECRET_MASTER_KEY` setting that production refuses to start without, as it does for `CONSOLE_TOKEN`;
+- a `secret_version` column (a migration), where rotating a site's secret is bumping its version;
+- existing sites keep their stored secret and keep verifying until they are rotated, so nothing breaks on the day;
+- the rotate endpoint already planned in `docs/ONBOARDING-DASHBOARD.md` (`POST /api/sites/{id}/rotate-secret`) is the natural
+  place for the version bump, so the two are built together.
+
+**Trade-offs.**
+- **The master key becomes the thing to protect.** Leaked, it exposes every site at once; lost, every app has to be given a
+  new secret. It must be backed up separately from the database.
+- It protects the database, not the machine: an attacker who can read the hub's environment has the master key.
+
+**Not urgent for one operator.** It matters when other people's secrets are held (decision #54, step 3). Do it before then, and
+with the rotate endpoint.
+
+**Done when:** tests show the derivation is stable, differs per site and per version, that verification works for both
+derived and legacy sites, and that rotating invalidates the old secret; `docs/KEYS.md` is updated; and a production hub
+refuses to start without the master key.
+
 ## Considered, not planned
 
 These came up in the same conversation. None is decided.
 
-- **Encrypt backups** before they leave the machine (rclone's `crypt` remote, or `age`).
 - **Disk encryption** for the database volume, or a VPS that offers it.
 - **A scrubbing option** for personal data in error messages (emails, ID numbers). Error text is stored as the app wrote it.
   Worth doing before other people's data is stored (decision #54).
@@ -65,7 +114,7 @@ These came up in the same conversation. None is decided.
 
 ### Asymmetric signing, in brief
 
-Today the app and the hub share one secret, and the hub stores it readable so it can check each signature. With a key pair
+Today the app and the hub share one secret, and the hub stores it readable so it can check each signature. (Planned work 4 above reduces that risk without changing the reporters.) With a key pair
 the app signs with a **private** key that never leaves it, and the hub keeps only the **public** key, which can verify but
 cannot forge.
 
