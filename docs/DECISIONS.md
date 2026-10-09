@@ -1088,3 +1088,59 @@ the snapshot is stale. A hub change that the console has not caught up with then
 - **Doing it now.** About 4,000 lines in 30 files, with no behaviour to gain. It waits until the Gitea CI work, so a
   CI job can run the type check and the drift test on every push.
 - **Migrating in one commit.** It goes phase by phase, one view per commit, with the app working after each.
+
+---
+
+## 52. Server reporters for Node, PHP and Java: copied in, one contract, never breaking the app
+
+**Decision:** each stack in use gets a reporter that is one file with no dependencies, copied into the client's
+repository: `client/node/nightjar.ts`, `client/php/Nightjar.php`, `client/java/Nightjar.java`. They send the same
+signed request to `POST /ingest/{key}/event` as `client/reporter.py`, so the hub needed no change. The contract,
+the levels and the install steps are in `docs/REPORTERS.md`, and `tests/test_server_reporters.py` runs every
+reporter for real against the real hub with signature checking on.
+
+**Copied, not published.** This keeps decision #20: below three or four apps, copying is less work than maintaining
+packages, and a reporter with no dependencies leaves nothing upstream to poison while it holds a client's secret.
+Publishing to npm, Packagist and Maven Central is still the later step, and the files are shaped to be published
+as they are.
+
+**Every one follows the rule in `client/reporter.py`: it must never break the app.** Everything is wrapped and
+swallowed, a send has a three second timeout and no retry, and nothing can queue without a limit: Node caps sends in
+flight and reports a minute, Java runs one daemon thread behind a queue of five, and PHP holds five reports a request
+and trips a 30 second circuit breaker after a failed send, so a dead hub is not paid for on every request. A crash
+must also behave as it did: after reporting, Node exits 1, PHP fails with its own "Uncaught" fatal error and exit
+code, and Java calls the previous handler or prints the trace as the JVM does. With no configuration at all, none of
+them changes anything.
+
+**Levels follow what actually died.** Only Node's process crash is `fatal` (P1), because the whole service is gone.
+A PHP uncaught exception or fatal error, and a Java thread death, are `error` (P2): one request or one pool thread is
+not the service. Java's is configurable. This applies the first rule in CLAUDE.md: a notification that did not need
+to be sent is a bug.
+
+**Java reports the root cause.** A Spring or servlet wrapper's own stack trace points only at the wrapping, so the
+event carries the deepest cause's type, message and frames, and lists the wrappers under `extra.wrapped_by`. Class
+names that change on every JVM start (CGLIB proxies, lambdas, JDK proxies, generated accessors) are normalised in the
+reporter, as bundler hashes are in the hub (#50), so a restart does not make every error new. This is done in the
+reporter and not in `hub/fingerprint.py` because those names are a Java fact, and the hub stays language-neutral.
+
+**Rejected:**
+
+- **A hand-written `process.on('uncaughtException')`, which `INTEGRATE.md` used to suggest for Node.** Registering any
+  handler stops Node from exiting, so the app keeps running in an undefined state and the crash is hidden. The
+  reporter replaces the exit itself, after a two second flush, and only when nothing else is listening.
+- **Accepting Sentry's wire format at the hub, so any official SDK could report.** It would cover every language at
+  once, but it is a protocol to parse and a weaker auth model, and it bends the rule against rebuilding Sentry. It is
+  a fair option if a third non-Python stack appears. Not now.
+- **One shell script for every stack.** It cannot produce a stack trace, which is what the fingerprint hashes.
+- **Capturing warnings and notices in PHP, or logging calls in Java.** Noise. Uncaught failures and what the app
+  chooses to report are enough.
+
+**Real processes found bugs that unit tests could not.** In PHP, calling `install()` twice made handlers that hand
+the exception to each other forever, and calling `restore_exception_handler()` inside the handler put the handler
+back and looped; both are fixed and covered. The tests also run real PHP crashes against a local server, and send
+text with quotes, newlines and emoji through all five runtimes (Node, Java, and PHP natively, on 7.4 and on 8.3),
+because hand-built JSON is where escaping goes wrong.
+
+**Not verified:** the Laravel, WordPress and Spring snippets in `REPORTERS.md` use those frameworks' documented hooks
+but have not been run against a real install. PHP has one exception handler and the last one set wins, so `install()`
+must come after the app sets its own, or the app's handler must call `captureException()`; a test pins that limit.
