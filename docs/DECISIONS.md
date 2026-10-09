@@ -1238,3 +1238,45 @@ Those wait for step 2.
 - **Competing on price alone.** See above.
 - **Dropping it and using Sentry, Uptime Kuma and Pushover.** That is a legitimate way to get most of the result, and
   the fallback if step 1 does not make the tool worth keeping. It is not chosen because the operator wants the product.
+
+---
+
+## 55. Ingest is signed with a shared secret (HMAC), and the weaknesses that costs are known
+
+**Decision:** a server reporter proves who it is by signing the request body with a per-site **shared secret** using
+HMAC-SHA256, sent as `X-Hub-Signature`. The ingest key in the URL says which site; the signature says it is really them.
+This was built in chunk 1 and never written down. The reasons below are reconstructed now, when the question was asked, and
+are labelled as such.
+
+**Why it fits (reconstructed).**
+- **Forgery matters here.** Once Pushover exists, a fake crash or a fake `fatal` wakes the phone, and the same route family
+  accepts deploys, staging stack state and home server health that the console treats as true. A public key like Sentry's
+  would let anyone who finds it do that. A signature means only the real app can.
+- **A leak is contained.** A leaked secret forges reports for **one** site and reads nothing: the console needs a separate
+  token. It is revoked by changing one value.
+- **Every reporter can do it with its standard library.** `hmac` in Python, `crypto` in Node, `hash_hmac` in PHP,
+  `javax.crypto.Mac` in Java, `openssl dgst -hmac` in a shell. That is what let the reporters have **no dependencies**,
+  which matters because they run with a client's secret (decision #52).
+
+**What it costs, plainly.**
+- **The hub must store each secret readable.** Verifying an HMAC needs the secret itself, so unlike a password it cannot be
+  hashed. A leaked database, or a database backup, therefore exposes every site's secret and lets an attacker forge reports as
+  any site. That is a real weakness, accepted knowingly for a single operator and not acceptable for a product holding many
+  customers' secrets. `docs/DATA-PROTECTION.md` plans the fixes: encrypted backups, then secrets derived from a master key.
+- **The secret is shown once**, so the API never returns it again. That is a policy, not a requirement: it keeps a stolen
+  console token or a screenshot from exposing every site. It costs onboarding friction and makes rotation necessary.
+- **No timestamp is signed**, so a captured request can be replayed. The damage is a duplicate row, not access.
+
+**Considered and not chosen:**
+- **A key pair** (a private key in the app, only the public key in the hub, so a database leak cannot forge). Better against
+  that leak, but Python's standard library has no Ed25519 (it would need the `cryptography` package, breaking the
+  no-dependency rule), Java 11 lacks Ed25519 (it arrived in 15), and onboarding becomes a bigger flow. Revisit for the
+  product phase.
+- **A public key for plain errors, as Sentry does**, bounded by rate limits and the new-issue cap, with the secret kept for
+  state-changing sources (deploys, stacks, home). It removes most onboarding friction. This is how the browser route already
+  works, by necessity (#50). A candidate for step 3 of #54, not now.
+- **A shared secret stored encrypted, or derived from a master key.** Planned, in `docs/DATA-PROTECTION.md`.
+
+**The signing rule stays simple on purpose:** the HMAC is over the exact bytes sent, and `VERIFY_SIGNATURES` is off only for
+local development. With it off, the key alone is enough to post anything, and the hub refuses to start in that state without
+a console token.
