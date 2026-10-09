@@ -365,6 +365,10 @@ Datadog, Jenkins.
 
 Each is a real feature. Each would prevent this shipping this month.
 
+These hold for the personal tool, which comes first. Decision #54 sets a direction of becoming a cheap product for other
+solo developers later, and multi-user auth, a customer-facing status page and some capture depth would then be revisited.
+Not before the tool works for its author and the idea has been tried on a few other people.
+
 Also out of scope: **rebuilding tools that exist.** Sentry or GlitchTip does
 exception capture and webhooks in. Grafana reads the same Postgres for metrics.
 Nightjar's job is narrow — deduplicate, decide, deliver.
