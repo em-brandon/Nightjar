@@ -5,6 +5,7 @@ from fastapi import Depends, FastAPI
 
 from . import auth
 from .api import router as api_router
+from .browser import router as browser_router
 from .config import settings
 from .db import engine
 from .deploys import ingest_router as deploy_ingest_router
@@ -53,6 +54,7 @@ app = FastAPI(title="incident hub", lifespan=lifespan, **docs)
 # the console reads or writes is under /api and needs the console token.
 console = [Depends(auth.require_console)]
 app.include_router(auth.router)
+app.include_router(browser_router)
 app.include_router(ingest_router)
 app.include_router(api_router, dependencies=console)
 app.include_router(incidents_router, dependencies=console)

@@ -24,6 +24,21 @@ class EventIn(BaseModel):
     occurred_at: datetime | None = None
 
 
+class BrowserEventIn(BaseModel):
+    """What a page may send. Narrower than EventIn on purpose: this arrives from code running on
+    anyone's computer, so there is no `fatal`, no free-form `extra`, and every string has a cap."""
+
+    exception_type: str = Field(min_length=1, max_length=200)
+    message: str = Field(default="", max_length=2000)
+    frames: list[Frame] = Field(default_factory=list, max_length=50)
+    # only "warning" is believed; anything else is an error. Never fatal, so a page cannot ask for P1.
+    level: str = Field(default="error", max_length=20)
+    release: str | None = Field(default=None, max_length=80)
+    environment: str = Field(default="production", max_length=40)
+    # the page the error happened on. The query string and fragment are dropped before storing.
+    page: str | None = Field(default=None, max_length=500)
+
+
 class IssueOut(BaseModel):
     id: int
     site: str
