@@ -1,5 +1,5 @@
 import { ArrowDownUp, Banknote, CloudDownload, CloudUpload, Cpu, DatabaseBackup, House, Plane, ThermometerSnowflake, ThermometerSun, Wifi, WifiOff } from "lucide-react";
-import { activityView, backupView, hostView, netView, pairAt, presenceView, rateView, tempsView } from "./home.js";
+import { activityView, backupView, hostView, netView, pairAt, presenceView, rateView, tempsView } from "./home.ts";
 import { Odometer } from "./ui.jsx";
 
 // A few small status icons, like a phone's notification area: an icon with a live number beside it.

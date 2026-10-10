@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { CircleX, Clapperboard, Inbox, FlaskConical, Rocket, TrendingUp, TriangleAlert } from "lucide-react";
 import { ago, plural, tuning, useNow, useReveal } from "../hooks.js";
 import { Odometer, Pill, Sev, SiteCard, Spark } from "../ui.jsx";
-import { requestsView } from "../home.js";
+import { requestsView } from "../home.ts";
 import { label, mediaState } from "../media.ts";
 import { DemoTag, DiskBar } from "./Media.jsx";
 import PushCard from "../PushCard.jsx";

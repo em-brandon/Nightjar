@@ -2,6 +2,13 @@
 // the dashboard. Pure functions, so the judgement calls can be tested without a browser.
 // See home.test.mjs.
 
+import type { HomeSnapshot, Presence, Rates, Ticket } from "./api/types.ts";
+
+type Home = HomeSnapshot | null | undefined;
+
+// Sample data is a snapshot that says so, so nothing that draws it can count it as real.
+export type DemoHome = HomeSnapshot & { demo: true };
+
 export const CPU_HOT_C = 85;
 export const CPU_WARM_C = 80;
 export const DISK_LOW_PCT = 10;
@@ -9,29 +16,29 @@ export const BACKUP_STALE_H = 36;
 // The reporter tests the line hourly. Three hours with no new test means the test has stopped.
 export const SPEED_OLD_MIN = 180;
 
-export const fmtMbps = (m) => (m == null ? "—" : m >= 100 ? String(Math.round(m)) : m.toFixed(1));
+export const fmtMbps = (m: number | null | undefined) => (m == null ? "—" : m >= 100 ? String(Math.round(m)) : m.toFixed(1));
 
-export function fmtAgeH(hours) {
+export function fmtAgeH(hours: number | null | undefined): string {
   if (hours == null) return "—";
   if (hours < 1) return "<1 h";
   if (hours < 48) return `${Math.round(hours)} h`;
   return `${Math.round(hours / 24)} days`;
 }
 
-export function fmtAgeMin(minutes) {
+export function fmtAgeMin(minutes: number | null | undefined): string {
   if (minutes == null) return "—";
   if (minutes < 1) return "just now";
   if (minutes < 120) return `${Math.round(minutes)} min`;
   return `${Math.round(minutes / 60)} h`;
 }
 
-const pct = (part, total) => (total ? (part / total) * 100 : null);
+const pct = (part: number | null, total: number | null) => (total ? ((part ?? 0) / total) * 100 : null);
 
 // ---------------------------------------------------------------- internet
 
 // A silent reporter shows nothing current: its last test is old news, and dressing it as the
 // present would say the internet is fine while the machine that measures it is not answering.
-export function netView(h, now) {
+export function netView(h: Home, now: number) {
   if (!h) return null;
   if (h.stale) return { state: "silent", text: "reporter silent" };
   if (!h.net) return { state: "none", text: "no test yet" };
@@ -48,12 +55,14 @@ export function netView(h, now) {
 
 // ---------------------------------------------------------------- the host
 
-export function hostView(h) {
+export function hostView(h: Home) {
   if (!h) return null;
   if (h.stale) return { state: "silent", text: "reporter silent" };
   const diskFree = pct(h.disk_free_mb, h.disk_total_mb);
-  const memUsed = h.mem_total_mb ? 100 - pct(h.mem_available_mb, h.mem_total_mb) : null;
-  let state = "ok";
+  // pct is only null for a zero or missing total, which the old truthiness check excluded
+  const memFree = pct(h.mem_available_mb, h.mem_total_mb);
+  const memUsed = memFree == null ? null : 100 - memFree;
+  let state: "ok" | "hot" | "low" | "warm" = "ok";
   if (h.cpu_temp_c != null && h.cpu_temp_c >= CPU_HOT_C) state = "hot";
   else if (diskFree != null && diskFree < DISK_LOW_PCT) state = "low";
   else if (h.cpu_temp_c != null && h.cpu_temp_c >= CPU_WARM_C) state = "warm";
@@ -73,28 +82,30 @@ export function hostView(h) {
 // everything follows. These are working figures, not measurements: the CPU's `high` is the cabinet
 // design's own sustained target (under 80 C), and the two air ranges are reasoned for a small PC in
 // a warm room and should be adjusted once the cabinet has been measured under load.
-export const TEMP_RANGES = {
+export type TempKind = "cpu" | "intake" | "exhaust";
+
+export const TEMP_RANGES: Record<TempKind, { label: string; cool: number; high: number }> = {
   cpu: { label: "ThinkCentre CPU", cool: 40, high: 80 },
   intake: { label: "Cabinet intake", cool: 20, high: 35 },
   exhaust: { label: "Cabinet exhaust", cool: 28, high: 45 },
 };
 
-export function tempState(kind, celsius) {
+export function tempState(kind: TempKind, celsius: number | null | undefined): "cool" | "op" | "high" | null {
   const r = TEMP_RANGES[kind];
   if (celsius == null || !r) return null;
   return celsius < r.cool ? "cool" : celsius >= r.high ? "high" : "op";
 }
 
-export const rangeText = (kind) => {
+export const rangeText = (kind: TempKind) => {
   const r = TEMP_RANGES[kind];
   return `Cool below ${r.cool}°, operating ${r.cool}–${r.high - 1}°, high from ${r.high}°`;
 };
 
 // A machine with no cabinet sensors simply has no intake or exhaust.
-export function tempsView(h) {
+export function tempsView(h: Home) {
   if (!h) return null;
   if (h.stale) return { silent: true };
-  const one = (kind, c) => (c == null ? null : { value: Math.round(c), state: tempState(kind, c), range: rangeText(kind) });
+  const one = (kind: TempKind, c: number | null) => (c == null ? null : { value: Math.round(c), state: tempState(kind, c), range: rangeText(kind) });
   return { cpu: one("cpu", h.cpu_temp_c), intake: one("intake", h.intake_c), exhaust: one("exhaust", h.exhaust_c) };
 }
 
@@ -103,7 +114,7 @@ export function tempsView(h) {
 // Traffic above this, in either direction, counts as the line being in use. Below it is background chatter.
 export const ACTIVE_BPS = 200_000;
 
-export function fmtRate(bps) {
+export function fmtRate(bps: number | null | undefined): string {
   if (bps == null) return "—";
   if (bps >= 1e6) return `${(bps / 1e6).toFixed(1)} Mbps`;
   return `${Math.round(bps / 1e3)} kbps`;
@@ -114,7 +125,7 @@ export function fmtRate(bps) {
 //   silent: the hub is fine but the home reporter has stopped, so nothing is known about the line;
 //   down, up, both, idle: the last minute's traffic. The reporter averages over a minute, so this
 //   is "busy lately", not a live meter.
-export function activityView(h, offline = false) {
+export function activityView(h: Home, offline = false) {
   if (offline) return { state: "offline", text: "No connection: the wall cannot reach the hub" };
   if (!h) return null;
   if (h.stale) return { state: "silent", text: "reporter silent" };
@@ -129,31 +140,31 @@ export function activityView(h, offline = false) {
 
 // Sample traffic cycles through every state, so the icons can be seen changing while the home
 // reporter is not connected.
-const DEMO_TRAFFIC = [
+const DEMO_TRAFFIC: [number, number][] = [
   [40_000, 15_000],
   [3_200_000, 90_000],
   [80_000, 1_500_000],
   [4_100_000, 1_200_000],
 ];
-export const demoTraffic = (now) => DEMO_TRAFFIC[Math.floor(now / 4000) % DEMO_TRAFFIC.length];
+export const demoTraffic = (now: number): [number, number] => DEMO_TRAFFIC[Math.floor(now / 4000) % DEMO_TRAFFIC.length];
 
 // ---------------------------------------------------------------- backup
 
-export function backupView(h) {
+export function backupView(h: Home) {
   if (!h) return null;
   if (h.stale) return { state: "silent", text: "reporter silent" };
   // "not tracked" and "tracked, and nothing there" are different: the second is a problem.
   if (!h.backup_configured) return { state: "untracked", text: "not tracked" };
   if (h.backup_ok_at == null) return { state: "missing", text: "no backup found" };
   const age = fmtAgeH(h.backup_age_h);
-  return h.backup_age_h > BACKUP_STALE_H
+  return (h.backup_age_h ?? 0) > BACKUP_STALE_H
     ? { state: "stale", text: `${age} old`, age }
     : { state: "ok", text: `${age} ago`, age };
 }
 
 // ---------------------------------------------------------------- client requests
 
-export function requestsView(tickets) {
+export function requestsView(tickets: Pick<Ticket, "status" | "overdue">[]) {
   const open = tickets.filter((t) => t.status === "open");
   const overdue = open.filter((t) => t.overdue).length;
   if (open.length === 0) return { state: "clear", open: 0, overdue: 0, text: "inbox clear" };
@@ -167,10 +178,10 @@ export function requestsView(tickets) {
 
 // ---------------------------------------------------------------- presence
 
-const clock = (t) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+const clock = (t: string) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
 
 // Away is the safe answer: with no tap, or an expired one, nobody has said they are home.
-export function presenceView(p) {
+export function presenceView(p: Presence | null | undefined) {
   if (!p) return null;
   if (p.state === "home") return { state: "home", text: "Home", sub: p.expires_at ? `until ${clock(p.expires_at)}` : null };
   if (p.source === "expired") return { state: "away", text: "Away", sub: "tap expired" };
@@ -179,11 +190,11 @@ export function presenceView(p) {
 
 // ---------------------------------------------------------------- exchange rate
 
-const SYMBOL = { USD: "$", GBP: "£", CNY: "¥" };
-const NAME = { USD: "US dollar", GBP: "pound", CNY: "yuan" };
+const SYMBOL: Record<string, string> = { USD: "$", GBP: "£", CNY: "¥" };
+const NAME: Record<string, string> = { USD: "US dollar", GBP: "pound", CNY: "yuan" };
 export const CYCLE_MS = 5000;
 
-export function rateView(r) {
+export function rateView(r: Rates | null | undefined) {
   if (!r) return null;
   // available but with no rate is as good as unavailable: reading it would throw and blank the wall
   if (!r.available || r.rate == null) return { state: "off", value: null, pairs: [], text: "rate unavailable" };
@@ -197,7 +208,7 @@ export function rateView(r) {
 }
 
 // Which currency is on show now: each gets CYCLE_MS in turn.
-export function pairAt(view, now) {
+export function pairAt<P>(view: { pairs?: P[] } | null | undefined, now: number): P | null {
   if (!view?.pairs?.length) return null;
   return view.pairs[Math.floor(now / CYCLE_MS) % view.pairs.length];
 }
@@ -205,8 +216,8 @@ export function pairAt(view, now) {
 // ---------------------------------------------------------------- sample data
 
 // Shown, tagged `demo`, until a real home reporter is connected. Never counted in anything.
-export function demoHome(now = Date.now()) {
-  const at = (minutes) => new Date(now - minutes * 60_000).toISOString();
+export function demoHome(now: number = Date.now()): DemoHome[] {
+  const at = (minutes: number) => new Date(now - minutes * 60_000).toISOString();
   return [
     {
       site: "thinkcentre",

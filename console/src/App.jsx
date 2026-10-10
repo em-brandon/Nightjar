@@ -1,6 +1,6 @@
 import Splash from "./Splash.jsx";
 import { Dot } from "./ui.jsx";
-import { demoHome } from "./home.js";
+import { demoHome } from "./home.ts";
 import { demoMedia } from "./media.ts";
 import WeatherLine from "./WeatherLine.jsx";
 import { ago, settled, tuning, useHashTab, useInactivity, useNow, usePoll } from "./hooks.js";
