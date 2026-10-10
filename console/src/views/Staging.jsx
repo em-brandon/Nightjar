@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ago, plural, send } from "../hooks.js";
 import { Dot, Odometer, Pill, SiteCard, Spark } from "../ui.jsx";
-import { readiness, runningBuilds } from "../promotion.js";
+import { readiness, runningBuilds } from "../promotion.ts";
 import { DeployHowTo, DeployList } from "./Deploys.jsx";
 
 // Where "Manage stacks" points. Start, stop and logs live in Dockge or Portainer

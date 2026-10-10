@@ -1,6 +1,6 @@
 // Rules for promotion readiness. Run with: npm test
 import assert from "node:assert/strict";
-import { productionNameOf, readiness, runningBuilds, shaOf } from "./promotion.js";
+import { productionNameOf, readiness, runningBuilds, shaOf } from "./promotion.ts";
 
 const NOW = Date.parse("2026-09-21T12:00:00Z");
 const ago = (min) => new Date(NOW - min * 60_000).toISOString();

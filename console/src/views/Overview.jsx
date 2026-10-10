@@ -1,5 +1,5 @@
 import { ago, fmtPct, plural, send } from "../hooks.js";
-import { readiness } from "../promotion.js";
+import { readiness } from "../promotion.ts";
 import { unwatched } from "../monitoring.ts";
 import { backupView, hostView, netView, presenceView } from "../home.ts";
 import { label, mediaState } from "../media.ts";
