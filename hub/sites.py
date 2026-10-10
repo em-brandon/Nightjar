@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from .db import get_session
-from .models import Client, Site, _key
-from .schemas import SiteCreated, SiteIn, SiteOut, SitePatch
+from .ingest import record_event
+from .models import Client, Event, Issue, Site, _key
+from .schemas import EventIn, SiteCreated, SiteIn, SiteListed, SiteOut, SitePatch, TestEventOut
 
 # Creating a site used to be seed.py plus a hand-run UPDATE for the url, and forgetting the
 # url left a site silently unmonitored. This is the console-side replacement for both.
@@ -24,6 +25,27 @@ def _out(site: Site) -> SiteOut:
         public_key=site.public_key,
         allowed_origins=site.allowed_origins or [],
     )
+
+
+@router.get("", response_model=list[SiteListed])
+async def list_sites(session: AsyncSession = Depends(get_session)) -> list[SiteListed]:
+    last_event = (
+        select(Issue.site_id, func.max(Event.occurred_at).label("at"))
+        .join(Event, Event.issue_id == Issue.id)
+        .group_by(Issue.site_id)
+        .subquery()
+    )
+    rows = await session.execute(
+        select(Site, last_event.c.at)
+        .options(selectinload(Site.client))
+        .outerjoin(last_event, last_event.c.site_id == Site.id)
+        .where(Site.env.in_(("production", "staging")))
+        .order_by(Site.created_at.desc(), Site.id.desc())
+    )
+    return [
+        SiteListed(**_out(site).model_dump(), ingest_key=site.ingest_key, created_at=site.created_at, last_event=at)
+        for site, at in rows.all()
+    ]
 
 
 @router.post("", response_model=SiteCreated, status_code=201)
@@ -86,3 +108,50 @@ async def update_site(
             site.public_key = None
     await session.commit()
     return _out(site)
+
+
+async def _client_site(session: AsyncSession, site_id: int) -> Site:
+    site = await session.scalar(
+        select(Site).options(selectinload(Site.client)).where(Site.id == site_id)
+    )
+    if site is None or site.env not in ("production", "staging"):
+        raise HTTPException(404, "unknown site")
+    return site
+
+
+@router.post("/{site_id:int}/rotate-secret", response_model=SiteCreated)
+async def rotate_secret(site_id: int, session: AsyncSession = Depends(get_session)) -> SiteCreated:
+    # Replaces the hand-run UPDATE in docs/KEYS.md. Signatures made with the old secret stop
+    # verifying at once, so the response is the only place the new one is ever shown.
+    site = await _client_site(session, site_id)
+    site.ingest_secret = _key()
+    await session.commit()
+    return SiteCreated(**_out(site).model_dump(), ingest_key=site.ingest_key, ingest_secret=site.ingest_secret)
+
+
+@router.post("/{site_id:int}/test-event", response_model=TestEventOut)
+async def test_event(site_id: int, session: AsyncSession = Depends(get_session)) -> TestEventOut:
+    """Send one `warning` through the real ingest path (fingerprint, dedupe, storage), so a new
+    site can be proven end to end. A warning is P3, digest only, so it can never wake the phone."""
+    site = await _client_site(session, site_id)
+    result = await record_event(
+        session,
+        site,
+        EventIn(
+            exception_type="NightjarTestEvent",
+            message="Sent from the console to check this site is wired up. Safe to ignore.",
+            level="warning",
+            environment=site.env,
+        ),
+    )
+    # Resolved straight away so a test never sits in a client's open list.
+    issue = await session.get(Issue, result.issue_id)
+    if issue is not None and issue.status == "open":
+        issue.status = "resolved"
+        await session.commit()
+    return TestEventOut(
+        issue_id=result.issue_id,
+        event_count=result.event_count,
+        severity=result.severity,
+        state_change=result.state_change,
+    )

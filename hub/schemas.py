@@ -175,6 +175,23 @@ class SiteCreated(SiteOut):
     ingest_secret: str
 
 
+class SiteListed(SiteOut):
+    # The key is an address, not a secret (docs/KEYS.md), so a list may show it. The secret is
+    # deliberately not a field here: the only responses that carry it are create and rotate.
+    ingest_key: str
+    created_at: datetime
+    last_event: datetime | None
+
+
+class TestEventOut(BaseModel):
+    """What the hub did with the console's test event, so "wired correctly" is a fact."""
+
+    issue_id: int
+    event_count: int
+    severity: str
+    state_change: str | None
+
+
 class RisingOut(BaseModel):
     issue_id: int
     site: str
