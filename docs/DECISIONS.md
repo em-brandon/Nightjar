@@ -1280,3 +1280,48 @@ are labelled as such.
 **The signing rule stays simple on purpose:** the HMAC is over the exact bytes sent, and `VERIFY_SIGNATURES` is off only for
 local development. With it off, the key alone is enough to post anything, and the hub refuses to start in that state without
 a console token.
+
+---
+
+## 56. Alerts go through a durable outbox in Postgres; the hub stays one process with no worker service
+
+**Decision (planned for chunk 2, nothing built yet):** when a `state_change` happens, the hub writes a row to a `notifications`
+table **in the same transaction** that records the change. A sender loop inside the hub, started the way the probe is, takes due
+rows with `FOR UPDATE SKIP LOCKED`, calls the single push adapter (`notify.send`), and retries with backoff on failure. There is
+no Celery, RQ, Redis or separate worker process.
+
+**Why.** The risk a worker would address is a lost alert: the hub restarts, or crashes, between noticing a problem and telling
+you. Writing the notification in the same transaction as the state change means either both exist or neither does, so a restart
+loses nothing. This needs no new service, which keeps the hub to one FastAPI process and one Postgres, as the cheap-VPS
+constraint in #54 requires.
+
+**Delivery is at-least-once.** A crash after Pushover accepts a push but before the row is marked sent repeats the push. That is
+accepted: a duplicate buzz is far better than a missed one. Pushover's priority 2 handles the repeating itself (retry every
+60 seconds for 30 minutes until acknowledged) and calls back on acknowledgement, so the hub does not run its own retry timer
+for P1.
+
+**The rules it must keep:**
+
+- **A failure is never silent.** A row that exhausts its attempts becomes `failed` and is shown in the console. An alert that
+  could not be sent must not look like an alert that was not needed.
+- **Nothing may suppress an alert** (decision #8). If the policy itself errors, the hub sends the Pushover push at normal
+  priority anyway. Presence and quiet hours choose channels and priority, never whether to send.
+- **A muted issue writes no row**, and a retried ingest must not write a second row for the same change (a unique key on the
+  issue, the kind of change and when it happened).
+- **A sender that has died must be noticed.** The loop pings the external dead-man's switch only while it is alive.
+
+**The hub is one process, deliberately.** `uvicorn` runs without `--workers`. Scaling it out would break assumptions that today
+hold only because there is one process: the probe loop would check every site once per process, and the browser route's rate
+limits and new-issue cap live in memory (#50). Those must move into the database first, for example with a Postgres advisory lock
+so only one process probes. The outbox sender is safe with several processes because of `SKIP LOCKED`.
+
+**Rejected:**
+
+- **Celery or RQ with Redis.** Another service to run, patch and keep alive on a small VPS, to solve a problem one table solves.
+- **Sending the push inside the request that ingests the event.** A slow or failing Pushover would slow or fail ingest, and a
+  crash between recording and sending would lose the alert.
+- **An in-memory queue.** Lost on every restart, which is the failure this exists to prevent.
+- **A separate worker process now.** Not needed at this scale; revisit with many customers (#54, step 3).
+
+**Not decided:** the retry schedule and how many attempts before `failed`; both are working figures to tune by breaking a staging
+route, as `CLAUDE.md` says to test alerting.
