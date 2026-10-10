@@ -7,3 +7,5 @@
 *.yml text eol=lf
 *.yaml text eol=lf
 Dockerfile text eol=lf
+console/src/api/*.json text eol=lf
+console/src/api/*.d.ts text eol=lf
