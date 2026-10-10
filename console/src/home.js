@@ -185,7 +185,8 @@ export const CYCLE_MS = 5000;
 
 export function rateView(r) {
   if (!r) return null;
-  if (!r.available) return { state: "off", value: null, pairs: [], text: "rate unavailable" };
+  // available but with no rate is as good as unavailable: reading it would throw and blank the wall
+  if (!r.available || r.rate == null) return { state: "off", value: null, pairs: [], text: "rate unavailable" };
   const pairs = (r.pairs?.length ? r.pairs : [{ code: r.base, rate: r.rate }]).map((p) => ({
     code: p.code,
     symbol: SYMBOL[p.code] ?? p.code,

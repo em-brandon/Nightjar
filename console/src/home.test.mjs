@@ -81,6 +81,7 @@ const rv = rateView(good);
 assert.deepEqual(rv.pairs.map((p) => [p.code, p.symbol, p.value]), [["USD", "$", "129.57"], ["GBP", "£", "173.36"], ["CNY", "¥", "19.33"]]);
 assert.equal(rateView({ available: true, stale: false, base: "USD", quote: "KES", rate: 129.5 }).pairs.length, 1, "an older feed with no pairs still shows the dollar");
 assert.equal(rateView({ available: true, stale: true, base: "USD", quote: "KES", rate: 129 }).state, "old");
+assert.equal(rateView({ available: true, stale: false, base: "USD", quote: "KES" }).state, "off", "available with no rate must not throw");
 ok("exchange rate");
 
 assert.equal(tempsView(null), null);
