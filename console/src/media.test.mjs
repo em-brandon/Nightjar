@@ -1,7 +1,7 @@
 // Home media rules. Run with: npm test
 
 import assert from "node:assert/strict";
-import { byUser, demoMedia, diskFreePct, fmtDuration, label, mediaState, progress, topTitles, within } from "./media.js";
+import { byUser, demoMedia, diskFreePct, fmtDuration, label, mediaState, progress, topTitles, within } from "./media.ts";
 
 const ok = (name) => console.log(`  ok   ${name}`);
 const server = (over = {}) => ({ stale: false, up: true, host_disk_total_mb: 1000, host_disk_free_mb: 600, ...over });

@@ -3,7 +3,7 @@ import { CircleX, Clapperboard, Inbox, FlaskConical, Rocket, TrendingUp, Triangl
 import { ago, plural, tuning, useNow, useReveal } from "../hooks.js";
 import { Odometer, Pill, Sev, SiteCard, Spark } from "../ui.jsx";
 import { requestsView } from "../home.js";
-import { label, mediaState } from "../media.js";
+import { label, mediaState } from "../media.ts";
 import { DemoTag, DiskBar } from "./Media.jsx";
 import PushCard from "../PushCard.jsx";
 import { demoPush, pushView } from "../push.ts";

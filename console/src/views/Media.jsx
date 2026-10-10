@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ago, plural } from "../hooks.js";
 import { Dot, Empty, Pill } from "../ui.jsx";
-import { byUser, diskFreePct, fmtDuration, label, mediaState, progress, topTitles, within } from "../media.js";
+import { byUser, diskFreePct, fmtDuration, label, mediaState, progress, topTitles, within } from "../media.ts";
 
 const STATE = {
   up: { dot: "up", tone: "ok", text: "up" },
