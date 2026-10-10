@@ -6,7 +6,7 @@ import { requestsView } from "../home.js";
 import { label, mediaState } from "../media.js";
 import { DemoTag, DiskBar } from "./Media.jsx";
 import PushCard from "../PushCard.jsx";
-import { demoPush, pushView } from "../push.js";
+import { demoPush, pushView } from "../push.ts";
 import StatusTray from "../StatusTray.jsx";
 import WeatherLine from "../WeatherLine.jsx";
 import { Verdict } from "./Overview.jsx";
