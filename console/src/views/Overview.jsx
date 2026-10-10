@@ -1,4 +1,4 @@
-import { ago, fmtPct, plural, send } from "../hooks.js";
+import { ago, fmtPct, plural, send } from "../hooks.ts";
 import { readiness } from "../promotion.ts";
 import { unwatched } from "../monitoring.ts";
 import { backupView, hostView, netView, presenceView } from "../home.ts";

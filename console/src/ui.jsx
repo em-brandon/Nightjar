@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ago, fmtPct, plural } from "./hooks.js";
+import { ago, fmtPct, plural } from "./hooks.ts";
 
 // ---------------------------------------------------------------- odometer
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ago, fmtTime, send } from "../hooks.js";
+import { ago, fmtTime, send } from "../hooks.ts";
 import { Empty, Odometer, Pill, Sev } from "../ui.jsx";
 
 const STATUS_TONE = { open: "bad", resolved: "ok", muted: "run", snoozed: "warn" };

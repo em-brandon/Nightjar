@@ -1,4 +1,4 @@
-import { ago } from "../hooks.js";
+import { ago } from "../hooks.ts";
 import { Pill } from "../ui.jsx";
 
 const TONE = { success: "ok", failed: "bad", running: "run" };
