@@ -1,7 +1,7 @@
 // Which sites the Overview warns are not being checked. Run with: npm test
 
 import assert from "node:assert/strict";
-import { unwatched } from "./monitoring.js";
+import { unwatched } from "./monitoring.ts";
 
 const site = (name, env, monitored) => ({ name, env, monitored });
 

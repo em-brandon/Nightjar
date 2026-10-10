@@ -1,6 +1,6 @@
 import { ago, fmtPct, plural, send } from "../hooks.js";
 import { readiness } from "../promotion.js";
-import { unwatched } from "../monitoring.js";
+import { unwatched } from "../monitoring.ts";
 import { backupView, hostView, netView, presenceView } from "../home.js";
 import { label, mediaState } from "../media.js";
 import { Dot, Empty, Odometer, Pill, Sev, SiteCard, Spark } from "../ui.jsx";
