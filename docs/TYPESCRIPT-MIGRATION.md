@@ -1,7 +1,15 @@
 # Console TypeScript migration (planned)
 
-> **Status: planned, not started.** Nothing in `console/` is TypeScript today. This is written down so the work
-> can be picked up cold, and so new console code is not written in a way that makes it harder.
+> **Status: in progress. Phases 1 to 4 are done** (tooling, generated API types, the six pure logic modules, `hooks.ts`
+> and `ui.tsx`). Phases 5 to 7 (the shell, the views, tightening) remain. Written down so the work can be picked up
+> cold, and so new console code is not written in a way that makes it harder.
+>
+> **TypeScript is pinned at 5.9.3, not 7.** `openapi-typescript` 7 declares a peer of `typescript ^5`, so 7.0.2 would not
+> install beside it, and forcing the mismatch would risk the generator running on a compiler it was not built for.
+> Revisit when `openapi-typescript` supports 7.
+>
+> **Found by typing:** `rateView` threw when the feed said `available` but sent no `rate` (fixed first, with a test, in
+> its own commit).
 
 ## Why
 
