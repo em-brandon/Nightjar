@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node src/promotion.test.mjs && node src/media.test.mjs && node src/weather.test.mjs && node src/home.test.mjs && node src/push.test.mjs && node src/monitoring.test.mjs && node src/css.test.mjs"
+    "test": "tsc --noEmit && node src/promotion.test.mjs && node src/media.test.mjs && node src/weather.test.mjs && node src/home.test.mjs && node src/push.test.mjs && node src/monitoring.test.mjs && node src/css.test.mjs"
   },
   "dependencies": {
     "@fontsource/inter": "^5.3.0",
@@ -17,7 +17,10 @@
     "react-dom": "^19.1.0"
   },
   "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "^4.4.0",
+    "typescript": "7.0.2",
     "vite": "^6.3.0"
   }
 }
