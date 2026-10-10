@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ago, plural } from "../hooks.ts";
-import { Dot, Empty, Pill } from "../ui.jsx";
+import { Dot, Empty, Pill } from "../ui.tsx";
 import { byUser, diskFreePct, fmtDuration, label, mediaState, progress, topTitles, within } from "../media.ts";
 
 const STATE = {

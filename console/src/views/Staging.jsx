@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ago, plural, send } from "../hooks.ts";
-import { Dot, Odometer, Pill, SiteCard, Spark } from "../ui.jsx";
+import { Dot, Odometer, Pill, SiteCard, Spark } from "../ui.tsx";
 import { readiness, runningBuilds } from "../promotion.ts";
 import { DeployHowTo, DeployList } from "./Deploys.jsx";
 

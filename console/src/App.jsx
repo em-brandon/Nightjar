@@ -1,5 +1,5 @@
 import Splash from "./Splash.jsx";
-import { Dot } from "./ui.jsx";
+import { Dot } from "./ui.tsx";
 import { demoHome } from "./home.ts";
 import { demoMedia } from "./media.ts";
 import WeatherLine from "./WeatherLine.jsx";

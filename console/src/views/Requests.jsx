@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ago, send } from "../hooks.ts";
-import { Empty, Odometer, Pill } from "../ui.jsx";
+import { Empty, Odometer, Pill } from "../ui.tsx";
 
 const KINDS = [
   ["change", "Change"],

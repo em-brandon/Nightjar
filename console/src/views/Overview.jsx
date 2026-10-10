@@ -3,7 +3,7 @@ import { readiness } from "../promotion.ts";
 import { unwatched } from "../monitoring.ts";
 import { backupView, hostView, netView, presenceView } from "../home.ts";
 import { label, mediaState } from "../media.ts";
-import { Dot, Empty, Odometer, Pill, Sev, SiteCard, Spark } from "../ui.jsx";
+import { Dot, Empty, Odometer, Pill, Sev, SiteCard, Spark } from "../ui.tsx";
 import { DemoTag, DiskBar } from "./Media.jsx";
 
 const DEPLOY_TONE = { success: "ok", failed: "bad", running: "run" };

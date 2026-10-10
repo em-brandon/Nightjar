@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ago, fmtTime, send } from "../hooks.ts";
-import { Empty, Odometer, Pill, Sev } from "../ui.jsx";
+import { Empty, Odometer, Pill, Sev } from "../ui.tsx";
 
 const STATUS_TONE = { open: "bad", resolved: "ok", muted: "run", snoozed: "warn" };
 

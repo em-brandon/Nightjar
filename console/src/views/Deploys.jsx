@@ -1,5 +1,5 @@
 import { ago } from "../hooks.ts";
-import { Pill } from "../ui.jsx";
+import { Pill } from "../ui.tsx";
 
 const TONE = { success: "ok", failed: "bad", running: "run" };
 
