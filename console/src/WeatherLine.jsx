@@ -1,5 +1,5 @@
 import { Cloud, CloudFog, CloudLightning, CloudMoon, CloudRain, CloudSnow, CloudSun, Gauge, MapPin, Moon, Mountain, Sun } from "lucide-react";
-import { weatherView } from "./weather.js";
+import { weatherView } from "./weather.ts";
 
 // Each condition has its own colour (see .wx-icon in styles.css): a yellow sun, a pale moon, blue rain.
 const ICONS = {
