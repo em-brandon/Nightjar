@@ -198,8 +198,21 @@ reporter snippet, the dedupe harness.
   separate signed ack link is needed** — handle it at `POST /pushover/ack`.
 - `POST /presence` accepts `{state, ttl_minutes, source, token}`, called by iOS
   Shortcuts NFC automations.
+- **Delivery goes through a durable outbox in Postgres, not a worker or a queue service** (decision #56). A `state_change`
+  writes a `notifications` row **in the same transaction** that records it, so either both exist or neither does. A sender loop
+  in the hub, started like the probe, picks up due rows with `FOR UPDATE SKIP LOCKED`, calls `notify.send`, and backs off on
+  failure. A restart loses nothing. Delivery is at-least-once, so a crash mid-send can repeat a push, which is better than losing
+  one. Muted issues write no row. A retried ingest must not write a second row for the same change (a unique key on issue,
+  change and time of the change). A row that exhausts its attempts becomes `failed` and **is shown in the console**: an alert
+  that could not be sent must never look like an alert that was not needed.
+- **The policy fails toward the reliable channel.** If the policy itself errors, send the Pushover push at normal priority
+  anyway; nothing may suppress an alert.
+- The outbox is also the source of the "alert sent" lines in the incident log, which are still missing.
+- The loop pings the external dead-man's switch (`DEPLOY.md`, section 7) only while it is alive, so a stuck sender is noticed.
 - Test by breaking a staging route, not with a unit test. Test presence by
-  tapping out and confirming the push *still arrives*.
+  tapping out and confirming the push *still arrives*. The outbox itself does get unit tests: one row per state change, none
+  for a muted issue, none duplicated by a retried ingest, backoff on failure, `failed` made visible, and a row left `sending`
+  by a crash is picked up again.
 
 **Chunk 3 — done.** React console, 30-second polling, no websockets. Planned as
 one page and two endpoints (`/api/sites/health`, `/api/issues`); it grew to five
@@ -446,6 +459,11 @@ signed against a hub with `VERIFY_SIGNATURES` on.
   `client/reporter.py` is wrapped and swallowed.
 - Ingest bursts serialise with `SELECT ... FOR UPDATE` on the issue row.
   Intentional: correctness over throughput at this scale.
+- **The hub is one process on purpose** (`uvicorn` without `--workers`). Do not scale it out without moving three things into
+  the database first: the probe loop, which would otherwise check every site once per process; the browser route's rate limits
+  and new-issue cap, which live in memory per process; and anything else that assumes it is alone. The alert sender
+  (chunk 2) is the exception, because `SKIP LOCKED` makes it safe with several. There is no Celery, RQ or Redis, and none is
+  wanted (decisions #54 and #56).
 - Comments explain *why*, not *what*. The fingerprint exclusions and the
   serialisation choice are where future-you will want the reasoning.
 

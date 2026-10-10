@@ -1070,7 +1070,7 @@ background uptime probe, which serverless platforms freeze between requests.
 |---|---|---|
 | 1 | Models, fingerprinting, ingest, HMAC, reporter, dedupe test | Done |
 | 3 | React console, uptime probe, incident actions, tickets, deploys, idle screen | Done |
-| 2 | Alert policy, presence, Pushover, speaker | **Next, blocked on cost.** The whole point of the project |
+| 2 | Alert policy, presence, Pushover, speaker. Delivery through a durable Postgres outbox, with no worker service (decision #56) | **Next, blocked on cost.** The whole point of the project |
 | 4 | Email intake and the 07:30 digest | Not started |
 | 4b | Fleet onboarding: published reporters and an `add-site` CLI, extended into a client integration kit (push checks, heartbeats, an npm CLI, `nightjar.sh`) | The small hub pieces and the shell script are worth doing early. The packages wait for the third or fourth app. See [`docs/CLIENT-INTEGRATION.md`](docs/CLIENT-INTEGRATION.md) |
 | 5 | Wall display route and kiosk | Designed. The idle screen exists |
