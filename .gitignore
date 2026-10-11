@@ -12,3 +12,6 @@ dist/
 
 # a JDK unpacked here by an editor extension: never source
 client/java/oracleJdk-*/
+
+# a Pushover key kept beside the project: never commit
+pushover-keys
