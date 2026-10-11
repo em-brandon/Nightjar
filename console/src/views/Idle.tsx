@@ -11,7 +11,7 @@ import PushCard from "../PushCard.tsx";
 import { demoPush, pushView } from "../push.ts";
 import StatusTray from "../StatusTray.tsx";
 import WeatherLine from "../WeatherLine.tsx";
-import { Verdict } from "./Overview.jsx";
+import { Verdict } from "./Overview.tsx";
 
 const PER_PAGE = 2;
 const ROTATE_MS = tuning("rotate", 120_000);

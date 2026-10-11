@@ -1,3 +1,6 @@
+import type { MouseEvent, ReactNode } from "react";
+import type { Deploy, HomeSnapshot, MediaSnapshot, Presence, SiteHealth } from "../api/types.ts";
+import type { Feeds, TabId } from "../feeds.ts";
 import { ago, fmtPct, plural, send } from "../hooks.ts";
 import { readiness } from "../promotion.ts";
 import { unwatched } from "../monitoring.ts";
@@ -6,12 +9,12 @@ import { label, mediaState } from "../media.ts";
 import { Dot, Empty, Odometer, Pill, Sev, SiteCard, Spark } from "../ui.tsx";
 import { DemoTag, DiskBar } from "./Media.tsx";
 
-const DEPLOY_TONE = { success: "ok", failed: "bad", running: "run" };
-const DEPLOY_LABEL = { success: "success", failed: "failed", running: "running" };
+const DEPLOY_TONE: Record<Deploy["status"], string> = { success: "ok", failed: "bad", running: "run" };
+const DEPLOY_LABEL: Record<Deploy["status"], string> = { success: "success", failed: "failed", running: "running" };
 
-const mean = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
+const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
 
-export function Verdict({ prod, hubError, updatedAt, now }) {
+export function Verdict({ prod, hubError, updatedAt, now }: { prod: SiteHealth[]; hubError: boolean; updatedAt: number | null; now: number }) {
   const down = prod.filter((s) => s.state === "down").length;
   const warn = prod.filter((s) => s.state === "warn").length;
   // silence must not read as all-clear: a site nothing checks cannot be called quiet
@@ -52,7 +55,7 @@ export function Verdict({ prod, hubError, updatedAt, now }) {
   );
 }
 
-function Stat({ label, sub, tone = "", children }) {
+function Stat({ label, sub, tone = "", children }: { label: string; sub: string; tone?: string; children?: ReactNode }) {
   return (
     <div className={`card stat ${tone}`}>
       <span className="k">{label}</span>
@@ -64,7 +67,7 @@ function Stat({ label, sub, tone = "", children }) {
 
 // A whole tile is the link to its tab. A div with a role, not a button, because
 // tiles contain lists and a button cannot legally contain interactive content.
-function Tile({ title, to, go, children, tone = "" }) {
+function Tile({ title, to, go, children, tone = "" }: { title: string; to: TabId; go: Feeds["go"]; children?: ReactNode; tone?: string }) {
   return (
     <article
       className={`card tile ${tone}`}
@@ -82,11 +85,11 @@ function Tile({ title, to, go, children, tone = "" }) {
   );
 }
 
-const MEDIA_TEXT = { up: "up", down: "not responding", low: "disk nearly full", silent: "reporter silent" };
-const MEDIA_TONE = { up: "ok", down: "bad", low: "warn", silent: "warn" };
+const MEDIA_TEXT: Record<ReturnType<typeof mediaState>, string> = { up: "up", down: "not responding", low: "disk nearly full", silent: "reporter silent" };
+const MEDIA_TONE: Record<ReturnType<typeof mediaState>, string> = { up: "ok", down: "bad", low: "warn", silent: "warn" };
 
 // Home media. Shows sample data, clearly tagged, until a real server is connected.
-function MediaTile({ media, demo, go }) {
+function MediaTile({ media, demo, go }: { media: MediaSnapshot[]; demo: boolean; go: Feeds["go"] }) {
   const m = media[0];
   const state = mediaState(m);
   const streams = m.stale ? [] : m.sessions;
@@ -123,18 +126,18 @@ function MediaTile({ media, demo, go }) {
   );
 }
 
-const HOME_TONE = { hot: "bad", low: "bad", warm: "warn", silent: "warn" };
+const HOME_TONE: Record<string, string> = { hot: "bad", low: "bad", warm: "warn", silent: "warn" };
 
 // The home host: internet speed, the ThinkCentre's health, the backup, and who is home. Sample data,
 // clearly tagged, until the home reporter is connected. The presence buttons are the console's own
 // switch: an NFC tap is the normal way, and a tap that lapses falls back to away.
-function HomeTile({ home, demo, presence, now, go, reloadPresence }) {
+function HomeTile({ home, demo, presence, now, go, reloadPresence }: { home: HomeSnapshot[]; demo: boolean; presence: Presence | null; now: number; go: Feeds["go"]; reloadPresence: () => Promise<void> }) {
   const h = home[0];
   const net = netView(h, now);
   const host = hostView(h);
   const backup = backupView(h);
   const who = presenceView(presence);
-  const set = (state) => async (e) => {
+  const set = (state: "home" | "away") => async (e: MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation(); // the tile itself is a link
     try {
       await send("POST", "/api/presence", { state, ttl_minutes: 840 });
@@ -143,7 +146,7 @@ function HomeTile({ home, demo, presence, now, go, reloadPresence }) {
       /* the next poll shows the truth */
     }
   };
-  const tone = HOME_TONE[host?.state] ?? (backup && ["stale", "missing"].includes(backup.state) ? "warn" : "");
+  const tone = (host && HOME_TONE[host.state]) ?? (backup && ["stale", "missing"].includes(backup.state) ? "warn" : "");
   return (
     <Tile title="Home network and host" to="overview" go={go} tone={tone}>
       <div className="t-head">
@@ -166,7 +169,7 @@ function HomeTile({ home, demo, presence, now, go, reloadPresence }) {
           )}
         </span>
       </div>
-      {net?.series?.length > 1 && <Spark points={net.series} width={220} height={28} tone="var(--blue)" />}
+      {net?.series && net.series.length > 1 && <Spark points={net.series} width={220} height={28} tone="var(--blue)" />}
       <ul className="t-list">
         <li>
           <span className="t-main">
@@ -216,7 +219,7 @@ function HomeTile({ home, demo, presence, now, go, reloadPresence }) {
   );
 }
 
-export default function Overview({ f }) {
+export default function Overview({ f }: { f: Feeds }) {
   const { sites, issues, rising, tickets, deploys, stacks, media, mediaDemo, home, homeDemo, presence, reloadPresence, now, go, hubError, updatedAt, loaded } = f;
 
   const prod = sites.filter((s) => s.env !== "staging");
@@ -234,8 +237,12 @@ export default function Overview({ f }) {
 
   const monitored = prod.filter((s) => s.monitored);
   const upCount = prod.filter((s) => s.state === "up").length;
-  const uptime = mean(monitored.map((s) => s.uptime_24h).filter((x) => x != null));
-  const latency = mean(monitored.map((s) => s.latency_avg_ms).filter((x) => x != null));
+  const uptime = mean(monitored.map((s) => s.uptime_24h).filter((x): x is number => x != null));
+  const latency = mean(monitored.map((s) => s.latency_avg_ms).filter((x): x is number => x != null));
+
+  // the same test as the tiles use: real rows win, sample rows only while the feed is empty
+  const homeRows = home.length > 0 ? home : homeDemo;
+  const mediaRows = media.length > 0 ? media : mediaDemo;
 
   if (!loaded && !hubError) return <p className="loading">Loading…</p>;
 
@@ -435,11 +442,11 @@ export default function Overview({ f }) {
             </>
           )}
         </Tile>
-        {(home.length > 0 || homeDemo) && (
-          <HomeTile home={home.length > 0 ? home : homeDemo} demo={home.length === 0} presence={presence} now={now} go={go} reloadPresence={reloadPresence} />
+        {homeRows && (
+          <HomeTile home={homeRows} demo={home.length === 0} presence={presence} now={now} go={go} reloadPresence={reloadPresence} />
         )}
-        {(media.length > 0 || mediaDemo) && (
-          <MediaTile media={media.length > 0 ? media : mediaDemo} demo={media.length === 0} go={go} />
+        {mediaRows && (
+          <MediaTile media={mediaRows} demo={media.length === 0} go={go} />
         )}
       </div>
     </>
