@@ -155,8 +155,9 @@ export interface paths {
         /**
          * Issue Log
          * @description What happened to this issue, oldest first. `system` rows are derived from
-         *     the issue itself; `action` rows are things a person did. Alerts sent by the
-         *     hub will join this log with chunk 2.
+         *     the issue itself; `action` rows are things a person did. Each alert the hub
+         *     queued for the phone is here too, with what happened to it, so a failed
+         *     alert reads as a failed alert and never as one that was not needed.
          */
         get: operations["issue_log_api_issues__issue_id__log_get"];
         put?: never;
@@ -193,6 +194,27 @@ export interface paths {
         };
         /** Media History */
         get: operations["media_history_api_media_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Notifications
+         * @description Newest first. `failed` is what gave up. `undelivered` is that plus anything that has already
+         *     failed once and is still being retried, so a flaky provider shows before it exhausts its attempts.
+         */
+        get: operations["list_notifications_api_notifications_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -548,6 +570,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/pushover/ack/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Acknowledged */
+        post: operations["acknowledged_pushover_ack__token__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -807,6 +846,49 @@ export interface components {
             title: string;
             /** User */
             user: string;
+        };
+        /**
+         * NotificationOut
+         * @description One alert in the outbox and what happened to it (hub/alerts.py).
+         */
+        NotificationOut: {
+            /** Acked At */
+            acked_at: string | null;
+            /** Attempts */
+            attempts: number;
+            /** Change */
+            change: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: number;
+            /** Issue Id */
+            issue_id: number;
+            /** Last Error */
+            last_error: string | null;
+            /**
+             * Next Attempt At
+             * Format: date-time
+             */
+            next_attempt_at: string;
+            /** Priority */
+            priority: number;
+            /** Sent At */
+            sent_at: string | null;
+            /** Severity */
+            severity: string;
+            /** Site */
+            site: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "sending" | "sent" | "failed";
+            /** Title */
+            title: string;
         };
         /** PresenceIn */
         PresenceIn: {
@@ -1554,6 +1636,38 @@ export interface operations {
             };
         };
     };
+    list_notifications_api_notifications_get: {
+        parameters: {
+            query?: {
+                status?: "all" | "failed" | "undelivered";
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_presence_api_presence_get: {
         parameters: {
             query?: never;
@@ -2233,6 +2347,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PresenceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    acknowledged_pushover_ack__token__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
                 };
             };
             /** @description Validation Error */

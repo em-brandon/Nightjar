@@ -858,6 +858,116 @@
         "title": "MediaSessionIn",
         "type": "object"
       },
+      "NotificationOut": {
+        "description": "One alert in the outbox and what happened to it (hub/alerts.py).",
+        "properties": {
+          "acked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acked At"
+          },
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "change": {
+            "title": "Change",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "issue_id": {
+            "title": "Issue Id",
+            "type": "integer"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "next_attempt_at": {
+            "format": "date-time",
+            "title": "Next Attempt At",
+            "type": "string"
+          },
+          "priority": {
+            "title": "Priority",
+            "type": "integer"
+          },
+          "sent_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sent At"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "site": {
+            "title": "Site",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "sending",
+              "sent",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "issue_id",
+          "site",
+          "title",
+          "severity",
+          "change",
+          "priority",
+          "status",
+          "attempts",
+          "last_error",
+          "created_at",
+          "next_attempt_at",
+          "sent_at",
+          "acked_at"
+        ],
+        "title": "NotificationOut",
+        "type": "object"
+      },
       "PresenceIn": {
         "properties": {
           "source": {
@@ -2571,7 +2681,7 @@
     },
     "/api/issues/{issue_id}/log": {
       "get": {
-        "description": "What happened to this issue, oldest first. `system` rows are derived from\nthe issue itself; `action` rows are things a person did. Alerts sent by the\nhub will join this log with chunk 2.",
+        "description": "What happened to this issue, oldest first. `system` rows are derived from\nthe issue itself; `action` rows are things a person did. Each alert the hub\nqueued for the phone is here too, with what happened to it, so a failed\nalert reads as a failed alert and never as one that was not needed.",
         "operationId": "issue_log_api_issues__issue_id__log_get",
         "parameters": [
           {
@@ -2698,6 +2808,71 @@
         "summary": "Media History",
         "tags": [
           "media"
+        ]
+      }
+    },
+    "/api/notifications": {
+      "get": {
+        "description": "Newest first. `failed` is what gave up. `undelivered` is that plus anything that has already\nfailed once and is still being retried, so a flaky provider shows before it exhausts its attempts.",
+        "operationId": "list_notifications_api_notifications_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "all",
+                "failed",
+                "undelivered"
+              ],
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NotificationOut"
+                  },
+                  "title": "Response List Notifications Api Notifications Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Notifications",
+        "tags": [
+          "alerts"
         ]
       }
     },
@@ -3665,6 +3840,52 @@
         "summary": "Tap",
         "tags": [
           "presence"
+        ]
+      }
+    },
+    "/pushover/ack/{token}": {
+      "post": {
+        "operationId": "acknowledged_pushover_ack__token__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Acknowledged Pushover Ack  Token  Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Acknowledged",
+        "tags": [
+          "pushover"
         ]
       }
     }
