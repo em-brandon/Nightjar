@@ -251,10 +251,20 @@ class Sites(unittest.IsolatedAsyncioTestCase):
         r = await self.http.post(f"/api/sites/{sid}/test-event")
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual((r.json()["severity"], r.json()["state_change"]), ("P3", "new"))
+        # a test proves the hub side only: it must not make the site look as if its app had reported
         listed = (await self.http.get("/api/sites")).json()[0]
-        self.assertIsNotNone(listed["last_event"])
+        self.assertIsNone(listed["last_event"])
         open_issues = (await self.http.get("/api/issues?status=open")).json()
         self.assertEqual(open_issues, [])
+
+    async def test_a_real_report_sets_last_event_and_a_test_does_not_move_it(self):
+        made = (await self.http.post("/api/sites", json=site())).json()
+        with patch.object(settings, "verify_signatures", False):
+            await self.http.post(f"/ingest/{made['ingest_key']}/event", json={"exception_type": "Boom", "message": "x"})
+        first = (await self.http.get("/api/sites")).json()[0]["last_event"]
+        self.assertIsNotNone(first)
+        await self.http.post(f"/api/sites/{made['id']}/test-event")
+        self.assertEqual((await self.http.get("/api/sites")).json()[0]["last_event"], first)
 
     async def test_the_home_host_cannot_be_tested_or_rotated(self):
         async with self.engine.begin() as conn:

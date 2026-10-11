@@ -13,6 +13,7 @@ from .schemas import EventIn, SiteCreated, SiteIn, SiteListed, SiteOut, SitePatc
 router = APIRouter(prefix="/api/sites", tags=["sites"])
 
 STAGING_SUFFIX = "-staging"
+TEST_EVENT_TYPE = "NightjarTestEvent"
 
 
 def _out(site: Site) -> SiteOut:
@@ -29,9 +30,12 @@ def _out(site: Site) -> SiteOut:
 
 @router.get("", response_model=list[SiteListed])
 async def list_sites(session: AsyncSession = Depends(get_session)) -> list[SiteListed]:
+    # The console's own test events are left out: "last reported" must mean the app itself reported,
+    # or pressing the test button would make a site that was never wired up look as if it were.
     last_event = (
         select(Issue.site_id, func.max(Event.occurred_at).label("at"))
         .join(Event, Event.issue_id == Issue.id)
+        .where(Issue.title.not_like(f"{TEST_EVENT_TYPE}%"))
         .group_by(Issue.site_id)
         .subquery()
     )
@@ -138,7 +142,7 @@ async def test_event(site_id: int, session: AsyncSession = Depends(get_session))
         session,
         site,
         EventIn(
-            exception_type="NightjarTestEvent",
+            exception_type=TEST_EVENT_TYPE,
             message="Sent from the console to check this site is wired up. Safe to ignore.",
             level="warning",
             environment=site.env,
