@@ -61,7 +61,12 @@ assert.deepEqual(st({ status: "sent", priority: 2, expired_at: "2026-10-12T09:30
 assert.equal(st({ status: "pending", attempts: 0 }).label, "queued");
 assert.deepEqual(st({ status: "pending", attempts: 2 }), { label: "retrying (attempt 2)", tone: "warn" });
 assert.equal(st({ status: "sending", attempts: 1 }).label, "sending");
-console.log("  ok   each alert is labelled for what matters: failed, awaiting acknowledgement, not acknowledged");
+// an incident dealt with in the console: the repeating push is stopped, and an old expiry stops being news
+assert.equal(st({ status: "sent", priority: 2, dismissed_at: "2026-10-12T09:05:00Z", cancelled_at: null, expired_at: null, acked_at: null }).label, "stopping the push");
+assert.deepEqual(st({ status: "sent", priority: 2, dismissed_at: "2026-10-12T09:05:00Z", cancelled_at: "2026-10-12T09:05:04Z", acked_at: null }), { label: "stopped: incident dealt with", tone: "ok" });
+assert.deepEqual(st({ status: "sent", priority: 2, expired_at: "2026-10-12T09:30:00Z", dismissed_at: "2026-10-12T10:00:00Z", acked_at: null, cancelled_at: null }), { label: "not acknowledged, dealt with later", tone: "warn" });
+assert.equal(alertNotice([unacked({ dismissed_at: "2026-10-12T10:00:00Z" })]), null, "an expired P1 someone has since dealt with is not news");
+console.log("  ok   each alert is labelled for what matters: failed, awaiting acknowledgement, not acknowledged, stopped");
 
 // ---- the sender
 const NOW = Date.parse("2026-10-12T09:00:00Z");

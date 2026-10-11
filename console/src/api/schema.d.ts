@@ -950,6 +950,8 @@ export interface components {
             acked_at: string | null;
             /** Attempts */
             attempts: number;
+            /** Cancelled At */
+            cancelled_at: string | null;
             /** Change */
             change: string;
             /**
@@ -957,6 +959,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Dismissed At */
+            dismissed_at: string | null;
             /** Expired At */
             expired_at: string | null;
             /** Id */

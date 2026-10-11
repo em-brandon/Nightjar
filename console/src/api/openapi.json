@@ -956,6 +956,18 @@
             "title": "Attempts",
             "type": "integer"
           },
+          "cancelled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancelled At"
+          },
           "change": {
             "title": "Change",
             "type": "string"
@@ -964,6 +976,18 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "dismissed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dismissed At"
           },
           "expired_at": {
             "anyOf": [
@@ -1055,7 +1079,9 @@
           "next_attempt_at",
           "sent_at",
           "acked_at",
-          "expired_at"
+          "expired_at",
+          "dismissed_at",
+          "cancelled_at"
         ],
         "title": "NotificationOut",
         "type": "object"

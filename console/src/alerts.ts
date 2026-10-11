@@ -12,7 +12,8 @@ const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : 
 const newest = (alerts: Alert[]): Alert => alerts.reduce((a, b) => (new Date(b.created_at) > new Date(a.created_at) ? b : a));
 
 // A P1 whose receipt expired with nobody acknowledging it. Sent, so it is not a failure, but no human answered.
-export const isUnacknowledged = (a: Alert) => a.status === "sent" && a.expired_at != null && a.acked_at == null;
+// Once someone has since dealt with the incident (acknowledged, resolved, muted or snoozed it) it is history, not news.
+export const isUnacknowledged = (a: Alert) => a.status === "sent" && a.expired_at != null && a.acked_at == null && a.dismissed_at == null;
 
 // `alerts` is /api/notifications?status=attention: failed rows, rows that failed once and are being retried, and
 // P1s that expired unacknowledged.
@@ -51,7 +52,10 @@ export function alertState(a: Alert): AlertState {
   if (a.status === "failed") return { label: "failed", tone: "bad" };
   if (a.status === "sent") {
     if (a.acked_at != null) return { label: "acknowledged", tone: "ok" };
-    if (a.expired_at != null) return { label: "not acknowledged", tone: "bad" };
+    // the incident was dealt with (in the console, or by the hub): the push is stopped, or being stopped
+    if (a.cancelled_at != null) return { label: "stopped: incident dealt with", tone: "ok" };
+    if (a.expired_at != null) return a.dismissed_at != null ? { label: "not acknowledged, dealt with later", tone: "warn" } : { label: "not acknowledged", tone: "bad" };
+    if (a.dismissed_at != null) return { label: "stopping the push", tone: "run" };
     if (a.priority === 2) return { label: "sent · awaiting acknowledgement", tone: "run" };
     return { label: "sent", tone: "ok" };
   }
