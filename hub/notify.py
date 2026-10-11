@@ -160,3 +160,47 @@ async def check_receipt(receipt: str, client: httpx.AsyncClient | None = None) -
         acknowledged_at=datetime.fromtimestamp(int(at), UTC) if at else None,
         expired=body.get("expired") == 1,
     )
+
+
+CANCEL_URL = "https://api.pushover.net/1/receipts/{receipt}/cancel.json"
+
+
+@dataclass(frozen=True)
+class Cancelled:
+    # False when Pushover refused the receipt for good: it had already expired, been acknowledged or was not
+    # known. Nothing is repeating on the phone then, so the caller treats the cancel as settled all the same.
+    confirmed: bool
+
+
+async def cancel_receipt(receipt: str, client: httpx.AsyncClient | None = None) -> Cancelled:
+    """Stop a priority 2 push from repeating on the phone. Called once the incident it is about has been
+    acknowledged, resolved, muted or snoozed by someone, so it does not keep alarming for something already
+    handled. Raises SendError(retryable=True) for a failure that may clear, so the caller tries again."""
+    if not configured():
+        raise NotConfigured("Pushover is not configured (set PUSHOVER_TOKEN and PUSHOVER_USER)")
+
+    own = client is None
+    client = client or httpx.AsyncClient(timeout=TIMEOUT_S)
+    try:
+        try:
+            res = await client.post(CANCEL_URL.format(receipt=receipt), data={"token": settings.pushover_token})
+        except httpx.TimeoutException as err:
+            raise SendError("Pushover timed out", retryable=True) from err
+        except httpx.HTTPError as err:
+            # the class name only: the message can carry the request URL
+            raise SendError(f"Pushover unreachable ({type(err).__name__})", retryable=True) from err
+    finally:
+        if own:
+            await client.aclose()
+
+    if res.status_code >= 500 or res.status_code == 429:
+        raise SendError(f"Pushover answered {res.status_code}", retryable=True)
+    try:
+        body = res.json()
+    except ValueError:
+        body = {}
+    if res.status_code == 200 and body.get("status") == 1:
+        return Cancelled(confirmed=True)
+    # Any other answer is a refusal of this receipt (Pushover does not document which). Retrying the same
+    # receipt cannot change it, and a receipt that is already settled has nothing left to cancel.
+    return Cancelled(confirmed=False)

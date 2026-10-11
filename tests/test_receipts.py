@@ -102,6 +102,50 @@ class CheckReceipt(unittest.TestCase):
         self.assertEqual(fake.requests, [])
 
 
+class CancelReceipt(unittest.TestCase):
+    def setUp(self):
+        for name, value in (("pushover_token", TOKEN), ("pushover_user", USER)):
+            p = patch.object(settings, name, value)
+            p.start()
+            self.addCleanup(p.stop)
+
+    def cancel(self, fake):
+        return run(notify.cancel_receipt("rcpt1", fake.client()))
+
+    def test_it_posts_the_token_to_the_receipts_cancel_url(self):
+        fake = Fake(json={"status": 1, "request": "r"})
+        self.assertTrue(self.cancel(fake).confirmed)
+        req = fake.requests[0]
+        self.assertEqual(req.method, "POST")
+        self.assertTrue(str(req.url).endswith("/1/receipts/rcpt1/cancel.json"))
+        self.assertIn(f"token={TOKEN}", req.content.decode())
+
+    def test_a_refusal_is_a_settled_answer_not_a_reason_to_retry_forever(self):
+        # the receipt had already expired, been acknowledged, or was not known: nothing is repeating
+        self.assertFalse(self.cancel(Fake(status=400, json={"status": 0, "errors": ["receipt not found"]})).confirmed)
+        self.assertFalse(self.cancel(Fake(status=200, json={"status": 0})).confirmed)
+        self.assertFalse(self.cancel(Fake(status=200, text="not json")).confirmed)
+
+    def test_a_failure_that_may_clear_is_raised_as_retryable_and_never_carries_the_token(self):
+        for fake in (
+            Fake(status=500, json={}),
+            Fake(status=429, json={}),
+            Fake(raises=httpx.ReadTimeout("slow")),
+            Fake(raises=httpx.ConnectError(f"https://api.pushover.net/1/receipts/x/cancel.json?token={TOKEN}")),
+        ):
+            with self.assertRaises(notify.SendError) as ctx:
+                self.cancel(fake)
+            self.assertTrue(ctx.exception.retryable)
+            self.assertNotIn(TOKEN, str(ctx.exception))
+
+    def test_it_refuses_without_calling_out_when_not_configured(self):
+        fake = Fake()
+        with patch.object(settings, "pushover_token", ""):
+            with self.assertRaises(notify.NotConfigured):
+                self.cancel(fake)
+        self.assertEqual(fake.requests, [])
+
+
 def _admin_url() -> str:
     return make_url(settings.database_url).set(database="postgres").render_as_string(hide_password=False)
 
