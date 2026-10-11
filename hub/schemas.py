@@ -217,6 +217,27 @@ class LogEntry(BaseModel):
     text: str
 
 
+class NotificationOut(BaseModel):
+    """One alert in the outbox and what happened to it (hub/alerts.py)."""
+
+    id: int
+    issue_id: int
+    site: str
+    title: str
+    severity: str
+    # new | regression | spike
+    change: str
+    # Pushover's: 2 repeats until acknowledged, 0 is normal, -1 is delivered without sound
+    priority: int
+    status: Literal["pending", "sending", "sent", "failed"]
+    attempts: int
+    last_error: str | None
+    created_at: datetime
+    next_attempt_at: datetime
+    sent_at: datetime | None
+    acked_at: datetime | None
+
+
 TicketKind = Literal["change", "report", "access"]
 
 

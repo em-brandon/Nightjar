@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager, suppress
 from fastapi import Depends, FastAPI
 
 from . import auth
+from .alerts import router as alerts_router
 from .api import router as api_router
 from .browser import router as browser_router
 from .config import settings
@@ -64,6 +65,7 @@ app.include_router(ingest_router)
 app.include_router(api_router, dependencies=console)
 app.include_router(incidents_router, dependencies=console)
 app.include_router(sites_router, dependencies=console)
+app.include_router(alerts_router, dependencies=console)
 app.include_router(tickets_router, dependencies=console)
 app.include_router(deploy_ingest_router)
 app.include_router(deploys_router, dependencies=console)

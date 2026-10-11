@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .api import acknowledged_ids, issue_out
 from .db import get_session
-from .models import Issue, IssueAction, Site
+from .models import Issue, IssueAction, Notification, Site
 from .schemas import ActionIn, IssueOut, LogEntry
 
 router = APIRouter(prefix="/api/issues", tags=["incidents"])
@@ -54,13 +54,30 @@ ACTION_TEXT = {
 }
 
 
+PRIORITY_WORDS = {2: "emergency priority", 0: "normal priority", -1: "quiet, no sound"}
+CHANGE_WORDS = {"new": "new issue", "regression": "back after being resolved", "spike": "spiking"}
+
+
+def alert_line(n: Notification) -> tuple[datetime, str]:
+    """When, and what to say, about one alert. A failure is said loudly: it is the line that must not be missed."""
+    what = f"{CHANGE_WORDS.get(n.change, n.change)}, {PRIORITY_WORDS.get(n.priority, f'priority {n.priority}')}"
+    if n.status == "sent":
+        return n.sent_at or n.created_at, f"Alert sent to the phone ({what})"
+    if n.status == "failed":
+        return n.created_at, f"ALERT NOT SENT after {n.attempts} attempt{'s' if n.attempts != 1 else ''} ({what}): {n.last_error or 'no reason recorded'}"
+    if n.attempts > 0:
+        return n.created_at, f"Alert not sent yet, retrying (attempt {n.attempts}, {what}): {n.last_error or 'no reason recorded'}"
+    return n.created_at, f"Alert queued for the phone ({what})"
+
+
 @router.get("/{issue_id}/log", response_model=list[LogEntry])
 async def issue_log(
     issue_id: int, session: AsyncSession = Depends(get_session)
 ) -> list[LogEntry]:
     """What happened to this issue, oldest first. `system` rows are derived from
-    the issue itself; `action` rows are things a person did. Alerts sent by the
-    hub will join this log with chunk 2."""
+    the issue itself; `action` rows are things a person did. Each alert the hub
+    queued for the phone is here too, with what happened to it, so a failed
+    alert reads as a failed alert and never as one that was not needed."""
     issue = await session.get(Issue, issue_id)
     if issue is None:
         raise HTTPException(404, "unknown issue")
@@ -77,7 +94,9 @@ async def issue_log(
         .where(IssueAction.issue_id == issue_id)
         .order_by(IssueAction.created_at, IssueAction.id)
     ):
-        if a.action == "snooze":
+        if a.action == "ack" and a.detail == "phone":
+            text = "Acknowledged from the phone"
+        elif a.action == "snooze":
             text = f"Snoozed for {a.detail}"
         elif a.detail.startswith("auto:"):
             # done by the hub, not by a person: say so
@@ -85,6 +104,11 @@ async def issue_log(
         else:
             text = ACTION_TEXT[a.action]
         entries.append(LogEntry(at=a.created_at, kind="action", text=text))
+    for n in await session.scalars(
+        select(Notification).where(Notification.issue_id == issue_id).order_by(Notification.created_at, Notification.id)
+    ):
+        at, text = alert_line(n)
+        entries.append(LogEntry(at=at, kind="system", text=text))
     if issue.event_count > 1:
         entries.append(
             LogEntry(
