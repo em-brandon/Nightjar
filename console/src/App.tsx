@@ -13,6 +13,7 @@ import Incidents from "./views/Incidents.tsx";
 import Media from "./views/Media.tsx";
 import Overview from "./views/Overview.tsx";
 import Requests from "./views/Requests.tsx";
+import Sites from "./views/Sites.tsx";
 import Staging from "./views/Staging.tsx";
 
 const TABS: [Exclude<TabId, "idle">, string][] = [
@@ -22,6 +23,7 @@ const TABS: [Exclude<TabId, "idle">, string][] = [
   ["deploys", "Deploys"],
   ["staging", "Staging"],
   ["media", "Media"],
+  ["sites", "Sites"],
 ];
 // "idle" is a screen, not a tab: it is reachable at #/idle and starts by itself
 // after IDLE_AFTER_MS with no input, but has no sidebar entry.
@@ -36,8 +38,9 @@ const ICONS: Record<string, ReactElement> = {
   deploys: <path d="M9 15V4M4.5 8.5 9 4l4.5 4.5M3 15.5h12" />,
   staging: <path d="M9 2 16 6 9 10 2 6zM2 9.5 9 13.5 16 9.5M2 12.5 9 16.5 16 12.5" />,
   media: <path d="M3 4h12v10H3zM7.5 6.8v4.4L11.5 9z" />,
+  sites: <path d="M3 3h12v12H3zM9 6v6M6 9h6" />,
 };
-const VIEWS: Record<Exclude<TabId, "idle">, (props: { f: Feeds }) => ReactElement | null> = { overview: Overview, incidents: Incidents, requests: Requests, deploys: Deploys, staging: Staging, media: Media };
+const VIEWS: Record<Exclude<TabId, "idle">, (props: { f: Feeds }) => ReactElement | null> = { overview: Overview, incidents: Incidents, requests: Requests, deploys: Deploys, staging: Staging, media: Media, sites: Sites };
 
 export default function App({ onSignOut }: { onSignOut?: () => void }) {
   const health = usePoll<SiteHealth[]>("/api/sites/health");
