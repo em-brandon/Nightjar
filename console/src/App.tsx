@@ -1,6 +1,7 @@
 import { useState, type ReactElement } from "react";
 import type { Alert, Deploy, HomeSnapshot, Issue, MediaPlay, MediaSnapshot, Presence, Rates, Rising, SiteHealth, Stack, Ticket, Weather } from "./api/types.ts";
 import type { Feeds, TabId } from "./feeds.ts";
+import { isUnacknowledged } from "./alerts.ts";
 import AlertBanner from "./AlertBanner.tsx";
 import Splash from "./Splash.tsx";
 import { Dot } from "./ui.tsx";
@@ -21,12 +22,12 @@ import Staging from "./views/Staging.tsx";
 const TABS: [Exclude<TabId, "idle">, string][] = [
   ["overview", "Overview"],
   ["incidents", "Incidents"],
+  ["alerts", "Alerts"],
+  ["sites", "Sites"],
   ["requests", "Requests"],
   ["deploys", "Deploys"],
   ["staging", "Staging"],
   ["media", "Media"],
-  ["sites", "Sites"],
-  ["alerts", "Alerts"],
 ];
 // "idle" is a screen, not a tab: it is reachable at #/idle and starts by itself
 // after IDLE_AFTER_MS with no input, but has no sidebar entry.
@@ -109,6 +110,8 @@ export default function App({ onSignOut }: { onSignOut?: () => void }) {
   const badges: Partial<Record<string, { n: number; hot: boolean }>> = {
     incidents: { n: openIssues.length, hot: openIssues.some((i) => i.severity === "P1") },
     requests: { n: openTickets.length, hot: openTickets.some((t) => t.overdue) },
+    // red when an alert gave up or a P1 went unanswered; amber while one is only being retried
+    alerts: { n: f.attention.length, hot: f.attention.some((a) => a.status === "failed" || isUnacknowledged(a)) },
   };
 
   // The idle screen owns the whole viewport (no sidebar). It is left only by
