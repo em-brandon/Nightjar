@@ -109,9 +109,9 @@ function KeysPanel({ shown, onDone }: { shown: Shown; onDone: () => void }) {
         <input value={hub} onChange={(e) => setHub(e.target.value)} spellCheck={false} />
       </label>
 
-      <div className="chips" role="group" aria-label="Stack">
+      <div className="sx-chips" role="group" aria-label="Stack">
         {STACKS.map(({ id, label }) => (
-          <button key={id} type="button" className={`chip ${stack === id ? "on" : ""}`} onClick={() => setStack(id)}>
+          <button key={id} type="button" className={`sx-chip ${stack === id ? "sx-on" : ""}`} aria-pressed={stack === id} onClick={() => setStack(id)}>
             {label}
           </button>
         ))}
@@ -122,8 +122,14 @@ function KeysPanel({ shown, onDone }: { shown: Shown; onDone: () => void }) {
           <h3 className="sx-sub">Environment</h3>
           <CodeBlock text={s.env} />
           <p className="hint">
-            In CI, store these as secrets named <code>{SECRET_NAMES.join("</code>, <code>")}</code>, so a rotation is one edit.
-            The console cannot write them for you.
+            In CI, store these as secrets named{" "}
+            {SECRET_NAMES.map((n, i) => (
+              <span key={n}>
+                {i > 0 && ", "}
+                <code>{n}</code>
+              </span>
+            ))}
+            , so a rotation is one edit. The console cannot write them for you.
           </p>
         </>
       )}
