@@ -87,7 +87,7 @@ class Rejects(AuthTestCase):
                     # public by design: probes, per-site-key ingest, login itself, and the NFC presence
                     # tap, which is authenticated by a token in its body (tests/test_home_ingest.py)
                     continue
-                url = path.replace("{ingest_key}", "x").replace("{issue_id}", "1").replace("{ticket_id}", "1").replace("{site_id}", "1")
+                url = path.replace("{ingest_key}", "x").replace("{issue_id}", "1").replace("{ticket_id}", "1").replace("{site_id}", "1").replace("{notification_id}", "1")
                 for method in methods:
                     if method not in ("get", "post", "patch", "put", "delete"):
                         continue
