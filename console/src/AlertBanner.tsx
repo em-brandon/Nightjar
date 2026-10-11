@@ -12,8 +12,8 @@ export default function AlertBanner({ alerts, go }: { alerts: Alert[]; go: Feeds
       <span>
         <b>{notice.text}.</b> {notice.detail}
       </span>
-      <button className="btn" onClick={() => go("incidents")}>
-        Open incidents
+      <button className="btn" onClick={() => go("alerts")}>
+        Open alerts
       </button>
     </div>
   );

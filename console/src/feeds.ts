@@ -4,7 +4,7 @@ import type { Alert, Deploy, HomeSnapshot, Issue, MediaPlay, MediaSnapshot, Pres
 import type { DemoHome } from "./home.ts";
 import type { DemoMedia } from "./media.ts";
 
-export type TabId = "overview" | "incidents" | "requests" | "deploys" | "staging" | "media" | "sites" | "idle";
+export type TabId = "overview" | "incidents" | "requests" | "deploys" | "staging" | "media" | "sites" | "alerts" | "idle";
 
 export type Feeds = {
   sites: SiteHealth[];
@@ -12,8 +12,8 @@ export type Feeds = {
   rising: Rising[];
   tickets: Ticket[];
   deploys: Deploy[];
-  // alerts that failed, or failed once and are being retried: never allowed to read as "nothing wrong"
-  undelivered: Alert[];
+  // alerts that failed, are being retried after failing, or were P1s nobody acknowledged: never "nothing wrong"
+  attention: Alert[];
   stacks: Stack[];
   media: MediaSnapshot[];
   mediaHistory: MediaPlay[];
@@ -36,5 +36,6 @@ export type Feeds = {
   updatedAt: number | null;
   reloadIssues: () => Promise<unknown>;
   reloadTickets: () => Promise<void>;
+  reloadAttention: () => Promise<void>;
   reloadStacks: () => Promise<void>;
 };
