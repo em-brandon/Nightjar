@@ -57,6 +57,14 @@ class Settings(BaseSettings):
     hub_public_url: str = ""
     # A secret in the callback path, since Pushover's callback carries no signature. Empty disables it.
     pushover_callback_token: str = ""
+    # The sender loop. These are working figures to tune by breaking a staging route (decision #56), not
+    # measured ones: after each failed attempt the row waits the next delay in outbox_backoff_s, and after
+    # outbox_max_attempts it becomes `failed` and shows in the console.
+    outbox_poll_s: float = 5.0
+    outbox_max_attempts: int = 6
+    outbox_backoff_s: list[int] = [30, 120, 600, 1800, 3600]
+    # A row left "sending" by a crash is taken again once it has been claimed this long.
+    outbox_lease_s: int = 120
 
 
 settings = Settings()
