@@ -211,6 +211,13 @@ class HomeIngest(unittest.IsolatedAsyncioTestCase):
         p = (await self.http.get("/api/presence")).json()
         self.assertEqual((p["state"], p["recorded"]), ("away", False))
 
+    async def test_a_tap_with_a_wrong_or_missing_token_is_refused_and_changes_nothing(self):
+        # /presence is public by design (tests/test_auth.py skips it), so its own token check is the only guard
+        for body in ({"state": "home", "token": "wrong-token"}, {"state": "home"}):
+            r = await self.http.post("/presence", json=body)
+            self.assertEqual(r.status_code, 401, body)
+        self.assertFalse((await self.http.get("/api/presence")).json()["recorded"])
+
     async def test_a_tap_sets_home_with_an_expiry(self):
         r = await self.http.post("/presence", json={"state": "home", "token": TOKEN})
         self.assertEqual(r.status_code, 200)
