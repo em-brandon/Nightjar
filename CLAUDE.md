@@ -40,12 +40,14 @@ development), and the hub **refuses to start** when `VERIFY_SIGNATURES` is on wi
 is only `Secure` over https, so run it behind Caddy's TLS. Still to do before internet exposure: the
 console is not in the deploy stack yet.
 
-**Chunk 2: not written, deferred.** Nightjar therefore cannot alert anyone yet.
-It is still the entire point of the project, but it needs a Pushover licence, and
-production needs a domain and a VPS. Chunk 3 went first because it costs nothing.
-Resume chunk 2 when those are paid for. Until then the console is a place to
-*look*, not a reason to be interrupted, and nothing here should be mistaken for
-monitoring.
+**Chunk 2: built, and not yet live.** The alert path exists end to end: the policy, the Postgres outbox
+written in the same transaction as the state change, the sender loop with backoff and crash recovery, the
+Pushover adapter, the acknowledgement callback and receipt polling, a dead-man's-switch ping, an **Alerts** tab
+(status, test push, history, retry), a banner on every tab and a cue on the idle wall, and an uptime outage that
+opens a P1. It has been tested against fakes and a real database, never against Pushover. It goes live when
+`PUSHOVER_TOKEN` and `PUSHOVER_USER` are set (the Pushover app licence is the only cost) and, for production,
+there is a domain and a VPS. With them unset every alert fails visibly instead of vanishing. `DEPLOY.md` section 7b
+has the steps. Until a real push has been seen on a phone, nothing here should be mistaken for monitoring.
 
 Everything else waits.
 
@@ -192,7 +194,7 @@ hours reintroduces exactly what quiet hours exist to solve.
 **Chunk 1 — done.** Models, fingerprinting, ingest, HMAC verification, the
 reporter snippet, the dedupe harness.
 
-**Chunk 2 — next.** Alert policy, presence, Pushover dispatch.
+**Chunk 2 — built** (see Status; the notes below are the spec it was built to, with the departures in decision #56).
 
 - Policy reads `state_change`, `severity` and effective presence, applies quiet
   hours (22:00–07:00 Africa/Nairobi, P1 only), returns which channels to use.
@@ -285,8 +287,8 @@ then *Unlock console* leaves it; stray input never does. The fingerprint is
 is the one seam to swap. Unlock only navigates, and gives no real protection until
 the write endpoints are gated (#32).
 
-Still not built: a real ack from the phone (needs chunk 2's Pushover callback), the
-alert-sent lines in the incident log, and the mockup's fingerprint reveal.
+Still not built: the mockup's fingerprint reveal. The ack from the phone and the alert lines in the
+incident log are built (chunk 2).
 
 **Chunk 4.** Email intake (Postmark/Mailgun inbound → `/ingest/email`) and the
 07:30 digest cron.
@@ -356,6 +358,13 @@ hub/
   weather.py       /api/weather: cached Open-Meteo reading, rain, UV and pressure for the wall (decoration only)
   home.py          home host snapshots and internet speed tests in, /api/home out
   presence.py      home or away as taps with an expiry (away on expiry or with no record)
+  policy.py        the alert policy, a pure function: which channels fire and how loudly, never whether (decision #8)
+  outbox.py        the alert outbox: writes a notification with the state change, sends due rows, polls receipts, pings the dead-man's switch
+  notify.py        the one adapter that knows Pushover: send, check a receipt
+  pushover.py      POST /pushover/ack/{token}: acknowledging a P1 on the phone acknowledges the incident
+  acks.py          records an acknowledgement once, whichever path (callback or receipt poll) hears it first
+  alerts.py        /api/notifications: the outbox for the console, status, test push, retry
+  uptime.py        a site that stops answering becomes an issue: P1 in production, P2 on staging, edge-triggered
   rates.py         /api/rates: cached USD to KES rate (decoration only)
   edge.py          edge-triggered issues shared by every pushed source: open once, resolve themselves
 console/           Vite + React 19 + TypeScript UI: src/views/* is one file per tab; src/api/* is generated from the hub (do not edit)
@@ -453,6 +462,12 @@ signed against a hub with `VERIFY_SIGNATURES` on.
 | `WEATHER_ENABLED` / `WEATHER_LAT` / `WEATHER_LON` / `WEATHER_NAME` / `WEATHER_TTL_MIN` | the wall's weather and altitude, from Open-Meteo (no key). Defaults to Nairobi; set the exact coordinates of the wall, since the elevation shown is the terrain model's value at that point |
 | `BROWSER_RATE_PER_KEY_MIN` / `BROWSER_RATE_PER_IP_MIN` / `BROWSER_NEW_ISSUES_PER_HOUR` | brakes on browser reporting: 120 and 20 reports a minute, and 10 new issues an hour per site |
 | `PRESENCE_TOKEN` | shared secret for the NFC presence tap (`POST /presence`). Empty disables that route |
+| `PUSHOVER_TOKEN` / `PUSHOVER_USER` | the Pushover application token and your user key. Both are needed to send; unset, every alert fails visibly |
+| `HUB_PUBLIC_URL` / `PUSHOVER_CALLBACK_TOKEN` | the hub's public address and a secret for the acknowledgement callback's URL. Without them acknowledgements are found by polling |
+| `DEADMAN_URL` | a healthchecks.io ping URL, pinged only while the alert sender is alive |
+| `QUIET_TZ` / `QUIET_START_HOUR` / `QUIET_END_HOUR` | quiet hours for the policy (default Africa/Nairobi, 22 to 7). Inside them only P1 makes noise |
+| `OUTBOX_ENABLED` / `OUTBOX_POLL_S` / `OUTBOX_MAX_ATTEMPTS` / `OUTBOX_BACKOFF_S` / `OUTBOX_LEASE_S` / `RECEIPT_POLL_S` | the sender loop's working figures (defaults 5s, 6 attempts, 30s then 2m, 10m, 30m, 1h, a 120s claim lease, receipts every 30s) |
+| `UPTIME_RECOVER_CHECKS` | passing checks in a row before a site's outage resolves itself (default 5) |
 | `RATES_ENABLED` / `RATES_TTL_MIN` | the USD to KES rate on the wall, from open.er-api.com (no key) |
 | `VITE_STACK_CONTROL_URL` | console build-time: where the Staging tab's *Manage stacks* button points (Dockge over Tailscale). Optional |
 
