@@ -7,6 +7,7 @@ type S = components["schemas"];
 
 export type SiteHealth = S["SiteHealthOut"];
 export type SiteListed = S["SiteListed"];
+export type SiteOut = S["SiteOut"];
 export type SiteCreated = S["SiteCreated"];
 export type SiteIn = S["SiteIn"];
 export type SitePatch = S["SitePatch"];
