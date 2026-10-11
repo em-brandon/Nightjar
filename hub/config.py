@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     probe_enabled: bool = True
     probe_interval_s: int = 60
     probe_timeout_s: float = 10.0
+    # A site's outage resolves itself after this many passing checks in a row (hub/uptime.py). At the default
+    # interval that is five minutes: long enough that a flapping site does not open and close an issue all day.
+    uptime_recover_checks: int = 5
     # Shared secret for the console and everything under /api. Empty means auth
     # is off (local development only); the hub refuses that when
     # VERIFY_SIGNATURES is on. Generate one with: openssl rand -base64 32
