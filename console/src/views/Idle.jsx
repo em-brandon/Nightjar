@@ -5,7 +5,7 @@ import { Odometer, Pill, Sev, SiteCard, Spark } from "../ui.tsx";
 import { requestsView } from "../home.ts";
 import { label, mediaState } from "../media.ts";
 import { DemoTag, DiskBar } from "./Media.jsx";
-import PushCard from "../PushCard.jsx";
+import PushCard from "../PushCard.tsx";
 import { demoPush, pushView } from "../push.ts";
 import StatusTray from "../StatusTray.jsx";
 import WeatherLine from "../WeatherLine.jsx";

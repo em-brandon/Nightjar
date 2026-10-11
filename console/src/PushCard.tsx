@@ -1,18 +1,19 @@
 import { useRef } from "react";
 import { CircleCheck, CircleX, FlaskConical } from "lucide-react";
+import type { PushCard as PushView, PushState } from "./push.ts";
 
 // The staging push, as a card under the clock. It slides in when there is something to say and
 // slides away when it has said it. The states, in the order a healthy push goes through them:
 // loading (files going up, with a bar), done (delivered), complete (the stack came up healthy).
-const SAY = {
+const SAY: Record<PushState, string> = {
   loading: "Uploading files",
   done: "Files uploaded",
   complete: "Live on staging",
   failed: "Push failed",
 };
-export default function PushCard({ push, sample = false, revealed = false }) {
+export default function PushCard({ push, sample = false, revealed = false }: { push?: PushView | null; sample?: boolean; revealed?: boolean }) {
   // Kept while the card slides away, so its words do not vanish before it has left.
-  const last = useRef(null);
+  const last = useRef<PushView | null>(null);
   if (push) last.current = push;
   const p = push ?? last.current;
   if (!p) return <aside className="push-card" aria-hidden="true" />;
