@@ -352,3 +352,52 @@ class Presence(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class Notification(Base):
+    """The alert outbox: one row per state change that has to reach the phone.
+
+    It is written in the same transaction that records the change, so either both exist or neither
+    does and a restart loses nothing. A sender loop (hub/outbox.py) takes due rows with SKIP LOCKED,
+    sends them and retries with backoff. Delivery is at-least-once: a crash after the push is accepted
+    but before the row is marked sent repeats the push, which is far better than a missed one.
+    """
+
+    __tablename__ = "notifications"
+    __table_args__ = (
+        # a retried ingest must not write a second row for the same change
+        UniqueConstraint("issue_id", "change", "changed_at", name="uq_notification_change"),
+        Index("ix_notifications_due", "status", "next_attempt_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    issue_id: Mapped[int] = mapped_column(ForeignKey("issues.id", ondelete="CASCADE"))
+    # new | regression | spike
+    change: Mapped[str] = mapped_column(String(20))
+    # When the change happened. For a spike it is the start of the window, so one window is one alert.
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    severity: Mapped[str] = mapped_column(String(4))
+
+    # What to send, fixed when the row was written: the policy's answer then, and the words then.
+    priority: Mapped[int] = mapped_column(Integer)
+    speaker: Mapped[str | None] = mapped_column(String(10))
+    site: Mapped[str] = mapped_column(String(120))
+    title: Mapped[str] = mapped_column(String(300))
+
+    # pending | sending | sent | failed. A failed row is shown in the console: an alert that could not
+    # be sent must never look like an alert that was not needed.
+    status: Mapped[str] = mapped_column(String(10), default="pending", server_default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    next_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # When a sender took the row. A row left "sending" by a crash is picked up again once this is old.
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # why the last attempt failed: a class name and a short reason, never the provider's token
+    last_error: Mapped[str | None] = mapped_column(String(300))
+
+    # Pushover's receipt for a priority 2 push, which it calls back about when it is acknowledged.
+    receipt: Mapped[str | None] = mapped_column(String(40))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    acked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    issue: Mapped["Issue"] = relationship()
