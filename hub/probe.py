@@ -8,6 +8,7 @@ from sqlalchemy import delete, select
 
 from .config import settings
 from .db import SessionLocal
+from .uptime import reconcile
 from .models import Check, HomeReport, MediaPlay, MediaReport, Presence, Site, SpeedTest, StackReport
 
 log = logging.getLogger("nightjar.probe")
@@ -55,6 +56,8 @@ async def run_round(client: httpx.AsyncClient) -> int:
         results = await asyncio.gather(*(_probe(client, sid, url) for sid, url in targets))
         session.add_all(results)
         await session.commit()
+        # An outage becomes an issue, and so an alert. It never raises: the probe must keep probing.
+        await reconcile(session, [sid for sid, _ in targets])
         return len(results)
 
 
