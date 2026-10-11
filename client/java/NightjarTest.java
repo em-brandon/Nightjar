@@ -256,6 +256,50 @@ public final class NightjarTest {
         check("with the hub down, capturing returns at once", captured < 300, captured + " ms");
         check("and the failed send is over within the timeout", total < 4500, total + " ms");
 
+        // ---- a hub that is not https -----------------------------------------------------------------------------
+        for (String good : new String[] {"https://nightjar.example", "https://nightjar.example/", "http://localhost:8000", "http://127.0.0.1:9", "http://[::1]:8000", "http://app.localhost"}) {
+            check(good + " is a usable hub", Nightjar.hubRefusal(good) == null);
+        }
+        for (String bad : new String[] {"http://nightjar.example", "http://10.0.0.5", "http://192.168.1.20:8000", "http://hub.test", "ftp://nightjar.example", "nightjar.example", "//nightjar.example"}) {
+            check(bad + " is refused", Nightjar.hubRefusal(bad) != null);
+        }
+        String why = String.valueOf(Nightjar.hubRefusal("http://user:pa55word@nightjar.example/path?token=abc"));
+        check("the reason names the host but never the whole address", !why.contains("pa55word") && !why.contains("token=abc") && !why.contains("user:"));
+
+        Nightjar.reset();
+        List<String> logged = new CopyOnWriteArrayList<>();
+        Nightjar.setLogger(logged::add);
+        List<String> sentToBadHub = new CopyOnWriteArrayList<>();
+        Nightjar.setTransport((u1, h1, b1, t1) -> sentToBadHub.add(u1));
+        boolean refusedThrew = false;
+        boolean refusedConfigured = true;
+        try {
+            refusedConfigured = Nightjar.init(opts().hub("http://nightjar.example"));
+            Nightjar.captureException(new RuntimeException("boom"));
+            Nightjar.init(opts().hub("http://nightjar.example"));
+            Nightjar.captureException(new RuntimeException("boom again"));
+            Nightjar.flush(500);
+        } catch (Throwable t) {
+            refusedThrew = true;
+        }
+        check("an http:// hub throws nothing", !refusedThrew);
+        check("init says it is not configured", !refusedConfigured);
+        check("it says so once, on standard error, not silently", logged.size() == 1 && logged.get(0).contains("refusing to report errors to http://nightjar.example"), logged.toString());
+        check("and nothing is sent", sentToBadHub.isEmpty());
+
+        for (String hub : new String[] {"https://nightjar.example", "http://127.0.0.1:8000", "http://localhost:8000"}) {
+            Nightjar.reset();
+            List<String> quiet = new CopyOnWriteArrayList<>();
+            List<String> sentOk = new CopyOnWriteArrayList<>();
+            Nightjar.setLogger(quiet::add);
+            Nightjar.setTransport((u2, h2, b2, t2) -> sentOk.add(u2));
+            Nightjar.init(opts().hub(hub));
+            Nightjar.captureException(new RuntimeException("boom"));
+            Nightjar.flush(2000);
+            check(hub + " still reports", sentOk.size() == 1, sentOk.toString());
+            check(hub + " is not warned about", quiet.isEmpty());
+        }
+
         Nightjar.reset();
         System.out.println(failures == 0 ? "\njava reporter passed" : "\n" + failures + " FAILED");
         System.exit(failures == 0 ? 0 : 1);

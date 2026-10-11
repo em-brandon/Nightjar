@@ -1,9 +1,10 @@
 import secrets
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -352,3 +353,86 @@ class Presence(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class Notification(Base):
+    """The alert outbox: one row per state change that has to reach the phone.
+
+    It is written in the same transaction that records the change, so either both exist or neither
+    does and a restart loses nothing. A sender loop (hub/outbox.py) takes due rows with SKIP LOCKED,
+    sends them and retries with backoff. Delivery is at-least-once: a crash after the push is accepted
+    but before the row is marked sent repeats the push, which is far better than a missed one.
+    """
+
+    __tablename__ = "notifications"
+    __table_args__ = (
+        # a retried ingest must not write a second row for the same change
+        UniqueConstraint("issue_id", "change", "changed_at", name="uq_notification_change"),
+        Index("ix_notifications_due", "status", "next_attempt_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    issue_id: Mapped[int] = mapped_column(ForeignKey("issues.id", ondelete="CASCADE"))
+    # new | regression | spike
+    change: Mapped[str] = mapped_column(String(20))
+    # When the change happened. For a spike it is the start of the window, so one window is one alert.
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    severity: Mapped[str] = mapped_column(String(4))
+
+    # What to send, fixed when the row was written: the policy's answer then, and the words then.
+    priority: Mapped[int] = mapped_column(Integer)
+    speaker: Mapped[str | None] = mapped_column(String(10))
+    site: Mapped[str] = mapped_column(String(120))
+    title: Mapped[str] = mapped_column(String(300))
+
+    # pending | sending | sent | failed. A failed row is shown in the console: an alert that could not
+    # be sent must never look like an alert that was not needed.
+    status: Mapped[str] = mapped_column(String(10), default="pending", server_default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    next_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # When a sender took the row. A row left "sending" by a crash is picked up again once this is old.
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # why the last attempt failed: a class name and a short reason, never the provider's token
+    last_error: Mapped[str | None] = mapped_column(String(300))
+
+    # Pushover's receipt for a priority 2 push, which it calls back about when it is acknowledged.
+    receipt: Mapped[str | None] = mapped_column(String(40))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    acked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # When Pushover reported the receipt expired with nobody acknowledging it: a P1 that did not get a
+    # human. The console says so, because it means the phone did not wake anyone.
+    expired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Someone dealt with the incident (acknowledged, resolved, muted or snoozed it, or the hub resolved it by
+    # itself) after this alert was sent. Written in the same transaction as that action. A repeating push for
+    # it must stop, and a P1 that expired unanswered no longer needs anyone's attention.
+    dismissed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # When Pushover confirmed it cancelled the repeating push. The sender does this separately and retries,
+    # so a network failure never leaves a phone alarming for an incident that is already handled.
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    issue: Mapped["Issue"] = relationship()
+
+
+class DailyStat(Base):
+    """One site's numbers for one complete UTC day, written by hub/rollup.py before the raw rows
+    behind them are pruned. A row exists only for a day when something was recorded, so a missing
+    row means "no data", which is not the same as zero. Today is never here: it is computed live."""
+
+    __tablename__ = "daily_stats"
+
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), primary_key=True)
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+
+    checks_total: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    checks_ok: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # over successful checks only: a timeout has no meaningful latency
+    latency_avg_ms: Mapped[int | None] = mapped_column(Integer)
+    latency_p95_ms: Mapped[int | None] = mapped_column(Integer)
+
+    events: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    issues_opened: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+
+    alerts_sent: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    alerts_failed: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    p1_expired: Mapped[int] = mapped_column(Integer, default=0, server_default="0")

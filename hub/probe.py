@@ -8,6 +8,8 @@ from sqlalchemy import delete, select
 
 from .config import settings
 from .db import SessionLocal
+from .rollup import rollup
+from .uptime import reconcile
 from .models import Check, HomeReport, MediaPlay, MediaReport, Presence, Site, SpeedTest, StackReport
 
 log = logging.getLogger("nightjar.probe")
@@ -55,13 +57,23 @@ async def run_round(client: httpx.AsyncClient) -> int:
         results = await asyncio.gather(*(_probe(client, sid, url) for sid, url in targets))
         session.add_all(results)
         await session.commit()
+        # An outage becomes an issue, and so an alert. It never raises: the probe must keep probing.
+        await reconcile(session, [sid for sid, _ in targets])
         return len(results)
 
 
 async def _prune() -> None:
     cutoff = datetime.now(UTC) - RETENTION
     async with SessionLocal() as session:
-        await session.execute(delete(Check).where(Check.checked_at < cutoff))
+        # History is written before the raw rows go. If the rollup fails, the checks stay until it
+        # succeeds: deleting them anyway would lose the only copy of those days.
+        try:
+            await rollup(session)
+        except Exception:
+            log.exception("daily rollup failed; keeping the raw checks until it succeeds")
+            await session.rollback()
+        else:
+            await session.execute(delete(Check).where(Check.checked_at < cutoff))
         await session.execute(
             delete(StackReport).where(
                 StackReport.reported_at < datetime.now(UTC) - STACK_RETENTION

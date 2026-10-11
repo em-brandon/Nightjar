@@ -46,6 +46,12 @@ A Nightjar outage has to be invisible to a client's checkout page. Concretely, e
 4. Does not change what a crash does: after reporting, the process or request fails exactly as it would have, or
    the app's own handler runs.
 5. Has **no dependencies** beyond the language's standard library, because it runs with a client's secret.
+6. **Refuses a plain `http://` hub, out loud.** `https://` is always accepted, and `http://` only for `localhost`, `127.0.0.1`,
+   `[::1]` and `*.localhost`, which development needs. Anywhere else it would send error text, readable, across a network. A
+   refusal is never silent, because a mistyped address would look exactly like an app with no errors: the reporter writes one
+   line to the app's own log (standard error, `error_log`, or the browser console) when it starts, sends nothing, and never
+   throws. The line names the host but never the whole address, which could carry a credential:
+   `Nightjar: refusing to report errors to http://nightjar.example: plain http would send them readable across the network. ...`
 
 ## The wire contract
 

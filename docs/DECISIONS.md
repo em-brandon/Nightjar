@@ -1336,3 +1336,29 @@ so only one process probes. The outbox sender is safe with several processes bec
 
 **Not decided:** the retry schedule and how many attempts before `failed`; both are working figures to tune by breaking a staging
 route, as `CLAUDE.md` says to test alerting.
+
+**Update, 2026-10-11: built.** The outbox, policy, sender loop, Pushover adapter, acknowledgement path, Alerts tab and an uptime outage
+that opens a P1 are written and tested against fakes and a real database. Not yet run against Pushover itself. What building it settled
+or changed:
+
+- **"P2 is silent at night" means delivered without sound, not dropped.** Priority -1 is a push that waits in the notification list.
+  Dropping it would break "nothing may suppress an alert".
+- **Pushover's callback fires on acknowledgement only**, per its documentation, so a P1 that expires unanswered is invisible to a
+  callback. The sender therefore polls the receipts of priority 2 pushes (every 30 seconds, well under Pushover's 5-second limit). That
+  finds an expiry, which the console shows as "not acknowledged within 30 minutes: the phone may not have woken anyone", and it finds an
+  acknowledgement when the callback cannot reach the hub (a laptop). Both paths record an acknowledgement once.
+- **A spike is one alert per window, not one per event.** Its "time of change" in the unique key is the start of the spike window.
+- **Working figures, still to tune:** poll 5 seconds, six attempts, waits of 30 seconds, 2, 10, 30 and 60 minutes, a 120-second claim
+  lease. Unset Pushover credentials fail a row immediately and visibly rather than retrying.
+- **The test push is not queued.** It is not about an incident, so it cannot be mistaken for an alert, and it always answers with what
+  happened, so the screen can show why a push failed.
+- **An uptime outage is an ordinary issue** (`hub/uptime.py`): P1 in production, P2 on staging, opened at the second failed check in a
+  row (the console's own rule for "down"), edge-triggered like every pushed source, resolved after five passing checks in a row.
+- **Dealing with an incident stops its repeating push.** Acknowledging, resolving, muting or snoozing it in the console, an automatic
+  resolve by the hub, or an acknowledgement on the phone (for the incident's other pushes) stamps its sent alerts as dismissed in the
+  same transaction. The sender then calls Pushover's cancel on each receipt, every pass, until it has, so a network failure cannot
+  leave a phone alarming for something already handled. A push sent for an incident handled while it was queued is dismissed at once.
+  An expired P1 stops needing attention once the incident has been dealt with. **Not built, and written down in `docs/ESCALATION.md`:**
+  escalating a P1 that nobody acknowledges to a second recipient or channel.
+- **Unconfigured is loud, not quiet.** With no token every alert shows as failed with its reason, in a banner on every tab, in the
+  incident log, and as a cue on the wall display.

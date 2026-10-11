@@ -36,14 +36,42 @@ final class Reporter
     private static $hooked = false;
     private static $uncaught = false;
     private static $installed = false;
+    private static $warned = false;
+    /** @var callable|null for tests: where the one-line warning about an unusable hub goes (default: error_log) */
+    private static $logger = null;
     /** @var callable|null for tests: function (string $url, array $headers, string $body, int $timeout): void */
     private static $transport = null;
 
-    /** Configure. Returns false (and does nothing else) if the hub, key or secret is missing. */
+    /**
+     * Whether this hub address may be used, and if not, why. https is always fine. Plain http is fine only for a machine
+     * talking to itself, which development needs: anywhere else it would send error text, readable, across a network.
+     * Returns null when the address is fine, or one line saying what is wrong. It never includes the whole address,
+     * which could carry a credential.
+     */
+    public static function hubRefusal(string $hub): ?string
+    {
+        $p = parse_url($hub);
+        if ($p === false || !isset($p['scheme'], $p['host'])) {
+            return 'Nightjar: the hub address is not a valid URL, so no errors will be reported. Use https://your-hub.';
+        }
+        $scheme = strtolower($p['scheme']);
+        $host = strtolower($p['host']);
+        if ($scheme === 'https') {
+            return null;
+        }
+        if ($scheme === 'http' && (in_array($host, ['localhost', '127.0.0.1', '[::1]', '::1'], true) || substr($host, -10) === '.localhost')) {
+            return null;
+        }
+        return "Nightjar: refusing to report errors to {$scheme}://{$host}: plain http would send them readable across the network. "
+            . 'Use an https:// hub address (http:// is only accepted for localhost). No errors will be reported.';
+    }
+
+    /** Configure. Returns false (and does nothing else) if the hub, key or secret is missing, or the hub is not https. */
     public static function init(array $options = []): bool
     {
         try {
             self::$options = self::resolve($options);
+            self::warnIfRefused(self::$options);
             return self::configured(self::$options);
         } catch (\Throwable $e) {
             return false;
@@ -211,6 +239,12 @@ final class Reporter
         self::$transport = $transport;
     }
 
+    /** For tests: replace error_log as the place the unusable-hub warning goes. */
+    public static function setLogger(?callable $logger): void
+    {
+        self::$logger = $logger;
+    }
+
     /** For tests: forget everything. */
     public static function reset(): void
     {
@@ -219,6 +253,8 @@ final class Reporter
         self::$uncaught = false;
         self::$installed = false;
         self::$transport = null;
+        self::$warned = false;
+        self::$logger = null;
     }
 
     /** For tests: what is waiting to be sent. */
@@ -239,7 +275,37 @@ final class Reporter
 
     private static function options(): array
     {
-        return self::$options ?? (self::$options = self::resolve([]));
+        if (self::$options === null) {
+            self::$options = self::resolve([]);
+            self::warnIfRefused(self::$options);
+        }
+        return self::$options;
+    }
+
+    /**
+     * An unusable hub is never silent: a mistyped address would otherwise look exactly like an app with no errors. It
+     * says so once per process, to the app's own log, and then sends nothing. It never throws, because a reporter must
+     * not break the app it reports on.
+     */
+    private static function warnIfRefused(array $o): void
+    {
+        try {
+            if (self::$warned || $o['hub'] === '') {
+                return;
+            }
+            $why = self::hubRefusal($o['hub']);
+            if ($why === null) {
+                return;
+            }
+            self::$warned = true;
+            if (self::$logger !== null) {
+                call_user_func(self::$logger, $why);
+            } else {
+                error_log($why);
+            }
+        } catch (\Throwable $e) {
+            // even the warning must not break the app
+        }
     }
 
     private static function resolve(array $o): array
@@ -261,7 +327,7 @@ final class Reporter
 
     private static function configured(array $o): bool
     {
-        return $o['hub'] !== '' && $o['key'] !== '' && $o['secret'] !== '';
+        return $o['hub'] !== '' && $o['key'] !== '' && $o['secret'] !== '' && self::hubRefusal($o['hub']) === null;
     }
 
     private static function sign(array $o, array $payload): array

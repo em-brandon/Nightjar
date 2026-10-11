@@ -13,6 +13,9 @@ Named for a bird that only becomes active after dark, which is when this system 
 - [Why Nightjar exists](#why-nightjar-exists)
 - [How it works](#how-it-works)
   - [How the uptime probe and the reporters fit together](#how-the-uptime-probe-and-the-reporters-fit-together)
+- [Alerting: from a state change to your phone](#alerting-from-a-state-change-to-your-phone)
+  - [If you do not acknowledge](#if-you-do-not-acknowledge)
+  - [What has been proven, and what has not](#what-has-been-proven-and-what-has-not)
 - [The stack](#the-stack)
 - [Core concepts](#core-concepts)
   - [Fingerprint](#fingerprint)
@@ -22,6 +25,8 @@ Named for a bird that only becomes active after dark, which is when this system 
   - [Presence and routing](#presence-and-routing)
   - [Presence and NFC tags](#presence-and-nfc-tags)
 - [The console](#the-console)
+  - [Adding a site](#adding-a-site)
+  - [Demo data](#demo-data)
 - [The wall monitor](#the-wall-monitor)
   - [What the monitor shows](#what-the-monitor-shows)
   - [Access tiers](#access-tiers)
@@ -46,6 +51,8 @@ Named for a bird that only becomes active after dark, which is when this system 
   - [Reporters by stack](#reporters-by-stack)
   - [Deploys](#deploys)
 - [Deploying](#deploying)
+  - [Hardening, and what is still open](#hardening-and-what-is-still-open)
+- [Continuous integration](#continuous-integration)
 - [Roadmap](#roadmap)
 - [Known gaps](#known-gaps)
 - [Conventions](#conventions)
@@ -60,15 +67,23 @@ Named for a bird that only becomes active after dark, which is when this system 
 | Piece | State |
 |---|---|
 | Ingest, fingerprinting, deduplication (chunk 1) | **Done and tested.** The same crash sent 200 times, with a different address and retry count each time, lands in **one** issue ([how](#fingerprint)) |
-| Console: five tabs, uptime probe, incident actions, tickets, deploys, idle screen (chunk 3) | **Done.** Runs locally against a dev database |
-| Alerting: alert policy, presence, Pushover, speaker (chunk 2) | **Not written.** Deferred until the Pushover licence, a domain and a VPS are paid for |
-| Email intake and the 07:30 digest (chunk 4) | Not started |
+| Console (chunk 3): eight tabs, uptime probe, incident actions, tickets, deploys, staging, media, idle screen | **Done.** Written in TypeScript under `strict`, with its API types generated from the hub. Runs locally against a dev database |
+| Onboarding: add a site, see its keys once beside a setup snippet, watch for its first report | **Done.** The console's **Sites** tab ([how](#adding-a-site)) |
+| Alerting (chunk 2): policy, outbox, sender, Pushover, acknowledgement, cancel, dead-man's switch | **Built and tested, not live.** A real P1 was sent to a phone and acknowledged from it. It needs a deployed hub and your Pushover keys to run for real ([how it works](#alerting-from-a-state-change-to-your-phone)) |
+| An uptime outage raising a P1 | **Done.** Two failed checks in a row open an issue: P1 in production, P2 on staging |
+| Production hardening | **In progress.** Built: the console served by Caddy, security headers and HSTS, secrets as mounted files, reporters that refuse a plain `http://` hub. Planned: encrypted backups, derived secrets, a secret scanner, an audit trail, a leak runbook ([where it stands](#hardening-and-what-is-still-open)) |
+| CI for Nightjar itself | **Written, not yet run on GitHub** ([details](#continuous-integration)) |
+| Escalating a P1 nobody acknowledges | **Planned, not started.** [`docs/ESCALATION.md`](docs/ESCALATION.md) |
+| Email intake and the 07:30 digest (chunk 4) | Not started. A P3 has nowhere to go but the console |
 | Media ingest and archive on a Raspberry Pi (side project) | **Planned, not built.** Research and design in [`docs/MEDIA-ARCHIVE.md`](docs/MEDIA-ARCHIVE.md) |
 | Client integration kit: push checks, heartbeats, an npm CLI (chunk 4b, extended) | **Planned, not built.** Design in [`docs/CLIENT-INTEGRATION.md`](docs/CLIENT-INTEGRATION.md) |
+| Deploying client apps (Gitea to staging to production) | **Discussed, not written.** The reporting half exists |
 | Wall display route, Pico companion, Gitea integration, client status page (chunks 5 to 8) | Designed, not built. The idle screen is the software precursor to the wall display |
 
-> **Nightjar cannot yet interrupt you.** Until chunk 2 exists it deduplicates crashes and shows them
-> in the console, but nothing buzzes your phone. Do not rely on it to catch a client outage.
+> **Nightjar can interrupt you, but only once it is deployed and Pushover is configured.** Until then every alert is queued and
+> shown as **failed** with the reason, in a banner on every tab, never dropped. The full path has been proven once, end to end,
+> against a real phone, and has not yet watched a real client. Do not rely on it to catch a client outage until it has run on a
+> VPS for a while. See [what has been proven](#what-has-been-proven-and-what-has-not).
 
 ---
 
@@ -89,8 +104,8 @@ inconvenient hours**. Every design decision is downstream of that.
 
 ```
 client app crashes ─┐
-uptime check fails  ─┼─→ ingest ─→ fingerprint ─→ alert policy ─┬─→ Pushover (P1 retries until acknowledged)
-client emails       ─┘                                          └─→ daily digest
+uptime check fails  ─┼─→ ingest ─→ fingerprint ─→ alert policy ─┬─→ outbox ─→ Pushover (P1 repeats until acknowledged)
+client emails       ─┘                                          └─→ daily digest (not built)
 ```
 
 One FastAPI service, one Postgres, one React console. Everything else is a client of them.
@@ -145,10 +160,12 @@ flowchart LR
     end
 
     CON["Console and wall display<br/>poll every 30 s"]
-    PUSH["Pushover<br/>chunk 2, not built"]
+    OUTB[("Alert outbox<br/>written with the change")]
+    PUSH["Pushover<br/>priority 2 until acknowledged"]
 
     PROBE -- "GET url, follows redirects,<br/>under 400 is up" --> SITE
     PROBE -- "ok, status, latency" --> DB
+    PROBE -- "2 failed checks in a row:<br/>an outage becomes an issue" --> FP
 
     APP -- "crashes" --> EV
     PAGE -- "page errors, never P1" --> BR
@@ -172,14 +189,16 @@ flowchart LR
     DB --> DERIVE
     DERIVE --> API
     API --> CON
-    DERIVE -. "state_change" .-> PUSH
+    FP -- "state_change: new,<br/>regression, spike" --> OUTB
+    OUTB --> PUSH
+    PUSH -- "acknowledged" --> API
 ```
 
 **What each source can and cannot see.** This is why there are several, and why silence is treated as a fault:
 
 | Source | Direction | Sees | Blind to |
 |---|---|---|---|
-| Uptime probe | Hub pulls | Whether the public URL answers, and how fast | Errors inside a working page, and anything on a private network |
+| Uptime probe | Hub pulls | Whether the public URL answers, and how fast. Two failures in a row open an issue | Errors inside a working page, and anything on a private network |
 | Server reporters (Python, Node, PHP, Java) | App pushes | Crashes with a stack trace | A dead app: it cannot report that it is dead |
 | Browser reporter | Page pushes | JavaScript errors on real visitors' screens | A page that never loads |
 | Stack, home and media reporters | Home server pushes | Container health, host health, streaming | A dead reporter, which is shown as `reporter silent` |
@@ -208,16 +227,99 @@ instead. See [`docs/KEYS.md`](docs/KEYS.md) for who is allowed to send what.
 
 ---
 
+## Alerting: from a state change to your phone
+
+This is the point of the project, and the part with the most rules. Everything below is built and tested. A real P1 has been sent
+to a phone and acknowledged from it ([what that proves](#what-has-been-proven-and-what-has-not)).
+
+```mermaid
+flowchart TD
+    CH["state_change<br/>new, regression, spike"] --> POL["Policy: severity, presence, quiet hours<br/>hub/policy.py, a pure function"]
+    POL -- "P3" --> DIG(["digest only<br/>not built yet"])
+    POL -- "P1, P2" --> OB[("Alert outbox<br/>a notifications row, written in the<br/>same transaction as the change")]
+    OB --> SND["Sender loop<br/>takes due rows with SKIP LOCKED"]
+    SND -- "send" --> PO["Pushover<br/>hub/notify.py, the one adapter"]
+    PO --> PH(["Your phone"])
+    SND -- "failed, or out of attempts" --> FAIL["Shown as failed:<br/>banner on every tab, Alerts tab,<br/>incident log, wall display"]
+    PH -- "Acknowledge" --> ACK["Pushover callback, or the hub<br/>checking the receipt every 30 s"]
+    ACK --> ISS["Issue acknowledged,<br/>recorded in its audit trail"]
+    ISS -. "acknowledged, resolved,<br/>muted or snoozed in the console" .-> CAN["Tell Pushover to stop<br/>the repeating push"]
+    CAN --> PO
+```
+
+**The rules it keeps:**
+
+1. **Nothing may suppress an alert.** The policy chooses the channel and the loudness, never whether a P1 or P2 is sent. An unknown
+   severity or presence is still sent, and if the policy itself raises, the answer is a normal push. P2 at night is
+   **delivered without sound**, not dropped.
+2. **The alert is written with the change.** A `state_change` and its `notifications` row are one transaction, so either both exist
+   or neither does, and a restart between "noticed" and "told you" loses nothing. There is no queue service and no worker
+   process. A muted issue and a P3 write no row, and a retried ingest cannot write a second row for the same change. A spike is
+   **one alert per window**, not one per event.
+3. **Delivery is at-least-once.** The sender claims due rows with `FOR UPDATE SKIP LOCKED`, marks them sending, and only then calls
+   Pushover, so no lock is held across a network call. A row left sending by a crash is taken again after two minutes. A crash
+   after the push is accepted can repeat it, which is far better than losing one. P1 goes before older, quieter rows.
+4. **A failure is never silent.** A failed send retries after 30 seconds, 2, 10, 30 and 60 minutes, for six attempts, and then
+   becomes `failed` and stays visible. A refused token fails at once. **With no Pushover keys at all, every alert fails with
+   "Pushover is not configured"** instead of vanishing. These figures are working guesses, to be tuned by breaking a staging
+   route.
+5. **One adapter.** `hub/notify.py` is the only file that knows the provider (`send`, `check_receipt`, `cancel_receipt`). Replacing
+   Pushover is a change to that file.
+
+**Where a failed alert shows:** a red banner above every page, the **Alerts** tab (status panel and history, with a **Retry**
+button), a line in the incident's log (`ALERT NOT SENT after 6 attempts (new issue, emergency priority): ...`), and a bell on the idle
+wall display. While an alert is only being retried the banner is amber.
+
+**Acknowledging.** A priority-2 push repeats every 60 seconds for up to 30 minutes until you tap **Acknowledge**. Pushover then calls
+`POST /pushover/ack/{secret}`, which needs a public address, and the hub also checks each push's receipt every 30 seconds, which works
+from a laptop. Either way the incident is acknowledged in its audit trail as "from the phone", once.
+
+**Dealing with it at your desk stops the phone.** Acknowledging, resolving, muting or snoozing an incident in the console, or the hub
+resolving it by itself (a site recovering, a stack healing), marks its sent alerts dismissed in the same transaction. The sender
+then tells Pushover to cancel the repeating push, and retries until it has, so a network failure never leaves a phone alarming for
+something already handled.
+
+**Uptime.** A site's outage becomes an ordinary issue at the **second failed check in a row**, the console's own rule for "down":
+**P1** in production and **P2** on staging. It opens once, not on every failed check, and resolves itself after five passing checks
+in a row. A relapse after that is a regression and alerts again.
+
+**The dead-man's switch.** The sender pings an external service (`DEADMAN_URL`, for example healthchecks.io) after every completed
+pass, so a sender that has died, stuck or lost its database goes quiet and **they** alert you. See
+[the dead-man's switch](#the-dead-mans-switch).
+
+### If you do not acknowledge
+
+Pushover stops repeating after 30 minutes and marks the push expired. The hub notices, and shows **"1 alert was not acknowledged, so
+your phone may not have woken you"** in the banner, on the Alerts tab, in the incident log and on the wall. The issue stays open and
+unacknowledged in Incidents. **Nothing escalates yet:** no second push, no second person, no SMS or call. A ladder that only ever
+adds channels, and stops the moment the incident is dealt with, is planned in
+[`docs/ESCALATION.md`](docs/ESCALATION.md), together with a fallback for Pushover itself being down.
+
+### What has been proven, and what has not
+
+**Proven, on 11 October 2026:** a fatal error recorded against a demo site became a P1 issue, was queued, and was sent by the sender
+loop to Pushover as a priority-2 push with a receipt. It arrived on a real phone. Acknowledging it there was noticed by the hub's
+receipt check about 40 seconds later and recorded in the incident's audit trail. The unconfigured case was checked the same way:
+a P1 with no Pushover keys became a failed alert with a banner and a log line.
+
+**Not yet exercised against the real service:** a P2 arriving silently at night, the instant callback (it needs a public address),
+cancelling a repeating push (Pushover's cancel call is documented but its response is not, and it has only been tested against a
+fake), a real outage, and the staging-route test that `CLAUDE.md` asks for.
+
+---
+
 ## The stack
 
 | Layer | Technology | Role |
 |---|---|---|
 | Hub | FastAPI, Python 3.11+ | Ingest, fingerprinting, API, uptime probe |
 | Database | PostgreSQL 16, async SQLAlchemy 2.0 | Issues, events, checks, tickets, deploys |
-| Console | React 19, Vite 6 | Triage UI and the idle screen |
-| Push | Pushover | iPhone delivery. Priority 2 retries every 60 s for 30 min until acknowledged |
-| Ingress | Caddy 2 | TLS and the only public entry point |
-| Packaging | Docker Compose | One `docker compose up` on the VPS |
+| Console | React 19, TypeScript 7 (strict), Vite 6 | Triage UI, onboarding and the idle screen. API types are generated from the hub's own schemas |
+| Alert path | Postgres outbox, a sender loop inside the hub | Durable delivery with backoff. No Celery, no Redis, no worker service |
+| Push | Pushover | iPhone delivery. Priority 2 repeats every 60 s for 30 min until acknowledged |
+| Ingress | Caddy 2 | TLS, the compiled console, and the only public entry point |
+| Packaging | Docker Compose | One `docker compose up` on the VPS. Secrets are mounted files |
+| CI | GitHub Actions | Type-check, build, and the whole test suite on every push (written, not yet run) |
 | OS | Ubuntu Server LTS | Everywhere. Not Windows Server |
 
 Around it, as separate services that feed Nightjar rather than parts of it:
@@ -229,7 +331,7 @@ Around it, as separate services that feed Nightjar rather than parts of it:
 | Gitea and Gitea Actions | Self-hosted Git and CI. Deploy status reports back into Nightjar |
 | Grafana | Reads the same Postgres for metrics. Not rebuilt inside Nightjar |
 | Cloudflare Email Routing, Postmark or Mailgun | Inbound client email, parsed into tickets |
-| healthchecks.io or Cronitor | External heartbeat: alerts you if Nightjar itself goes quiet |
+| healthchecks.io or Cronitor | External heartbeat: alerts you if Nightjar itself goes quiet. The sender pings it while alive |
 
 Rejected on purpose, with reasons in [`docs/DECISIONS.md`](docs/DECISIONS.md): Datadog, Jenkins, a
 native app, a client portal, running a mail server, hosting the hub at home.
@@ -284,7 +386,9 @@ The seam between ingest and alerting. `POST /ingest/{key}/event` returns one of:
 | `null` | known, already open, nothing changed | no |
 
 **Alert on state change, not on events.** This one rule is the difference between a system that gets
-used and one that gets muted in a week.
+used and one that gets muted in a week. "Alerts" here means a row in the [alert outbox](#alerting-from-a-state-change-to-your-phone)
+for a P1 or P2. A P3 goes to the digest instead, and a muted issue never writes one. A spike is one alert per window, however many
+events it holds.
 
 ### Issue status
 
@@ -300,9 +404,9 @@ Derived from the source, never chosen by hand.
 
 | | Source | Night behaviour |
 |---|---|---|
-| **P1** | uptime failure, `fatal` | wakes the phone, retries until acknowledged |
-| **P2** | `error`, rate spikes | normal push, quiet hours respected |
-| **P3** | client email, `warning` | digest only |
+| **P1** | production uptime failure, `fatal` | priority-2 push at any hour: repeats every 60 s for 30 min until acknowledged |
+| **P2** | `error`, rate spikes, staging uptime failure | a normal push by day, delivered **without sound** inside quiet hours |
+| **P3** | client email, `warning` | digest only (the digest is not built yet) |
 
 ### Presence and routing
 
@@ -318,20 +422,24 @@ the state where only the reliable channel is used. Always fail toward the reliab
 | Home, night | priority-2 push + speaker | push only | digest |
 | Away | priority-2 push | push | digest |
 
-Quiet hours are 22:00 to 07:00 Africa/Nairobi. P2 is silent at night regardless of presence, because
-letting presence override quiet hours brings back exactly what quiet hours exist to solve.
+Quiet hours are 22:00 to 07:00 Africa/Nairobi (`QUIET_TZ`, `QUIET_START_HOUR`, `QUIET_END_HOUR`). P2 is silent at night regardless of
+presence, because letting presence override quiet hours brings back exactly what quiet hours exist to solve. Silent means **delivered
+without sound** (Pushover priority -1): it waits in the notification list instead of waking you, and is never dropped.
 
 The speaker is rate-limited from day one: one sound per issue per 15 minutes and a global hourly cap.
 Without both, a spike machine-guns the speaker and it gets unplugged inside a week.
 
-> Presence, routing and the speaker are chunk 2 and are **not implemented yet**.
+> **Built:** presence (stored with an expiry, away when it lapses or is missing) and the routing above, in `hub/policy.py`, a pure function
+> tested for every cell of the table and for the rule that no P1 or P2 is ever left unsent. **Not built:** the speaker, which waits for
+> the hardware. Its rate limits are a design decision for when it exists.
 
 ### Presence and NFC tags
 
 Presence is how Nightjar knows whether you are home, so it can add the speaker or hold a chime. It is
 set by tapping an NFC tag with your iPhone.
 
-> **Planned, not built.** This is chunk 2. Nothing below exists in the code yet.
+> **The endpoint and the policy are built** (`POST /presence`, guarded by `PRESENCE_TOKEN`, and the console's own I'm home / Away buttons).
+> The tags and the iOS Shortcuts automations are yours to set up, and have not been tried on a phone.
 
 **The tags.** Two NTAG213 stickers, because one tag maps to exactly one iOS Shortcuts automation:
 
@@ -373,15 +481,32 @@ may add a channel. It must never be the reason a push does not fire.
 A React app in [`console/`](console/), polling the hub every 30 seconds. No websockets. Dark only, in
 neutral near-black.
 
-The left sidebar has five tabs, with live count badges:
+The left sidebar has eight tabs, with live count badges:
 
 | Tab | What it does |
 |---|---|
-| **Overview** | Verdict line, odometer stats, a health card per production site (uptime ring, latency, 90-day ribbon), and a tile per area |
-| **Incidents** | Open and all issues. A drawer with Acknowledge, Resolve, Mute, Snooze and Reopen, and an audit-trail log |
+| **Overview** | Verdict line, odometer stats, **one card per client** holding each production site beside its staging site (uptime ring, latency, 90-day ribbon), and a tile per area |
+| **Incidents** | Open and all issues. A drawer with Acknowledge, Resolve, Mute, Snooze and Reopen, and a log of what happened, including each alert queued, sent, retried or failed |
+| **Alerts** | *Would a P1 reach your phone?* A status panel (Pushover configured, sender alive and when it last ran, how acknowledgements arrive, the dead-man's switch, counts of waiting, retrying, failed and sent), a **Send a test push** button, and the history of every alert with a **Retry** for a failed one |
+| **Sites** | Add a client site and see its keys once ([how](#adding-a-site)). Every site grouped by client, with when it last reported, its URL and browser pages to edit, **Rotate secret**, and a test event |
 | **Requests** | Client requests (change, report, access) with overdue flagging. Logged by hand until email intake exists |
 | **Deploys** | Production deploy history, reported by CI |
 | **Staging** | Whether each staging site is **ready to promote**, and how it differs from production. A read-only view of each stack (state, memory against its limit, disk, CPU, restarts, services), host disk, builds in flight, uptime checks and staging deploys |
+| **Media** | Home media (Jellyfin): who is streaming, the library disk, and viewing history. Reported by a small reporter beside Jellyfin |
+
+**An alert that did not do its job is never quiet.** A banner above every tab appears while any alert has failed, is being retried
+after failing, or was a P1 that nobody acknowledged: red when one gave up, amber while it is only retrying, with the reason and a link
+to the Alerts tab. It cannot be dismissed. Only delivery, or dealing with the incident, clears it. The Alerts tab carries a count
+badge, and the idle wall display shows a bell.
+
+**Grouped by client.** The Overview and the Sites tab put each client in a card, with the app's name once as a heading and a
+**Production** card and a **Staging** card beneath it, so the site name is not repeated. A staging site is paired with its production
+site by name (`<production>-staging`), and a production site with no staging says so and offers **Add staging**.
+
+**Written in TypeScript** under `strict`, with the API types **generated from the hub's own schemas** (`tools/export_openapi.py` writes
+the OpenAPI file and `npm run types` turns it into types). A field renamed on the hub is a compile error in the console, not a wrong
+verdict on the wall. Two checks fail a change whose types were not regenerated. The layout is fluid up to 2,400 px and the client cards flow
+into columns on a wide screen.
 
 How the numbers are derived, so nothing is invented:
 
@@ -395,6 +520,38 @@ How the numbers are derived, so nothing is invented:
   Silence must not read as all-clear.
 
 Design references live in [`mockups/`](mockups/) as working HTML.
+
+### Adding a site
+
+The **Sites** tab replaces the old `curl` and a hand-run `UPDATE`.
+
+1. **Details.** The client (existing ones are suggested), the site's name, production or staging, an optional live URL, and the
+   pages allowed to report errors from a browser. A staging site must be named `<production>-staging`.
+2. **Keys, shown once.** The ingest key and secret with copy buttons and a warning that the secret is not shown again, beside a
+   snippet for the site's stack (Python, Node, PHP, Java or a web page) with the values filled in, and the three names to store
+   them under in CI (`NIGHTJAR_URL`, `NIGHTJAR_KEY`, `NIGHTJAR_SECRET`). A page is given only its public key, never the secret.
+3. **First report.** The tab checks every few seconds and flips to "received 7 s ago" when the app first reports. After three
+   minutes with nothing it says what to check, instead of staying green. **Send a test event** proves only that the hub accepts
+   events for the site, not that the app is sending them, so a test event is muted and **never counts as the site having reported**.
+
+The secret lives only in the page's state: **Done** clears it, it clears itself after ten minutes, and the idle screen is held off while
+a form is open or a secret is showing. The site list never returns a secret. **Rotate secret** shows the new one once and stops the old
+one at once. Behind it are `GET /api/sites`, `POST /api/sites/{id}/rotate-secret` and `POST /api/sites/{id}/test-event`.
+
+### Demo data
+
+To see the console with something in it:
+
+```bash
+python seed_demo.py            # four fictional clients, with production and staging sites, 90 days of uptime history, issues in every
+                               # state, alerts in every final state, requests, deploys and staging stacks
+python seed_demo.py --remove   # take all of it out again
+```
+
+Everything belongs to a client whose name ends in " (demo)", which is how `--remove` finds it. It writes to the database in `DATABASE_URL`,
+so it is for development. It refuses to run if a site name is already in use, because promotion pairs staging with production **by
+name**. The monitored demo sites point at the hub's own `/healthz`, so the probe can never open a real alert, and no alert is left
+waiting to be sent, so a hub with Pushover configured will never push a demo alert to your phone.
 
 ---
 
@@ -420,6 +577,7 @@ What is redacted is **detail, not names**. A site name tells a guest little, but
 
 - Two production sites at a time as large check cards. It rotates to the next pair every 2 minutes.
 - Active incidents, production deploys and staging deploys, plus a large clock.
+- A bell and a count beside the incidents heading when an alert failed or a P1 went unacknowledged, red while it needs you.
 - Incident titles and commit refs stay hidden until revealed.
 - Ordinary mouse or keyboard input never dismisses it. Only reveal, then **Unlock console**, leaves it.
 - The fingerprint is **simulated** with a labelled button until the reader hardware exists. Unlock only
@@ -520,9 +678,10 @@ to know what healthy looks like, and could therefore be wrong about it.
 Both the Pushover call and the speaker are driven by the hub, so they share its fate. If the hub dies it
 does not complain: it goes **silent**, and silence is indistinguishable from everything being fine.
 
-Nightjar therefore pings an external heartbeat service every 5 minutes. If the pings stop, *they* alert
-your phone. This is the only mechanism that turns silence back into a signal, and it is the reason
-self-hosting is defensible at all.
+Nightjar therefore pings an external heartbeat service. The alert sender does it after every completed pass (`DEADMAN_URL`, at most every
+two minutes), so a sender that has died, stuck or lost its database stops pinging. A cron line on the VPS covers a hub that is not running
+at all (`DEPLOY.md` section 7). If the pings stop, *they* alert your phone. This is the only mechanism that turns silence back into a
+signal, and it is the reason self-hosting is defensible at all.
 
 ---
 
@@ -637,8 +796,8 @@ The tab also watches the machine itself:
 (85%), or the host disk falling under 10% free opens an issue through the normal pipeline. It is
 **edge-triggered**: only a problem that has *just started* opens an event. One per one-minute report would be
 1,440 a day and would trip the spike detector, which is exactly the noise this project exists to prevent.
-Degraded and restart loops are P2. Memory is a P3 warning, so it can never wake anyone. Sending them to your
-phone waits for chunk 2.
+Degraded and restart loops are P2, which reach your phone through the [alert path](#alerting-from-a-state-change-to-your-phone) once
+Pushover is configured. Memory is a P3 warning, so it can never wake anyone.
 
 **They resolve themselves.** Once a problem has been gone for **10 minutes of reports in a row**
 (`STACK_HEALTHY_MIN`), its issue is resolved automatically. The rule is strict on purpose, because a resolved
@@ -779,33 +938,32 @@ starting with which stacks your clients run.
 
 ## API reference
 
-Ingest, called by client apps and CI. Authenticated by the per-site key in the URL. With
+The complete, current schema is generated from the hub: `python tools/export_openapi.py` writes it to `console/src/api/openapi.json`, and
+a test fails if that file is out of date. (The hub switches its served `/openapi.json` and docs off when auth is on.)
+
+**Ingest**, called by client apps, CI and the home reporters. Authenticated by the per-site key in the URL. With
 `VERIFY_SIGNATURES=true`, also by an `X-Hub-Signature: sha256=<hmac-sha256 of the raw body>` header.
 
 | Method and path | Purpose |
 |---|---|
 | `POST /ingest/{key}/event` | Report a crash. Returns `issue_id`, `fingerprint`, `event_count`, `severity`, `state_change` |
-| `POST /ingest/{key}/deploy` | Report a deploy: `{"ref": "main@1f9c4a2", "status": "running \| success \| failed"}` |
+| `POST /ingest/{key}/deploy` | Report a deploy: `{"ref": "main@1f9c4a2", "status": "running \| success \| failed", "progress": 0-100}` |
 | `POST /ingest/{key}/stack` | Report a staging stack's state. Sent by `client/stack_reporter.py`, not by hand |
+| `POST /ingest/{key}/home` | The home host's health and speed tests. Sent by `client/home_reporter.py` |
+| `POST /ingest/{key}/media` | Who is streaming on Jellyfin. Sent by `client/jellyfin_reporter.py` |
 | `POST /ingest/browser/{public_key}` | Report an error from a web page. No signature: the key is public, so it is Origin-checked, rate limited and capped. See [`docs/KEYS.md`](docs/KEYS.md) |
 
-Console feeds, read-only:
+**Public, each guarded by its own secret.** None takes the console token, because the caller cannot send it.
 
 | Method and path | Purpose |
 |---|---|
-| `GET /api/sites/health` | Per-site state, uptime, latency, latency series and 90-day ribbon |
-| `GET /api/issues?status=open\|all` | Issues, open first, then by severity and recency |
-| `GET /api/errors/rising` | Open issues whose event rate is climbing |
-| `GET /api/issues/{id}/log` | The audit trail for one issue |
-| `GET /api/tickets?status=open\|closed\|all` | Client requests |
-| `GET /api/deploys?env=production\|staging\|all` | Deploy history |
-| `GET /api/stacks` | Staging stacks as last reported: state, memory and limit, CPU, services, and whether the reporter has gone silent |
-| `GET /healthz` | Liveness |
+| `GET /healthz` | Liveness. Open |
+| `POST /presence` | The NFC tap: `{"state": "home \| away", "ttl_minutes": 840, "source": "nfc", "token": "..."}`. Guarded by `PRESENCE_TOKEN`; empty disables the route |
+| `POST /pushover/ack/{secret}` | Pushover calls this when a P1 is acknowledged on the phone. The secret in the path is `PUSHOVER_CALLBACK_TOKEN`, and the route refuses everything when it is unset |
 
 **Everything under `/api` requires the console token**, either as the session cookie that login sets or as
-`Authorization: Bearer <token>` for scripts. `/ingest` keeps its per-site key and signature, and `/healthz` is open.
-With `CONSOLE_TOKEN` unset, auth is off (local development only), and the hub refuses to start that way when
-`VERIFY_SIGNATURES` is on.
+`Authorization: Bearer <token>` for scripts. With `CONSOLE_TOKEN` unset, auth is off (local development only), and the hub refuses to
+start that way when `VERIFY_SIGNATURES` is on. A test asks the app for its real routes and fails if any is reachable without the token.
 
 | Method and path | Purpose |
 |---|---|
@@ -813,17 +971,39 @@ With `CONSOLE_TOKEN` unset, auth is off (local development only), and the hub re
 | `POST /api/auth/login` | `{"token": "..."}`. Sets an HttpOnly, SameSite=Strict session cookie. 10 failures a minute locks out |
 | `POST /api/auth/logout` | Ends the session |
 
+Console reads:
+
+| Method and path | Purpose |
+|---|---|
+| `GET /api/sites/health` | Per-site state, client, uptime, latency, latency series and 90-day ribbon |
+| `GET /api/sites` | Every client site with its ingest key (never its secret) and when it last reported. Test events are not counted |
+| `GET /api/issues?status=open\|all` | Issues, open first, then by severity and recency |
+| `GET /api/errors/rising` | Open issues whose event rate is climbing |
+| `GET /api/issues/{id}/log` | The audit trail for one issue, including each alert sent, retried or failed |
+| `GET /api/notifications?status=all\|failed\|undelivered\|attention` | The alert outbox, newest first. `attention` is every alert that failed, is being retried, or was a P1 nobody acknowledged |
+| `GET /api/notifications/status` | Would a P1 reach the phone: what is configured (never the secrets), when the sender last ran, and counts |
+| `GET /api/tickets?status=open\|closed\|all` | Client requests |
+| `GET /api/deploys?env=production\|staging\|all` | Deploy history |
+| `GET /api/stacks` | Staging stacks as last reported: state, memory and limit, CPU, services, and whether the reporter has gone silent |
+| `GET /api/home`, `GET /api/media`, `GET /api/media/history` | The home host, and Jellyfin's sessions and history |
+| `GET /api/presence`, `GET /api/weather`, `GET /api/rates` | Presence, and the wall display's weather and exchange rate |
+
 Console writes:
 
 | Method and path | Purpose |
 |---|---|
-| `POST /api/issues/{id}/actions` | `{"action": "ack \| resolve \| mute \| snooze \| reopen", "hours": 24}` |
-| `POST /api/tickets` | Log a client request |
-| `PATCH /api/tickets/{id}` | Close or reopen one |
+| `POST /api/sites` | Create a site. Returns its ingest key and secret **once** |
+| `PATCH /api/sites/{id}` | Set or clear the URL, and the pages allowed to report from a browser |
+| `POST /api/sites/{id}/rotate-secret` | A new ingest secret, returned once. The old one stops working immediately |
+| `POST /api/sites/{id}/test-event` | One `warning` through the real ingest path, muted, to prove the hub side |
+| `POST /api/issues/{id}/actions` | `{"action": "ack \| resolve \| mute \| snooze \| reopen", "hours": 24}`. All but `reopen` also stop any repeating push for the incident |
+| `POST /api/notifications/test-push` | One real push through the real adapter, to prove the phone path. Not queued |
+| `POST /api/notifications/{id}/retry` | Give a failed alert a fresh set of attempts |
+| `POST /api/presence` | Set home or away by hand |
+| `POST /api/tickets`, `PATCH /api/tickets/{id}` | Log a client request, close or reopen one |
 | `DELETE /api/stacks?site=&stack=` | Forget a decommissioned stack. Refused (409) unless its reporter is silent |
 
-Planned: `POST /pushover/ack` and `POST /presence` (chunk 2), `POST /ingest/email` (chunk 4), `GET /wall`
-(chunk 5), `POST /ingest/gitea` (chunk 7).
+Planned: `POST /ingest/email` (chunk 4), `GET /wall` (chunk 5), `POST /ingest/gitea` (chunk 7).
 
 ---
 
@@ -847,20 +1027,20 @@ In a second terminal:
 
 ```bash
 cd console && npm install && npm run dev             # http://localhost:5173
-npm test                                             # the promotion-readiness rules
+npm test                                             # tsc under strict, the console's rules, and the CSS collision guard
+npm run types                                        # regenerate the API types after python tools/export_openapi.py
 ```
+
+Optional, to see the console with something in it: `python seed_demo.py` ([demo data](#demo-data)).
 
 Vite proxies `/api` to the hub, so there is no CORS to configure. The dev database is a **separate
 compose file** on purpose: `docker-compose.yml` is the production file and never publishes the database
 port. The dev one publishes `5433`, not `5432`, so it cannot collide with a Postgres already installed on
 the machine.
 
-To give a site uptime checks, set its URL. It is probed every minute and appears on the Overview:
-
-```bash
-docker compose -f docker-compose.dev.yml exec db \
-  psql -U hub -d nightjar -c "UPDATE sites SET url = 'https://client.example/healthz' WHERE name = 'demo-api';"
-```
+To give a site uptime checks, set its URL from the **Sites** tab (Edit), or with `PATCH /api/sites/<id>` and `{"url": "https://client.example/healthz"}`.
+It is probed every minute and appears on the Overview. A site with no URL still reports crashes, and the Overview says it is not being
+checked.
 
 ### Configuration
 
@@ -875,6 +1055,17 @@ docker compose -f docker-compose.dev.yml exec db \
 | `PROBE_TIMEOUT_S` | `10` | Per-request timeout |
 | `CONSOLE_TOKEN` | empty | Guards the console and `/api`. Empty is open, for local development only. **Required in production**: the hub refuses to start without it, or with one under 16 characters |
 | `STACK_HEALTHY_MIN` | `10` | Minutes a stack problem must stay gone before its issue resolves itself |
+| `UPTIME_RECOVER_CHECKS` | `5` | Passing checks in a row before a site's outage resolves itself |
+| `PUSHOVER_TOKEN`, `PUSHOVER_USER` | empty | Your Pushover application token and user key. Both are needed to send. **Unset, every alert fails visibly** |
+| `HUB_PUBLIC_URL`, `PUSHOVER_CALLBACK_TOKEN` | empty | The hub's public address and a secret for the acknowledgement callback's URL. Without them acknowledgements are found by checking Pushover every `RECEIPT_POLL_S` seconds |
+| `DEADMAN_URL`, `DEADMAN_INTERVAL_S` | empty, `120` | An external ping URL, pinged after each completed sender pass |
+| `QUIET_TZ`, `QUIET_START_HOUR`, `QUIET_END_HOUR` | `Africa/Nairobi`, `22`, `7` | Quiet hours: only P1 makes noise inside them |
+| `OUTBOX_ENABLED`, `OUTBOX_POLL_S`, `OUTBOX_MAX_ATTEMPTS`, `OUTBOX_BACKOFF_S`, `OUTBOX_LEASE_S`, `RECEIPT_POLL_S` | `true`, `5`, `6`, `[30,120,600,1800,3600]`, `120`, `30` | The sender loop's working figures, to be tuned by breaking a staging route |
+| `PRESENCE_TOKEN` | empty | Guards `POST /presence`. Empty disables the route |
+| `NIGHTJAR_SECRETS_DIR` | `/run/secrets` | Where mounted secret files are read from. A file named after a setting (`console_token`, `database_url`, `pushover_token` ...) fills it. An environment variable wins over a file |
+
+All settings are in `hub/config.py`, and `CLAUDE.md` lists them with their meaning. In production the secret ones come from files, not
+the environment ([Deploying](#deploying)).
 
 ### Prove it works
 
@@ -900,10 +1091,15 @@ NIGHTJAR_URL=https://nightjar.example.co.ke NIGHTJAR_SECRET=<ingest_secret> ./te
 ### Tests and migrations
 
 ```bash
-python -m unittest discover -s tests -v    # migrations (needs the dev database up), auth, stack policy
-python -m unittest discover -s client -v   # the stack reporter's stop-versus-crash rules
-cd console && npm test                     # promotion readiness, and a guard against CSS class-name collisions
+python -m unittest discover -s tests -v    # about 365 hub tests. Needs the dev database up: most make a throwaway database. About 15 minutes
+python -m unittest discover -s client -v   # 62 tests: the stack, home and Jellyfin reporters, and the Python error reporter
+cd console && npm test                     # tsc under strict, then the console's rules (promotion, alerts, snippets, grouping ...) and the CSS guard
 ```
+
+The Python suite covers migrations (and that the models and migrations agree), auth (and that no route is open without the console token),
+fingerprinting, the alert policy, outbox, sender, receipts, cancel-on-acknowledge and uptime outages, secrets from files, the demo
+and secrets scripts, and each server reporter against the real hub in Node, PHP and Java. Alert code is tested against a fake Pushover
+and a real throwaway Postgres, never the real service. The same checks run on every push in [CI](#continuous-integration).
 
 The schema is managed by **Alembic** and migrates automatically every time the hub starts, so a new column no
 longer needs a hand-run `ALTER TABLE`. To change it:
@@ -940,6 +1136,11 @@ nothing can queue without a limit. Details, the shared wire format and the level
 
 The first five run on a **server** and hold the site's ingest secret, so they never go in a web page. A page cannot keep
 a secret, so it uses its own route and its own key.
+
+**Every reporter refuses a plain `http://` hub, out loud.** `https://` is always accepted, and `http://` only for `localhost`,
+`127.0.0.1`, `[::1]` and `*.localhost`. A mistyped or copied development URL would otherwise send error text, readable, across a
+network. A refusal is never silent, because it would look exactly like an app with no errors: the reporter writes one line to the
+app's own log, sends nothing, and never throws. The line names the host but never the whole address, which could carry a credential.
 
 #### Python: FastAPI and Django
 
@@ -1032,8 +1233,9 @@ reporter as well.
 
 `python -m unittest tests.test_server_reporters -v` runs every server reporter for real against the real hub with signature
 checking on, and crashes real PHP processes against a local server. A runtime that is not installed is skipped by name.
-Each reporter also has its own suite: `node client/node/nightjar.test.mjs`, `php client/php/test.php`, and the Java test
-described in `docs/REPORTERS.md`.
+Each reporter also has its own suite: `node client/node/nightjar.test.mjs`, `node client/browser/nightjar.test.mjs`,
+`php client/php/test.php`, the Java test described in `docs/REPORTERS.md`, and `python -m unittest discover -s client` for the
+Python one.
 
 ### Deploys
 
@@ -1053,14 +1255,62 @@ monitors and Gitea.
 
 ## Deploying
 
-Nightjar deploys to a single VPS with Docker Compose. [`DEPLOY.md`](DEPLOY.md) has the full walkthrough:
-picking a provider, DNS, [`deploy/bootstrap.sh`](deploy/bootstrap.sh) for a hardened Ubuntu box,
-`docker compose up -d --build`, and [`deploy/backup.sh`](deploy/backup.sh) for nightly dumps.
+Nightjar deploys to a single VPS with Docker Compose. [`DEPLOY.md`](DEPLOY.md) has the full walkthrough: picking a provider, DNS,
+[`deploy/bootstrap.sh`](deploy/bootstrap.sh) for a hardened Ubuntu box, [`deploy/make-secrets.sh`](deploy/make-secrets.sh) for the secret
+files, `docker compose up -d --build`, [`deploy/backup.sh`](deploy/backup.sh) for nightly dumps, and the phone-alert setup (Pushover,
+the callback and the dead-man's switch).
 
-It is **not** configured for Vercel or similar serverless hosts. The hub is a long-running service with a
-background uptime probe, which serverless platforms freeze between requests.
+**What the stack is:**
 
-> **Do not deploy the current stack to the public internet as-is.** See the first two items below.
+- **`db`**: Postgres 16. Never published to the host. Its password is read from a file (`POSTGRES_PASSWORD_FILE`), not an environment
+  variable.
+- **`hub`**: the FastAPI service, with signature checking on. Never published either. It reads its database URL, console token, Pushover
+  keys, callback secret, dead-man's-switch URL and presence token from files mounted under `/run/secrets`, and **refuses to start
+  without a console token**.
+- **`caddy`**: built with the compiled console baked in ([`deploy/caddy.Dockerfile`](deploy/caddy.Dockerfile)). It gets the TLS certificate, serves
+  the console, and proxies `/api`, `/ingest`, `/healthz`, `/pushover/ack` and `/presence` to the hub, all on one hostname so the console
+  needs no CORS. After changing the console or the Caddyfile: `docker compose build caddy && docker compose up -d caddy`.
+
+`deploy/make-secrets.sh` creates what is missing and never overwrites a file. Back the `secrets/` directory up somewhere other than the server.
+It is not in git, and the console token inside it is what you sign in with.
+
+It is **not** configured for Vercel or similar serverless hosts. The hub is a long-running service with a background uptime probe and a
+sender loop, which serverless platforms freeze between requests.
+
+### Hardening, and what is still open
+
+The plan, with the reasoning and the care each item needs, is in [`docs/DATA-PROTECTION.md`](docs/DATA-PROTECTION.md).
+
+| | State |
+|---|---|
+| TLS, HSTS, no sniffing, no framing, no referrer, a Content-Security-Policy, and no `Server` header | **Built.** HSTS starts at one day (it is hard to undo) and is raised in steps. Checked by running the production stack and signing in with no policy violation |
+| Secrets as mounted files, none in `docker inspect` | **Built and checked** on a production-shaped stack, including that an empty token file makes the hub refuse to start |
+| The reporters refuse a plain `http://` hub, out loud | **Built** in all five |
+| Build contexts exclude `.env`, `secrets/` and `node_modules` | **Built** (`.dockerignore`) |
+| Encrypted backups | **Planned.** `deploy/backup.sh` writes a gzip, which is compression and not encryption, and its `rclone` copy is not encrypted by the script |
+| Per-site secrets derived from a master key, not stored | **Planned.** Ingest secrets are stored readable in the database, because the hub needs them to verify each signature |
+| A secret scanner before every commit, an audit trail for sites and secrets, a leak runbook | **Planned** |
+| Cloudflare in front of client sites, with the hub's own hostname left DNS-only | **Planned.** [`docs/CLOUDFLARE.md`](docs/CLOUDFLARE.md) |
+| **A first real deployment** | **Not done.** Nothing here has run on a public address, so the instant callback, HSTS over real TLS and the dead-man's switch are untested in place |
+
+> **Before you rely on it,** set the Pushover keys, deploy it, run it for a while, and take encrypted backups. The path to your phone has been
+> proven once, but not yet against a real outage.
+
+---
+
+## Continuous integration
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) checks Nightjar's own repository on GitHub, on every push to `main` or a `feature/**`
+branch and on every pull request:
+
+- **Console:** `npm ci`, `npm test` (type-check under strict and the console's rules), `npm run build`, then regenerate the API types and
+  fail if they changed.
+- **Hub:** the whole Python suite against a real Postgres service, with Node and Java installed so the reporter tests run, then the client tests.
+
+It has read-only permissions, uses no secrets, and deploys nothing. Every step is a command that also runs on a laptop.
+**It has not yet run on GitHub**: it passes `actionlint` and each command passes locally, but the Linux runner and the Postgres service are
+untried, and the actions are pinned to major versions, not hashes. Details and how to read a failure are in [`docs/CI.md`](docs/CI.md).
+Client apps get their own pipeline on Gitea and the staging host. That is discussed and not yet written.
 
 ---
 
@@ -1069,10 +1319,17 @@ background uptime probe, which serverless platforms freeze between requests.
 | Chunk | What | State |
 |---|---|---|
 | 1 | Models, fingerprinting, ingest, HMAC, reporter, dedupe test | Done |
-| 3 | React console, uptime probe, incident actions, tickets, deploys, idle screen | Done |
-| 2 | Alert policy, presence, Pushover, speaker. Delivery through a durable Postgres outbox, with no worker service (decision #56) | **Next, blocked on cost.** The whole point of the project |
+| 3 | React console, uptime probe, incident actions, tickets, deploys, staging, media, idle screen | Done |
+| - | Console moved to TypeScript, with API types generated from the hub ([`docs/TYPESCRIPT-MIGRATION.md`](docs/TYPESCRIPT-MIGRATION.md)) | Done |
+| - | Onboarding: the Sites tab ([`docs/ONBOARDING-DASHBOARD.md`](docs/ONBOARDING-DASHBOARD.md)) | Done |
+| 2 | Alerting: policy, outbox, sender, Pushover, acknowledgement, cancel, dead-man's switch, an Alerts tab, uptime outages as P1 (decision #56) | **Built and tested, not live.** Proven once against a real phone. The speaker waits for hardware |
+| - | Production hardening ([`docs/DATA-PROTECTION.md`](docs/DATA-PROTECTION.md)) | **In progress.** Built: the console served by Caddy, headers and HSTS, secrets as files, reporters refusing `http://`. Next: encrypted backups, derived secrets, a scanner, an audit trail, a runbook |
+| - | CI for Nightjar itself ([`docs/CI.md`](docs/CI.md)) | Written, not yet run on GitHub |
+| - | Escalating a P1 nobody acknowledges, and a fallback if Pushover is down ([`docs/ESCALATION.md`](docs/ESCALATION.md)) | Planned |
+| - | A failed production deploy alerting your phone | Not built. It shows in the console today |
 | 4 | Email intake and the 07:30 digest | Not started |
 | 4b | Fleet onboarding: published reporters and an `add-site` CLI, extended into a client integration kit (push checks, heartbeats, an npm CLI, `nightjar.sh`) | The small hub pieces and the shell script are worth doing early. The packages wait for the third or fourth app. See [`docs/CLIENT-INTEGRATION.md`](docs/CLIENT-INTEGRATION.md) |
+| - | Deploying client apps: Gitea to staging to production, with Cloudflare or a VPS in front | Discussed, not written. Needs the ThinkCentre |
 | 5 | Wall display route and kiosk | Designed. The idle screen exists |
 | 6 | Pico companion: status strip, fingerprint, watchdog | Designed |
 | 7 | Gitea integration | Designed. The generic deploy webhook exists |
@@ -1086,30 +1343,33 @@ background uptime probe, which serverless platforms freeze between requests.
 
 Recorded here so nothing looks finished that is not.
 
-1. **Authentication is one shared secret.** `CONSOLE_TOKEN` guards the console and every write, with no
-   per-user accounts and no record of who did what. Rotating it signs everyone out. The session cookie is only
-   marked `Secure` behind HTTPS, so it must run behind Caddy's TLS and never over plain http. Passkeys (tier 3)
-   are still planned.
-2. **The Caddyfile still sends everything not under `/ingest` to the hub.** `/api` is authenticated now, so
-   that is no longer an open door, but there is no second layer in front of it.
-3. **The console is not in the deploy stack.** `docker-compose.yml` and the Caddyfile do not build or
-   serve `console/`.
-4. **The uptime probe lives inside the hub.** It shares the hub's failure domain, so it is not the
-   dead-man's switch. Real uptime alerting still wants the second probe on another network.
-5. **Unlock on the idle screen is navigation, not security.** The fingerprint is simulated. The login guards
-   the console, but Unlock does not add to it.
-6. **`INTEGRATE.md` describes endpoints that do not exist yet**, such as `/ingest/{key}/webhook` and
-   `/ingest/gitea`.
-7. **A malformed request body to `/ingest/{key}/event` returns 500** rather than 422.
-8. **The cabinet drawings predate the OLED and M920q decisions.** See [the cabinet](#the-cabinet).
-9. **The stack reporter and Dockge both need the Docker socket, which is root-equivalent.** Dockge stays on the
-   tailnet behind its own login, and the reporter should run as a dedicated user. A read-only socket proxy
-   would narrow the reporter and is a possible later hardening.
-10. **A crash the reporter never saw reads as `stopped`.** A container that crashed before the reporter
-    started, or crashed more than 15 minutes ago and stayed down, shows as stopped with a note saying so. A
-    crash the reporter did see was raised as an issue when it happened.
-11. **A private app cannot be probed from the VPS.** The probe only reaches what the internet can. Push checks and
-    heartbeats are planned to fix it; see [the integration kit](#client-integration-kit-planned).
+1. **Nightjar has never run on a public address.** The alert path has reached a real phone once, from a laptop, and the instant
+   acknowledgement callback, HSTS over real TLS and the dead-man's switch are untried in place. Cancelling a repeating push uses a
+   Pushover call whose response is undocumented, and has only been tested against a fake.
+2. **A P1 nobody acknowledges is shown loudly and not escalated.** No second push, person or channel. See
+   [`docs/ESCALATION.md`](docs/ESCALATION.md).
+3. **P3 has nowhere to go.** The 07:30 digest is not built, so a warning appears only in the console.
+4. **A failed deploy does not alert your phone.** It shows in the console. The planned Gitea webhook needs the ThinkCentre.
+5. **Authentication is one shared secret.** `CONSOLE_TOKEN` guards the console and every write, with no per-user accounts and no record
+   of who did what. Rotating it signs everyone out. The session cookie is only marked `Secure` behind HTTPS, so it must run behind
+   Caddy's TLS and never over plain http. Passkeys (tier 3) are still planned.
+6. **Backups are not encrypted, and ingest secrets are stored readable.** Both are planned in
+   [`docs/DATA-PROTECTION.md`](docs/DATA-PROTECTION.md). There is also no audit trail for creating a site or rotating a secret.
+7. **The uptime probe lives inside the hub.** It shares the hub's failure domain, so it is not the dead-man's switch. Real uptime
+   alerting still wants the second probe on another network.
+8. **Unlock on the idle screen is navigation, not security.** The fingerprint is simulated. The login guards the console, but Unlock does
+   not add to it.
+9. **CI has not run on GitHub**, and it covers Nightjar only. Client apps have no pipeline yet.
+10. **`INTEGRATE.md` describes endpoints that do not exist yet**, such as `/ingest/{key}/webhook` and `/ingest/gitea`.
+11. **A malformed request body to `/ingest/{key}/event` returns 500** rather than 422.
+12. **The cabinet drawings predate the OLED and M920q decisions.** See [the cabinet](#the-cabinet).
+13. **The stack reporter and Dockge both need the Docker socket, which is root-equivalent.** Dockge stays on the tailnet behind its own login,
+    and the reporter should run as a dedicated user. A read-only socket proxy would narrow the reporter and is a possible later hardening.
+14. **A crash the reporter never saw reads as `stopped`.** A container that crashed before the reporter started, or crashed more than 15
+    minutes ago and stayed down, shows as stopped with a note saying so. A crash the reporter did see was raised as an issue when it happened.
+15. **A private app cannot be probed from the VPS.** The probe only reaches what the internet can. Push checks and heartbeats are planned to
+    fix it; see [the integration kit](#client-integration-kit-planned).
+16. **A site made of a front end and a back end is two sites.** They group under the same client, but nothing marks them as one app.
 
 ---
 
@@ -1120,8 +1380,14 @@ Recorded here so nothing looks finished that is not.
   swallowed.
 - Ingest bursts serialise with `SELECT ... FOR UPDATE` on the issue row. Intentional: correctness over
   throughput at this scale.
-- `notify.py` (chunk 2) stays a single adapter exposing one `send(ticket, priority)` function. Nothing else
-  may know which push provider is in use. That is the swap point if Pushover is ever replaced.
+- `hub/notify.py` stays the single adapter that knows the push provider (`send`, `check_receipt`, `cancel_receipt`). Nothing else may
+  know which provider is in use. That is the swap point if Pushover is ever replaced.
+- **Nothing may suppress an alert, and a failure is never silent.** The policy chooses channels and loudness, never whether a P1 or P2 is
+  sent. A failed or unacknowledged alert is shown, loudly, in more than one place.
+- **The console is TypeScript.** Do not write a new `.js` or `.jsx` file, and do not write an API type by hand: change the Pydantic model on
+  the hub and regenerate.
+- **A reporter never breaks the app it reports on, and never refuses silently.**
+- Small commits, one concern each, with a test that fails without the change.
 - Comments explain *why*, not *what*. The fingerprint exclusions and the serialisation choice are where
   future-you will want the reasoning.
 
@@ -1147,13 +1413,15 @@ job is narrow: deduplicate, decide, deliver.
 | [`docs/FULL-DESIGN.md`](docs/FULL-DESIGN.md) | Hardware, access tiers, and the later chunks |
 | [`docs/MEDIA-ARCHIVE.md`](docs/MEDIA-ARCHIVE.md) | Planned side project: what a Raspberry Pi can be, and whether media can share the staging machine |
 | [`docs/CLIENT-INTEGRATION.md`](docs/CLIENT-INTEGRATION.md) | Planned: push checks, heartbeats and an npm CLI for client apps, and the supply-chain rules for publishing it |
-| [`DEPLOY.md`](DEPLOY.md) | Getting onto a VPS |
+| [`DEPLOY.md`](DEPLOY.md) | Getting onto a VPS: the secret files, the console served by Caddy, HSTS, and setting up phone alerts |
 | [`INTEGRATE.md`](INTEGRATE.md) | Wiring in client apps, uptime monitors, Sentry and Gitea |
 | [`docs/REPORTERS.md`](docs/REPORTERS.md) | The reporter for each stack (Python, Node, PHP, Java, browser), the shared contract and how they are tested |
 | [`docs/KEYS.md`](docs/KEYS.md) | Every key, secret and token: what it does, who holds it, what a leak costs, with diagrams |
-| [`docs/TYPESCRIPT-MIGRATION.md`](docs/TYPESCRIPT-MIGRATION.md) | Planned: moving the console to TypeScript, with API types generated from the hub's schemas |
-| [`docs/ONBOARDING-DASHBOARD.md`](docs/ONBOARDING-DASHBOARD.md) | Planned, next up: a console screen to add a client app, see its keys once and confirm it is reporting |
-| [`docs/DATA-PROTECTION.md`](docs/DATA-PROTECTION.md) | Planned: what is encrypted today and eight hardening changes (refusing plain `http://`, HSTS, encrypted backups, derived secrets, a secret scanner, mounted secret files, an audit trail, a leak runbook), and the case for key pairs |
+| [`docs/TYPESCRIPT-MIGRATION.md`](docs/TYPESCRIPT-MIGRATION.md) | Done: how the console moved to TypeScript, with API types generated from the hub's schemas, and what it found |
+| [`docs/ONBOARDING-DASHBOARD.md`](docs/ONBOARDING-DASHBOARD.md) | Built: the Sites tab, with the answers to its open questions and what running it found |
+| [`docs/ESCALATION.md`](docs/ESCALATION.md) | Planned: escalating a P1 nobody acknowledges to a second recipient or channel, and a fallback if Pushover is down |
+| [`docs/CI.md`](docs/CI.md) | The GitHub Actions workflow for Nightjar itself: what runs, how to reproduce it, how to read a failure, and what is not verified |
+| [`docs/DATA-PROTECTION.md`](docs/DATA-PROTECTION.md) | In progress: what is encrypted today and eight hardening changes. Built: refusing plain `http://`, HSTS and mounted secret files. Planned: encrypted backups, derived secrets, a secret scanner, an audit trail, a leak runbook, and the case for key pairs |
 | [`docs/CLOUDFLARE.md`](docs/CLOUDFLARE.md) | Planned: a free-plan Cloudflare checklist (what to proxy, what to leave DNS-only, bot rules, caching), with Caddy staying as the web server |
 | [`mockups/`](mockups/) | Working HTML: console, wall display, boot splash, detail drawer |
 

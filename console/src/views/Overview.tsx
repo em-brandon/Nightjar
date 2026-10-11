@@ -6,6 +6,7 @@ import { readiness } from "../promotion.ts";
 import { unwatched } from "../monitoring.ts";
 import { backupView, hostView, netView, presenceView } from "../home.ts";
 import { label, mediaState } from "../media.ts";
+import ClientCards from "../ClientCards.tsx";
 import { Dot, Empty, Odometer, Pill, Sev, SiteCard, Spark } from "../ui.tsx";
 import { DemoTag, DiskBar } from "./Media.tsx";
 
@@ -291,11 +292,7 @@ export default function Overview({ f }: { f: Feeds }) {
       {prod.length === 0 ? (
         <Empty>No production sites yet. Create one with POST /api/sites, then give it a url to start checks.</Empty>
       ) : (
-        <div className="site-grid">
-          {prod.map((s) => (
-            <SiteCard key={s.id} site={s} now={now} />
-          ))}
-        </div>
+        <ClientCards sites={sites} now={now} />
       )}
 
       <div className="sec">

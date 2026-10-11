@@ -190,6 +190,16 @@ class Sites(unittest.IsolatedAsyncioTestCase):
         r = await self.http.patch("/api/sites/999", json={"url": "https://x.example/"})
         self.assertEqual(r.status_code, 404)
 
+    async def test_the_health_feed_names_each_sites_client_so_staging_can_be_grouped_with_production(self):
+        await self.http.post("/api/sites", json=site())
+        await self.http.post("/api/sites", json=site(name="kubasu-motors-staging", env="staging"))
+        await self.http.post("/api/sites", json=site(name="mwangaza-school", client="Mwangaza School"))
+        health = {s["name"]: s["client"] for s in (await self.http.get("/api/sites/health")).json()}
+        self.assertEqual(
+            health,
+            {"kubasu-motors": "Kubasu Motors", "kubasu-motors-staging": "Kubasu Motors", "mwangaza-school": "Mwangaza School"},
+        )
+
     async def test_the_home_host_site_cannot_be_edited_here(self):
         async with self.engine.begin() as conn:
             await conn.execute(text("INSERT INTO clients (name) VALUES ('me')"))

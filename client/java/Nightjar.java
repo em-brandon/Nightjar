@@ -12,12 +12,14 @@ import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 import java.util.regex.Pattern;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -104,10 +106,42 @@ public final class Nightjar {
     private static volatile Transport transport = Nightjar::httpSend;
     private static final ArrayDeque<Long> sentAt = new ArrayDeque<>();
     private static final AtomicBoolean handlerInstalled = new AtomicBoolean(false);
+    private static final AtomicBoolean warned = new AtomicBoolean(false);
+    private static volatile Consumer<String> logger = System.err::println;
+    private static final Set<String> LOOPBACK = Set.of("localhost", "127.0.0.1", "[::1]", "::1");
 
     // ---- setup --------------------------------------------------------------------------------
 
-    /** Configure from the environment. Returns false (and does nothing) if the hub, key or secret is missing. */
+    /**
+     * Whether this hub address may be used, and if not, why. https is always fine. Plain http is fine only for a machine
+     * talking to itself, which development needs: anywhere else it would send error text, readable, across a network.
+     * Returns null when the address is fine, or one line saying what is wrong. It never includes the whole address,
+     * which could carry a credential.
+     */
+    public static String hubRefusal(String hub) {
+        String invalid = "Nightjar: the hub address is not a valid URL, so no errors will be reported. Use https://your-hub.";
+        URI u;
+        try {
+            u = new URI(hub);
+        } catch (Exception e) {
+            return invalid;
+        }
+        if (u.getScheme() == null || u.getHost() == null) {
+            return invalid;
+        }
+        String scheme = u.getScheme().toLowerCase(Locale.ROOT);
+        String host = u.getHost().toLowerCase(Locale.ROOT);
+        if (scheme.equals("https")) {
+            return null;
+        }
+        if (scheme.equals("http") && (LOOPBACK.contains(host) || host.endsWith(".localhost"))) {
+            return null;
+        }
+        return "Nightjar: refusing to report errors to " + scheme + "://" + host + ": plain http would send them readable across the network. "
+                + "Use an https:// hub address (http:// is only accepted for localhost). No errors will be reported.";
+    }
+
+    /** Configure from the environment. Returns false (and does nothing) if the hub, key or secret is missing, or the hub is not https. */
     public static boolean init() {
         return init(new Options());
     }
@@ -115,6 +149,21 @@ public final class Nightjar {
     public static boolean init(Options options) {
         try {
             Options o = resolve(options);
+            // An unusable hub is never silent: a mistyped address would otherwise look exactly like an app with no errors.
+            // It says so once, on standard error, and then sends nothing. It never throws.
+            if (!o.hub.isEmpty()) {
+                String why = hubRefusal(o.hub);
+                if (why != null) {
+                    if (warned.compareAndSet(false, true)) {
+                        try {
+                            logger.accept(why);
+                        } catch (Throwable ignored) {
+                            // even the warning must not break the app
+                        }
+                    }
+                    return false;
+                }
+            }
             if (!configured(o)) {
                 return false;
             }
@@ -451,8 +500,15 @@ public final class Nightjar {
         transport = t == null ? Nightjar::httpSend : t;
     }
 
+    /** Replace standard error as the place the unusable-hub warning goes. Pass null to restore it. */
+    public static void setLogger(Consumer<String> l) {
+        logger = l == null ? System.err::println : l;
+    }
+
     /** Forget everything, so a test starts clean. */
     public static void reset() {
+        warned.set(false);
+        logger = System.err::println;
         ThreadPoolExecutor p = pool;
         if (p != null) {
             p.shutdownNow();

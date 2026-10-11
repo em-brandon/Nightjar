@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import settings
 from .db import get_session
-from .models import Check, Event, Issue, IssueAction, Site
+from .models import Check, Client, Event, Issue, IssueAction, Site
 from .schemas import DayState, IssueOut, RisingOut, SiteHealthOut
 
 # Read-only, for the console. Everything the console shows is derived from
@@ -167,17 +167,19 @@ async def sites_health(session: AsyncSession = Depends(get_session)) -> list[Sit
                 Site.name,
                 Site.env,
                 Site.url,
+                Client.name,
                 open_count("P1"),
                 open_count("P2"),
                 open_count("P3"),
                 func.max(Issue.last_seen),
             )
             .select_from(Site)
+            .join(Client, Client.id == Site.client_id)
             .outerjoin(Issue, Issue.site_id == Site.id)
             # The home media server has its own tab. As a "site" it would appear
             # among the client sites, on the verdict and the wall display.
             .where(Site.env.not_in(["media", "home"]))
-            .group_by(Site.id)
+            .group_by(Site.id, Client.name)
             .order_by(Site.name)
         )
     ).all()
@@ -215,7 +217,7 @@ async def sites_health(session: AsyncSession = Depends(get_session)) -> list[Sit
 
     stale_after = timedelta(seconds=max(300, 3 * settings.probe_interval_s))
     out = []
-    for site_id, name, env, url, p1, p2, p3, last_event in rows:
+    for site_id, name, env, url, client, p1, p2, p3, last_event in rows:
         checks = recent.get(site_id, [])
         monitored = url is not None
         last_check = latest.get(site_id)
@@ -240,6 +242,7 @@ async def sites_health(session: AsyncSession = Depends(get_session)) -> list[Sit
             SiteHealthOut(
                 id=site_id,
                 name=name,
+                client=client,
                 env=env,
                 state=state,
                 open_p1=p1,

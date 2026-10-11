@@ -2,7 +2,7 @@
 // (Node 22.18 or newer runs the .ts file directly.)
 
 import assert from "node:assert/strict";
-import { createReporter, parseStack } from "./nightjar.ts";
+import { createReporter, hubRefusal, parseStack } from "./nightjar.ts";
 
 const ok = (name) => console.log(`  ok   ${name}`);
 const ORIGIN = "https://birdbox.example";
@@ -168,6 +168,44 @@ const errorAt = (message, file = `${ORIGIN}/assets/index-3fa9c1B2.js`, line = 10
   assert.doesNotThrow(() => harness().reporter.capture(null));
   assert.doesNotThrow(() => harness().reporter.capture(undefined));
   ok("a broken transport or a hostile error object never throws into the page");
+}
+
+// ---- a hub that is not https ----------------------------------------------------------------------------------
+
+{
+  for (const good of ["https://nightjar.example", "https://nightjar.example/", "http://localhost:8000", "http://127.0.0.1:9", "http://[::1]:8000", "http://app.localhost"]) {
+    assert.equal(hubRefusal(good), null, `${good} is fine`);
+  }
+  for (const bad of ["http://nightjar.example", "http://10.0.0.5", "http://192.168.1.20:8000", "http://hub.test", "ftp://nightjar.example", "nightjar.example", "//nightjar.example"]) {
+    assert.ok(hubRefusal(bad), `${bad} is refused`);
+  }
+  assert.doesNotMatch(hubRefusal("http://user:pa55word@nightjar.example/path?token=abc"), /pa55word|token=abc|user:/);
+  ok("only https, or http to this machine, is accepted as a hub");
+}
+
+{
+  const warned = [];
+  const { reporter, sent } = harness({ hub: "http://nightjar.example" }, { warn: (m) => warned.push(m) });
+  assert.equal(warned.length, 1, "it says so once, when created, not silently");
+  assert.match(warned[0], /refusing to report errors to http:\/\/nightjar\.example/);
+  assert.doesNotThrow(() => {
+    reporter.capture(errorAt("boom"));
+    reporter.capture(errorAt("a different boom", undefined, 99));
+  }, "refusing must never throw into the page");
+  assert.equal(sent.length, 0, "and nothing is sent");
+  assert.equal(warned.length, 1, "it does not repeat itself on every error");
+  ok("an http:// hub sends nothing, throws nothing, and logs once");
+}
+
+{
+  for (const hub of ["https://nightjar.example", "http://127.0.0.1:8000", "http://localhost:8000"]) {
+    const warned = [];
+    const { reporter, sent } = harness({ hub }, { warn: (m) => warned.push(m) });
+    reporter.capture(errorAt("boom"));
+    assert.equal(sent.length, 1, `${hub} still reports`);
+    assert.deepEqual(warned, [], `${hub} is not warned about`);
+  }
+  ok("https and loopback http still work");
 }
 
 console.log("\nbrowser reporter passed");

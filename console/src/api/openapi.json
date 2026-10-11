@@ -28,6 +28,85 @@
         "title": "ActionIn",
         "type": "object"
       },
+      "AlertsStatusOut": {
+        "description": "Whether the alert path can work, and what it is doing. Never carries a secret: only whether one is set.",
+        "properties": {
+          "callback_configured": {
+            "title": "Callback Configured",
+            "type": "boolean"
+          },
+          "deadman_configured": {
+            "title": "Deadman Configured",
+            "type": "boolean"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "pending": {
+            "title": "Pending",
+            "type": "integer"
+          },
+          "pushover_configured": {
+            "title": "Pushover Configured",
+            "type": "boolean"
+          },
+          "retrying": {
+            "title": "Retrying",
+            "type": "integer"
+          },
+          "sender_enabled": {
+            "title": "Sender Enabled",
+            "type": "boolean"
+          },
+          "sender_last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sender Last Error"
+          },
+          "sender_last_pass_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sender Last Pass At"
+          },
+          "sender_poll_s": {
+            "title": "Sender Poll S",
+            "type": "number"
+          },
+          "sent_24h": {
+            "title": "Sent 24H",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "pushover_configured",
+          "callback_configured",
+          "deadman_configured",
+          "sender_enabled",
+          "sender_poll_s",
+          "sender_last_pass_at",
+          "sender_last_error",
+          "pending",
+          "retrying",
+          "failed",
+          "sent_24h"
+        ],
+        "title": "AlertsStatusOut",
+        "type": "object"
+      },
       "DeployOut": {
         "properties": {
           "created_at": {
@@ -858,6 +937,155 @@
         "title": "MediaSessionIn",
         "type": "object"
       },
+      "NotificationOut": {
+        "description": "One alert in the outbox and what happened to it (hub/alerts.py).",
+        "properties": {
+          "acked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acked At"
+          },
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "cancelled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancelled At"
+          },
+          "change": {
+            "title": "Change",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dismissed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dismissed At"
+          },
+          "expired_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expired At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "issue_id": {
+            "title": "Issue Id",
+            "type": "integer"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "next_attempt_at": {
+            "format": "date-time",
+            "title": "Next Attempt At",
+            "type": "string"
+          },
+          "priority": {
+            "title": "Priority",
+            "type": "integer"
+          },
+          "sent_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sent At"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "site": {
+            "title": "Site",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "sending",
+              "sent",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "issue_id",
+          "site",
+          "title",
+          "severity",
+          "change",
+          "priority",
+          "status",
+          "attempts",
+          "last_error",
+          "created_at",
+          "next_attempt_at",
+          "sent_at",
+          "acked_at",
+          "expired_at",
+          "dismissed_at",
+          "cancelled_at"
+        ],
+        "title": "NotificationOut",
+        "type": "object"
+      },
       "PresenceIn": {
         "properties": {
           "source": {
@@ -1217,6 +1445,10 @@
       },
       "SiteHealthOut": {
         "properties": {
+          "client": {
+            "title": "Client",
+            "type": "string"
+          },
           "env": {
             "title": "Env",
             "type": "string"
@@ -1346,6 +1578,7 @@
         "required": [
           "id",
           "name",
+          "client",
           "env",
           "state",
           "open_p1",
@@ -1863,6 +2096,42 @@
           "state_change"
         ],
         "title": "TestEventOut",
+        "type": "object"
+      },
+      "TestPushOut": {
+        "description": "What happened to a test push. Always an answer, never an error status, so the console can show why.",
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "retryable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retryable"
+          },
+          "sent": {
+            "title": "Sent",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "sent"
+        ],
+        "title": "TestPushOut",
         "type": "object"
       },
       "TicketIn": {
@@ -2571,7 +2840,7 @@
     },
     "/api/issues/{issue_id}/log": {
       "get": {
-        "description": "What happened to this issue, oldest first. `system` rows are derived from\nthe issue itself; `action` rows are things a person did. Alerts sent by the\nhub will join this log with chunk 2.",
+        "description": "What happened to this issue, oldest first. `system` rows are derived from\nthe issue itself; `action` rows are things a person did. Each alert the hub\nqueued for the phone is here too, with what happened to it, so a failed\nalert reads as a failed alert and never as one that was not needed.",
         "operationId": "issue_log_api_issues__issue_id__log_get",
         "parameters": [
           {
@@ -2698,6 +2967,159 @@
         "summary": "Media History",
         "tags": [
           "media"
+        ]
+      }
+    },
+    "/api/notifications": {
+      "get": {
+        "description": "Newest first. `failed` is what gave up. `undelivered` is that plus anything that has already\nfailed once and is still being retried, so a flaky provider shows before it exhausts its attempts.\n`attention` is everything the console must not let anyone miss: undelivered, plus a P1 whose receipt\nexpired with nobody acknowledging it.",
+        "operationId": "list_notifications_api_notifications_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "all",
+                "failed",
+                "undelivered",
+                "attention"
+              ],
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NotificationOut"
+                  },
+                  "title": "Response List Notifications Api Notifications Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Notifications",
+        "tags": [
+          "alerts"
+        ]
+      }
+    },
+    "/api/notifications/status": {
+      "get": {
+        "description": "Whether the alert path can work, and what the sender is doing: the answer to \"would a P1 reach\nmy phone right now?\" without having to cause one.",
+        "operationId": "status_api_notifications_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertsStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Status",
+        "tags": [
+          "alerts"
+        ]
+      }
+    },
+    "/api/notifications/test-push": {
+      "post": {
+        "description": "Send one real push through the real adapter, to prove the phone path works. It is not queued and\nbelongs to no incident, so it cannot be mistaken for an alert, and it always answers 200 with what\nhappened: the reason a push failed is the thing the screen needs to show.",
+        "operationId": "test_push_api_notifications_test_push_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestPushOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Test Push",
+        "tags": [
+          "alerts"
+        ]
+      }
+    },
+    "/api/notifications/{notification_id}/retry": {
+      "post": {
+        "description": "Give a failed alert a fresh set of attempts, for example after fixing the token. Only a failed one\ncan be retried: a pending one is already being retried, and a sent one must not be sent twice.",
+        "operationId": "retry_api_notifications__notification_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "notification_id",
+            "required": true,
+            "schema": {
+              "title": "Notification Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retry",
+        "tags": [
+          "alerts"
         ]
       }
     },
@@ -3665,6 +4087,52 @@
         "summary": "Tap",
         "tags": [
           "presence"
+        ]
+      }
+    },
+    "/pushover/ack/{token}": {
+      "post": {
+        "operationId": "acknowledged_pushover_ack__token__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Acknowledged Pushover Ack  Token  Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Acknowledged",
+        "tags": [
+          "pushover"
         ]
       }
     }

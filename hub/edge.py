@@ -16,6 +16,7 @@ from collections.abc import Callable, Iterable
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .acks import dismiss_alerts
 from .config import settings
 from .ingest import record_event
 from .models import Issue, IssueAction, Site
@@ -80,6 +81,7 @@ async def auto_resolve(
                     detail=f"auto: {why} for {settings.stack_healthy_min} minutes",
                 )
             )
+            await dismiss_alerts(session, issue.id)
             changed = True
     if changed:
         await session.commit()

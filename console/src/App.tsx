@@ -1,6 +1,8 @@
 import { useState, type ReactElement } from "react";
-import type { Deploy, HomeSnapshot, Issue, MediaPlay, MediaSnapshot, Presence, Rates, Rising, SiteHealth, Stack, Ticket, Weather } from "./api/types.ts";
+import type { Alert, Deploy, HomeSnapshot, Issue, MediaPlay, MediaSnapshot, Presence, Rates, Rising, SiteHealth, Stack, Ticket, Weather } from "./api/types.ts";
 import type { Feeds, TabId } from "./feeds.ts";
+import { isUnacknowledged } from "./alerts.ts";
+import AlertBanner from "./AlertBanner.tsx";
 import Splash from "./Splash.tsx";
 import { Dot } from "./ui.tsx";
 import { demoHome } from "./home.ts";
@@ -9,6 +11,7 @@ import WeatherLine from "./WeatherLine.tsx";
 import { ago, settled, tuning, useHashTab, useInactivity, useNow, usePoll } from "./hooks.ts";
 import Deploys from "./views/Deploys.tsx";
 import Idle from "./views/Idle.tsx";
+import Alerts from "./views/Alerts.tsx";
 import Incidents from "./views/Incidents.tsx";
 import Media from "./views/Media.tsx";
 import Overview from "./views/Overview.tsx";
@@ -19,11 +22,12 @@ import Staging from "./views/Staging.tsx";
 const TABS: [Exclude<TabId, "idle">, string][] = [
   ["overview", "Overview"],
   ["incidents", "Incidents"],
+  ["alerts", "Alerts"],
+  ["sites", "Sites"],
   ["requests", "Requests"],
   ["deploys", "Deploys"],
   ["staging", "Staging"],
   ["media", "Media"],
-  ["sites", "Sites"],
 ];
 // "idle" is a screen, not a tab: it is reachable at #/idle and starts by itself
 // after IDLE_AFTER_MS with no input, but has no sidebar entry.
@@ -39,8 +43,9 @@ const ICONS: Record<string, ReactElement> = {
   staging: <path d="M9 2 16 6 9 10 2 6zM2 9.5 9 13.5 16 9.5M2 12.5 9 16.5 16 12.5" />,
   media: <path d="M3 4h12v10H3zM7.5 6.8v4.4L11.5 9z" />,
   sites: <path d="M3 3h12v12H3zM9 6v6M6 9h6" />,
+  alerts: <path d="M9 2.5a4.5 4.5 0 0 0-4.5 4.5v3L3 13h12l-1.5-3V7A4.5 4.5 0 0 0 9 2.5zM7.5 15a1.5 1.5 0 0 0 3 0" />,
 };
-const VIEWS: Record<Exclude<TabId, "idle">, (props: { f: Feeds }) => ReactElement | null> = { overview: Overview, incidents: Incidents, requests: Requests, deploys: Deploys, staging: Staging, media: Media, sites: Sites };
+const VIEWS: Record<Exclude<TabId, "idle">, (props: { f: Feeds }) => ReactElement | null> = { overview: Overview, incidents: Incidents, requests: Requests, deploys: Deploys, staging: Staging, media: Media, sites: Sites, alerts: Alerts };
 
 export default function App({ onSignOut }: { onSignOut?: () => void }) {
   const health = usePoll<SiteHealth[]>("/api/sites/health");
@@ -48,6 +53,7 @@ export default function App({ onSignOut }: { onSignOut?: () => void }) {
   const rising = usePoll<Rising[]>("/api/errors/rising");
   const tickets = usePoll<Ticket[]>("/api/tickets?status=all");
   const deploys = usePoll<Deploy[]>("/api/deploys");
+  const attention = usePoll<Alert[]>("/api/notifications?status=attention");
   const stacks = usePoll<Stack[]>("/api/stacks");
   const media = usePoll<MediaSnapshot[]>("/api/media");
   const mediaHistory = usePoll<MediaPlay[]>("/api/media/history?days=30&limit=1000");
@@ -62,7 +68,7 @@ export default function App({ onSignOut }: { onSignOut?: () => void }) {
   const [idleHold, setIdleHold] = useState(false);
   useInactivity(IDLE_AFTER_MS, () => go("idle"), tab !== "idle" && !idleHold);
 
-  const feeds = [health, issues, rising, tickets, deploys, stacks, media, mediaHistory];
+  const feeds = [health, issues, rising, tickets, deploys, attention, stacks, media, mediaHistory];
   const hubError = feeds.some((x) => x.error);
   const loaded = feeds.every((x) => x.data);
   const stamps = feeds.map((x) => x.at).filter((t): t is number => t != null);
@@ -74,6 +80,7 @@ export default function App({ onSignOut }: { onSignOut?: () => void }) {
     rising: rising.data ?? [],
     tickets: tickets.data ?? [],
     deploys: settled(deploys.data ?? []),
+    attention: attention.data ?? [],
     stacks: stacks.data ?? [],
     media: media.data ?? [],
     mediaHistory: mediaHistory.data ?? [],
@@ -94,6 +101,7 @@ export default function App({ onSignOut }: { onSignOut?: () => void }) {
     updatedAt,
     reloadIssues: () => Promise.all([issues.reload(), health.reload(), rising.reload()]),
     reloadTickets: tickets.reload,
+    reloadAttention: attention.reload,
     reloadStacks: stacks.reload,
   };
 
@@ -102,6 +110,8 @@ export default function App({ onSignOut }: { onSignOut?: () => void }) {
   const badges: Partial<Record<string, { n: number; hot: boolean }>> = {
     incidents: { n: openIssues.length, hot: openIssues.some((i) => i.severity === "P1") },
     requests: { n: openTickets.length, hot: openTickets.some((t) => t.overdue) },
+    // red when an alert gave up or a P1 went unanswered; amber while one is only being retried
+    alerts: { n: f.attention.length, hot: f.attention.some((a) => a.status === "failed" || isUnacknowledged(a)) },
   };
 
   // The idle screen owns the whole viewport (no sidebar). It is left only by
@@ -165,6 +175,8 @@ export default function App({ onSignOut }: { onSignOut?: () => void }) {
             {updatedAt ? ` (last good data ${ago(updatedAt, now)})` : ""}.
           </div>
         )}
+
+        <AlertBanner alerts={f.attention} go={go} />
 
         {loaded || hubError ? <View f={f} /> : <p className="loading">Loading…</p>}
       </div>

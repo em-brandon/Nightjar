@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager, suppress
 from fastapi import Depends, FastAPI
 
 from . import auth
+from .alerts import router as alerts_router
 from .api import router as api_router
 from .browser import router as browser_router
 from .config import settings
@@ -17,9 +18,11 @@ from .ingest import router as ingest_router
 from .media import ingest_router as media_ingest_router
 from .media import router as media_router
 from .migrate import upgrade
+from .outbox import sender_loop
 from .presence import public_router as presence_public_router
 from .presence import router as presence_router
 from .probe import probe_loop
+from .pushover import router as pushover_router
 from .rates import router as rates_router
 from .sites import router as sites_router
 from .stacks import ingest_router as stack_ingest_router
@@ -38,11 +41,14 @@ async def lifespan(app: FastAPI):
     # start: better than serving requests against the wrong schema.
     await asyncio.to_thread(upgrade)
     prober = asyncio.create_task(probe_loop()) if settings.probe_enabled else None
+    # The alert sender. Alerts are queued whether or not this runs; it only delivers them.
+    sender = asyncio.create_task(sender_loop()) if settings.outbox_enabled else None
     yield
-    if prober:
-        prober.cancel()
-        with suppress(asyncio.CancelledError):
-            await prober
+    for task in (prober, sender):
+        if task:
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
     await engine.dispose()
 
 
@@ -59,6 +65,7 @@ app.include_router(ingest_router)
 app.include_router(api_router, dependencies=console)
 app.include_router(incidents_router, dependencies=console)
 app.include_router(sites_router, dependencies=console)
+app.include_router(alerts_router, dependencies=console)
 app.include_router(tickets_router, dependencies=console)
 app.include_router(deploy_ingest_router)
 app.include_router(deploys_router, dependencies=console)
@@ -70,6 +77,8 @@ app.include_router(weather_router, dependencies=console)
 app.include_router(home_ingest_router)
 app.include_router(home_router, dependencies=console)
 app.include_router(presence_public_router)
+# Pushover cannot send the console token: this route holds its own secret in the path (hub/pushover.py)
+app.include_router(pushover_router)
 app.include_router(presence_router, dependencies=console)
 app.include_router(rates_router, dependencies=console)
 

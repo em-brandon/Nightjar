@@ -6,17 +6,24 @@ Most of these never touch the database: the auth dependency runs before any
 handler, so a rejected request is rejected before it could read or write a row.
 """
 
+import asyncio
 import os
+import re
 import sys
 import unittest
+import uuid
 from unittest.mock import AsyncMock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import httpx  # noqa: E402
+from sqlalchemy import pool, text  # noqa: E402
+from sqlalchemy.engine import make_url  # noqa: E402
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
 
-from hub import auth  # noqa: E402
+from hub import auth, migrate  # noqa: E402
 from hub.config import settings  # noqa: E402
+from hub.db import get_session  # noqa: E402
 from hub.main import app  # noqa: E402
 
 TOKEN = "correct-horse-battery-staple-1234"
@@ -40,19 +47,25 @@ PROTECTED = [
 ]
 
 
-async def database_reachable() -> bool:
-    from sqlalchemy import pool, text
-    from sqlalchemy.ext.asyncio import create_async_engine
+def _admin_url() -> str:
+    return make_url(settings.database_url).set(database="postgres").render_as_string(hide_password=False)
 
-    engine = create_async_engine(settings.database_url, poolclass=pool.NullPool)
+
+async def _admin(sql: str) -> None:
+    engine = create_async_engine(_admin_url(), isolation_level="AUTOCOMMIT", poolclass=pool.NullPool)
     try:
         async with engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))
+            await conn.execute(text(sql))
+    finally:
+        await engine.dispose()
+
+
+def _reachable() -> bool:
+    try:
+        asyncio.run(_admin("SELECT 1"))
         return True
     except Exception:
         return False
-    finally:
-        await engine.dispose()
 
 
 class AuthTestCase(unittest.IsolatedAsyncioTestCase):
@@ -83,9 +96,11 @@ class Rejects(AuthTestCase):
         checked, open_routes = [], []
         async with self.client() as c:
             for path, methods in schema["paths"].items():
-                if path == "/healthz" or path.startswith("/ingest/") or path.startswith("/api/auth/"):
-                    continue  # public by design: probes, per-site-key ingest, and login itself
-                url = path.replace("{ingest_key}", "x").replace("{issue_id}", "1").replace("{ticket_id}", "1").replace("{site_id}", "1")
+                if path in ("/healthz", "/presence") or path.startswith("/ingest/") or path.startswith("/api/auth/"):
+                    # public by design: probes, per-site-key ingest, login itself, and the NFC presence
+                    # tap, which is authenticated by a token in its body (tests/test_home_ingest.py)
+                    continue
+                url = path.replace("{ingest_key}", "x").replace("{issue_id}", "1").replace("{ticket_id}", "1").replace("{site_id}", "1").replace("{notification_id}", "1")
                 for method in methods:
                     if method not in ("get", "post", "patch", "put", "delete"):
                         continue
@@ -157,17 +172,50 @@ class Accepts(AuthTestCase):
         async with self.client() as c:
             self.assertEqual((await c.get("/healthz")).status_code, 200)
 
+
+@unittest.skipUnless(_reachable(), "Postgres is not reachable (start the dev database container)")
+class IngestIsOpen(AuthTestCase):
+    """Ingest authenticates by per-site key. If the console token gated it, every
+    client app would stop reporting the moment auth was turned on. An unknown key
+    must therefore get 404 ("unknown site"), never 401. Runs against its own
+    migrated throwaway database, so it does not depend on what the dev or CI
+    database happens to contain."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.name = f"nj_auth_{uuid.uuid4().hex[:10]}"
+        asyncio.run(_admin(f'CREATE DATABASE "{cls.name}"'))
+        cls.url = make_url(settings.database_url).set(database=cls.name).render_as_string(hide_password=False)
+        migrate.upgrade(cls.url)
+
+    @classmethod
+    def tearDownClass(cls):
+        app.dependency_overrides.pop(get_session, None)
+        asyncio.run(_admin(f'DROP DATABASE IF EXISTS "{cls.name}" WITH (FORCE)'))
+
+    def setUp(self):
+        super().setUp()
+        self.engine = create_async_engine(self.url, poolclass=pool.NullPool)
+        maker = async_sessionmaker(self.engine, expire_on_commit=False)
+
+        async def override():
+            async with maker() as session:
+                yield session
+
+        app.dependency_overrides[get_session] = override
+
+    async def asyncTearDown(self):
+        app.dependency_overrides.pop(get_session, None)
+        await self.engine.dispose()
+
     async def test_ingest_is_not_asking_for_the_console_token(self):
-        """Ingest authenticates by per-site key. If the console token gated it, every
-        client app would stop reporting the moment auth was turned on. An unknown key
-        must therefore get 404 ("unknown site"), never 401. Needs the database."""
-        if not await database_reachable():
-            self.skipTest("Postgres is not reachable")
         paths = [p for p in app.openapi()["paths"] if p.startswith("/ingest/")]
         self.assertGreaterEqual(len(paths), 3, paths)  # event, deploy, stack
         async with self.client() as c:
             for path in paths:
-                r = await c.post(path.replace("{ingest_key}", "no-such-key"), json={})
+                # fill every path parameter ({ingest_key}, {public_key}, ...) with an unknown key
+                url = re.sub(r"\{[^}]+\}", "no-such-key", path)
+                r = await c.post(url, json={})
                 self.assertEqual(r.status_code, 404, f"{path}: {r.status_code} {r.text}")
 
 

@@ -6,7 +6,7 @@ import { createHmac } from "node:crypto";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
-import { captureException, createReporter, expressErrorHandler, flush, init, parseStack, prepare } from "./nightjar.ts";
+import { captureException, createReporter, expressErrorHandler, flush, hubRefusal, init, parseStack, prepare } from "./nightjar.ts";
 
 const ok = (name) => console.log(`  ok   ${name}`);
 const OPTS = { hub: "https://nightjar.example/", key: "KEY1", secret: "s3cret", release: "v2" };
@@ -22,6 +22,69 @@ function harness(options = {}, over = {}) {
   return { reporter: createReporter({ ...OPTS, ...options }, env), sent, tick: (ms) => (t += ms) };
 }
 const settle = () => new Promise((r) => setTimeout(r, 5));
+
+// ---- a hub that is not https ----------------------------------------------------------------------------------
+
+{
+  for (const ok_ of ["https://nightjar.example", "https://nightjar.example/", "http://localhost:8000", "http://127.0.0.1:9", "http://[::1]:8000", "http://app.localhost"]) {
+    assert.equal(hubRefusal(ok_), null, `${ok_} is fine`);
+  }
+  for (const bad of ["http://nightjar.example", "http://10.0.0.5", "http://192.168.1.20:8000", "http://hub.test", "ftp://nightjar.example", "nightjar.example", "//nightjar.example"]) {
+    assert.ok(hubRefusal(bad), `${bad} is refused`);
+  }
+  // the reason names the host but never the whole address, which could carry a credential
+  assert.doesNotMatch(hubRefusal("http://user:pa55word@nightjar.example/path?token=abc"), /pa55word|token=abc|user:/);
+  ok("only https, or http to this machine, is accepted as a hub");
+}
+
+{
+  const warned = [];
+  const sent = [];
+  const r = createReporter(
+    { hub: "http://nightjar.example", key: "K", secret: "s" },
+    { send: async (...a) => void sent.push(a), now: () => 1, warn: (m) => warned.push(m) },
+  );
+  assert.equal(warned.length, 1, "it says so once, when created, not silently");
+  assert.match(warned[0], /refusing to report errors to http:\/\/nightjar\.example/);
+  assert.doesNotThrow(() => {
+    r.capture(new Error("boom"));
+    r.capture(new Error("boom again"));
+  }, "refusing must never throw");
+  assert.equal(sent.length, 0, "and nothing is sent");
+  assert.equal(warned.length, 1, "it does not repeat itself on every error");
+  ok("an http:// hub sends nothing, throws nothing, and logs once");
+}
+
+{
+  const warned = [];
+  const sent = [];
+  for (const hub of ["https://nightjar.example", "http://127.0.0.1:8000", "http://localhost:8000"]) {
+    const r = createReporter({ hub, key: "K", secret: "s" }, { send: async (...a) => void sent.push(a), now: () => 1, warn: (m) => warned.push(m) });
+    r.capture(new Error("boom"));
+  }
+  await settle();
+  assert.deepEqual(warned, [], "a good hub is not warned about");
+  assert.equal(sent.length, 3, "https and loopback http still report");
+  ok("https and loopback http still work");
+}
+
+{
+  // not configured at all stays quiet, as before: that is a different state from a hub that is wrong
+  const warned = [];
+  createReporter({ key: "K", secret: "s" }, { send: async () => {}, now: () => 1, warn: (m) => warned.push(m) });
+  assert.deepEqual(warned, []);
+  // init with a refused hub does nothing, throws nothing, and returns null
+  const saved = console.error;
+  const lines = [];
+  console.error = (m) => lines.push(m);
+  try {
+    assert.equal(init({ hub: "http://nightjar.example", key: "K", secret: "s" }), null);
+  } finally {
+    console.error = saved;
+  }
+  assert.equal(lines.length, 1, "init says why on standard error by default");
+  ok("init refuses an http:// hub out loud, and an unset hub stays quiet");
+}
 
 // ---- parsing -------------------------------------------------------------------------------
 

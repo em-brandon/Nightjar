@@ -62,6 +62,8 @@ DayState = Literal["ok", "deg", "out", "gap"]
 class SiteHealthOut(BaseModel):
     id: int
     name: str
+    # who the site belongs to, so the console can group a client's sites and pair each with its staging
+    client: str
     env: str
     # down: an open P1, or 2 failed probes in a row. warn: an open P2, one
     # failed probe, or a probe gone quiet. up: none. Derived, never stored.
@@ -215,6 +217,59 @@ class LogEntry(BaseModel):
     # system: derived from the issue itself. action: something a person did.
     kind: Literal["system", "action"]
     text: str
+
+
+class NotificationOut(BaseModel):
+    """One alert in the outbox and what happened to it (hub/alerts.py)."""
+
+    id: int
+    issue_id: int
+    site: str
+    title: str
+    severity: str
+    # new | regression | spike
+    change: str
+    # Pushover's: 2 repeats until acknowledged, 0 is normal, -1 is delivered without sound
+    priority: int
+    status: Literal["pending", "sending", "sent", "failed"]
+    attempts: int
+    last_error: str | None
+    created_at: datetime
+    next_attempt_at: datetime
+    sent_at: datetime | None
+    acked_at: datetime | None
+    # Pushover reported the receipt expired with nobody acknowledging it: the phone did not wake anyone
+    expired_at: datetime | None
+    # someone dealt with the incident after this alert was sent, so it needs no more attention
+    dismissed_at: datetime | None
+    # Pushover confirmed it stopped this push repeating on the phone
+    cancelled_at: datetime | None
+
+
+class TestPushOut(BaseModel):
+    """What happened to a test push. Always an answer, never an error status, so the console can show why."""
+
+    sent: bool
+    error: str | None = None
+    # whether trying again might work: a timeout might clear, a rejected token will not
+    retryable: bool | None = None
+
+
+class AlertsStatusOut(BaseModel):
+    """Whether the alert path can work, and what it is doing. Never carries a secret: only whether one is set."""
+
+    pushover_configured: bool
+    # acknowledging a P1 on the phone needs Pushover to reach the hub: a public address and a callback secret
+    callback_configured: bool
+    deadman_configured: bool
+    sender_enabled: bool
+    sender_poll_s: float
+    sender_last_pass_at: datetime | None
+    sender_last_error: str | None
+    pending: int
+    retrying: int
+    failed: int
+    sent_24h: int
 
 
 TicketKind = Literal["change", "report", "access"]

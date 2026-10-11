@@ -69,18 +69,35 @@ sudo mkdir -p /opt/nightjar && sudo chown $USER /opt/nightjar
 cd /opt/nightjar
 # copy the repo up, or clone it
 cp .env.prod.example .env
-openssl rand -base64 32          # paste as POSTGRES_PASSWORD
-openssl rand -base64 32          # paste as CONSOLE_TOKEN (the hub will not start without it)
-nano .env                        # set HUB_DOMAIN too
+nano .env                        # set HUB_DOMAIN, and check POSTGRES_USER and POSTGRES_DB
+./deploy/make-secrets.sh         # creates ./secrets: the database password, the console token, and the other secret files
 
-docker compose up -d --build
+docker compose up -d --build     # the first build downloads Node and compiles the console, so it takes a few minutes
 docker compose logs -f caddy     # watch the certificate get issued
 ```
 
+**Secrets are files, not environment variables.** `make-secrets.sh` writes one file per secret into `./secrets` (mode 700, never
+committed): `postgres_password`, `database_url`, `console_token` and `pushover_callback_token` are generated, and
+`pushover_token`, `pushover_user`, `deadman_url` and `presence_token` are created empty for you to fill in. Compose mounts them under
+`/run/secrets`, so `docker inspect`, process listings and crash dumps never show them (checked: no container's environment holds a
+secret). It never overwrites a file that exists, so running it again is safe. **Back the directory up somewhere other than the
+server**: it is not in git, and the console token inside it is what you sign in with.
+
 The hub migrates its own database on every start, so there is no schema step. It also refuses to start
-if `CONSOLE_TOKEN` is missing or under 16 characters, because otherwise the console API and every write
-would be open to the internet. Sign in at your domain with that token. The session cookie is marked
+if the console token is missing, empty or under 16 characters, because otherwise the console API and every write
+would be open to the internet (checked: an empty `secrets/console_token` makes the hub exit with an error). Sign in at your domain with that token. The session cookie is marked
 `Secure` behind Caddy's TLS, so never use the console over plain http.
+
+**Caddy serves the console too.** `deploy/caddy.Dockerfile` builds the console and bakes it, with the Caddyfile, into the Caddy
+image, so one hostname serves the console, the API it calls, and the endpoints other machines call (`/ingest`, `/healthz`,
+`/pushover/ack`, `/presence`). After changing the console or the Caddyfile, rebuild it:
+`docker compose build caddy && docker compose up -d caddy`.
+
+**HSTS starts at one day** (`max-age=86400` in `deploy/Caddyfile`). It tells browsers to use HTTPS only for this hostname and is
+hard to undo, so raise it in steps: after a day with nothing broken, a week; after that, six months. Do not add
+`includeSubDomains` or `preload` until every subdomain of the domain serves HTTPS. Check it with
+`curl -sI https://<hub domain>/ | grep -i strict-transport`. The responses also carry `nosniff`, no framing, no referrer and a
+Content-Security-Policy that lets the console load only its own files.
 
 Then create the first site and note its keys:
 
@@ -135,9 +152,42 @@ minutes:
 */5 * * * * curl -fsS -m 10 --retry 3 https://hc-ping.com/<uuid> > /dev/null
 ```
 
-Better, once chunk 2 exists, ping it from inside the app after a successful
-database round-trip — then it proves the whole path is alive, not just that
-cron ran.
+Better, and built: set `DEADMAN_URL` in `.env` to the same ping URL and the hub's alert sender pings
+it after every completed pass (at most every two minutes). That proves the whole path is alive, database
+round-trip and sender included, and not just that cron ran. A sender that has died, stuck, or lost its
+database stops pinging, and healthchecks.io tells you. Keep the cron line too: it notices a hub that is not
+running at all, which the in-app ping cannot.
+
+---
+
+## 7b. Phone alerts (Pushover)
+
+Nothing wakes your phone until this is done. Without it every alert is queued and then shown as **failed**
+in the console, never dropped.
+
+1. Install the Pushover app on the phone (30-day trial, then a one-off licence per platform).
+2. Create an application at <https://pushover.net/apps/build>, named `Nightjar`. Its API token goes in
+   `PUSHOVER_TOKEN`. Your own user key, from the Pushover dashboard, goes in `PUSHOVER_USER`.
+3. For acknowledging a P1 on the phone to reach the console at once, set `HUB_PUBLIC_URL` to the hub's public
+   address and `PUSHOVER_CALLBACK_TOKEN` to a long random string (`openssl rand -hex 24`). Pushover cannot
+   reach a hub on `localhost`; without these the hub checks Pushover for acknowledgements every 30 seconds.
+4. Restart the hub, open the console's **Alerts** tab, and press **Send a test push**. It should arrive on
+   the phone within seconds. If it does not, the tab says why.
+5. Test it for real, as `CLAUDE.md` says to: break a route on staging and confirm the push arrives, then
+   test presence by tapping out and confirming the push still arrives.
+
+What the tab shows, and what each warning means:
+
+| Shown | Meaning |
+|---|---|
+| Pushover **not configured** | The token or user is missing. Nothing can reach the phone. |
+| Sender **stalled** or **switched off** | The loop that delivers alerts is not running. Alerts are queued and wait. |
+| Alert **failed** | Pushover refused it, or it ran out of attempts. It has a **Retry** button. |
+| P1 **not acknowledged** | It was sent but nobody answered within 30 minutes: the phone did not wake anyone. |
+| **Stopped: incident dealt with** | You acknowledged, resolved, muted or snoozed the incident, or it healed, so the hub told Pushover to stop the repeating push. |
+
+Acknowledging or resolving an incident in the console stops the phone alarming within a few seconds, and a failed attempt to
+stop it is retried until it works. Nothing yet escalates a P1 that nobody answers: see `docs/ESCALATION.md`.
 
 ---
 

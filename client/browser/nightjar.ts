@@ -56,6 +56,31 @@ export interface Env {
   /** The page's address, and its origin (https://host). */
   page(): string;
   origin(): string;
+  /** Where the one-line warning about an unusable hub goes. Default: the page's console. */
+  warn?(message: string): void;
+}
+
+const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
+
+/**
+ * Whether this hub address may be used, and if not, why. https is always fine. Plain http is fine only for a machine
+ * talking to itself, which development needs: anywhere else it would send error text, readable, across a network.
+ * Returns null when the address is fine, or one line saying what is wrong. It never includes the whole address, which
+ * could carry a credential.
+ */
+export function hubRefusal(hub: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(hub);
+  } catch {
+    return "Nightjar: the hub address is not a valid URL, so no errors will be reported. Use https://your-hub.";
+  }
+  if (url.protocol === "https:") return null;
+  if (url.protocol === "http:" && (LOOPBACK.has(url.hostname) || url.hostname.endsWith(".localhost"))) return null;
+  return (
+    `Nightjar: refusing to report errors to ${url.protocol}//${url.hostname}: plain http would send them readable ` +
+    "across the network. Use an https:// hub address (http:// is only accepted for localhost). No errors will be reported."
+  );
 }
 
 const MAX_BODY = 15_000; // the hub refuses 16 KB
@@ -133,8 +158,20 @@ export function createReporter(options: Options, env: Env): Reporter {
   const recent = new Map<string, number>(); // error signature -> when it was last sent
   let sent: number[] = []; // when each report in the last minute was sent
 
+  // An unusable hub is never silent: a mistyped address would otherwise look exactly like a page with no errors. It
+  // says so once, here, in the page's console, and then sends nothing. It never throws.
+  const refusal = hubRefusal(options.hub);
+  if (refusal) {
+    try {
+      (env.warn ?? ((m: string) => console.error(m)))(refusal);
+    } catch {
+      // even the warning must not break the page
+    }
+  }
+
   function capture(error: unknown, level?: Level): void {
     try {
+      if (refusal) return; // already said so, once, when it was created
       const { type, message, stack } = toError(error);
       const frames = parseStack(stack);
       const text = `${type}: ${message}\n${frames.map((f) => f.file).join("\n")}`;
@@ -214,6 +251,7 @@ export function init(options: Options): () => void {
       },
     };
     const reporter = createReporter(options, env);
+    if (hubRefusal(options.hub)) return () => {}; // createReporter has already said why: no listeners, nothing to stop
     active = reporter;
 
     const onError = (e: ErrorEvent) => {
