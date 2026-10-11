@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import type { SiteCreated, SiteHealth, SiteListed, SiteOut, TestEventResult } from "../api/types.ts";
 import type { Feeds } from "../feeds.ts";
 import { ago, send, usePoll } from "../hooks.ts";
@@ -10,6 +10,8 @@ import { Empty, Pill } from "../ui.tsx";
 // state; a site that has never reported says so; nothing here touches alert routing.
 
 const WAIT_MS = 3 * 60_000;
+// A secret left on screen is a secret anyone walking past can read, so it clears itself.
+const SECRET_SHOWN_MS = 10 * 60_000;
 
 const why = (err: unknown) => (err instanceof Error ? err.message : String(err));
 const lines = (text: string) => text.split("\n").map((l) => l.trim()).filter(Boolean);
@@ -432,7 +434,23 @@ export default function Sites({ f }: { f: Feeds }) {
   const health = usePoll<SiteHealth[]>("/api/sites/health", 5_000);
   const [shown, setShown] = useState<Shown | null>(null);
   const [adding, setAdding] = useState(false);
-  const { now } = f;
+  const { now, setIdleHold } = f;
+
+  // The idle screen must not start over a half-filled form or a secret shown once: either would be lost.
+  const holding = adding || shown?.ingestSecret != null;
+  useEffect(() => {
+    setIdleHold(holding);
+    return () => setIdleHold(false);
+  }, [holding, setIdleHold]);
+
+  useEffect(() => {
+    if (!shown?.ingestSecret) return;
+    const id = setTimeout(
+      () => setShown((s) => (s ? { ...s, ingestSecret: null, warning: "The secret was cleared after 10 minutes on screen. Rotate it to get a new one." } : s)),
+      SECRET_SHOWN_MS,
+    );
+    return () => clearTimeout(id);
+  }, [shown?.ingestSecret]);
 
   const sites = list.data ?? [];
   const clients = [...new Set(sites.map((s) => s.client))].sort();

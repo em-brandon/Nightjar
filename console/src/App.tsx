@@ -1,4 +1,4 @@
-import type { ReactElement } from "react";
+import { useState, type ReactElement } from "react";
 import type { Deploy, HomeSnapshot, Issue, MediaPlay, MediaSnapshot, Presence, Rates, Rising, SiteHealth, Stack, Ticket, Weather } from "./api/types.ts";
 import type { Feeds, TabId } from "./feeds.ts";
 import Splash from "./Splash.tsx";
@@ -59,7 +59,8 @@ export default function App({ onSignOut }: { onSignOut?: () => void }) {
   const rates = usePoll<Rates>("/api/rates", 60_000);
   const now = useNow();
   const [tab, go] = useHashTab(TAB_IDS, "overview");
-  useInactivity(IDLE_AFTER_MS, () => go("idle"), tab !== "idle");
+  const [idleHold, setIdleHold] = useState(false);
+  useInactivity(IDLE_AFTER_MS, () => go("idle"), tab !== "idle" && !idleHold);
 
   const feeds = [health, issues, rising, tickets, deploys, stacks, media, mediaHistory];
   const hubError = feeds.some((x) => x.error);
@@ -87,6 +88,7 @@ export default function App({ onSignOut }: { onSignOut?: () => void }) {
     mediaDemo: media.data && media.data.length === 0 ? demoMedia(now) : null,
     now,
     go,
+    setIdleHold,
     hubError,
     loaded,
     updatedAt,

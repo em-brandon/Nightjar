@@ -26,6 +26,9 @@ export type Feeds = {
   reloadPresence: () => Promise<void>;
   now: number;
   go: (tab: TabId) => void;
+  // A screen holding something that cannot be recovered (a half-filled form, a secret shown once) asks the
+  // shell not to start the idle screen over it. Always released when that screen goes away.
+  setIdleHold: (hold: boolean) => void;
   hubError: boolean;
   loaded: boolean;
   updatedAt: number | null;
