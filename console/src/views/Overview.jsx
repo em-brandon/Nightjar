@@ -4,7 +4,7 @@ import { unwatched } from "../monitoring.ts";
 import { backupView, hostView, netView, presenceView } from "../home.ts";
 import { label, mediaState } from "../media.ts";
 import { Dot, Empty, Odometer, Pill, Sev, SiteCard, Spark } from "../ui.tsx";
-import { DemoTag, DiskBar } from "./Media.jsx";
+import { DemoTag, DiskBar } from "./Media.tsx";
 
 const DEPLOY_TONE = { success: "ok", failed: "bad", running: "run" };
 const DEPLOY_LABEL = { success: "success", failed: "failed", running: "running" };

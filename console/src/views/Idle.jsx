@@ -4,7 +4,7 @@ import { ago, plural, tuning, useNow, useReveal } from "../hooks.ts";
 import { Odometer, Pill, Sev, SiteCard, Spark } from "../ui.tsx";
 import { requestsView } from "../home.ts";
 import { label, mediaState } from "../media.ts";
-import { DemoTag, DiskBar } from "./Media.jsx";
+import { DemoTag, DiskBar } from "./Media.tsx";
 import PushCard from "../PushCard.tsx";
 import { demoPush, pushView } from "../push.ts";
 import StatusTray from "../StatusTray.tsx";

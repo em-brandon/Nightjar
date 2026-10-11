@@ -1,18 +1,21 @@
 import { useState } from "react";
+import type { MediaPlay, MediaSnapshot } from "../api/types.ts";
+import type { Feeds } from "../feeds.ts";
 import { ago, plural } from "../hooks.ts";
 import { Dot, Empty, Pill } from "../ui.tsx";
 import { byUser, diskFreePct, fmtDuration, label, mediaState, progress, topTitles, within } from "../media.ts";
 
-const STATE = {
+const STATE: Record<ReturnType<typeof mediaState>, { dot: string; tone: string; text: string }> = {
   up: { dot: "up", tone: "ok", text: "up" },
   down: { dot: "down", tone: "bad", text: "not responding" },
   low: { dot: "warn", tone: "warn", text: "disk nearly full" },
   silent: { dot: "warn", tone: "warn", text: "reporter silent" },
 };
-const METHOD = { direct_play: "direct play", direct_stream: "direct stream", transcode: "transcoding" };
+const METHOD: Record<NonNullable<MediaPlay["play_method"]>, string> = { direct_play: "direct play", direct_stream: "direct stream", transcode: "transcoding" };
 const WINDOWS = [7, 30];
 
-const gb = (mb) => `${(mb / 1024).toFixed(mb >= 10240 ? 0 : 1)} GiB`;
+// a null free figure reads as 0, as it did before the types said it could be null
+const gb = (mb: number | null) => `${((mb ?? 0) / 1024).toFixed((mb ?? 0) >= 10240 ? 0 : 1)} GiB`;
 
 // Marks sample data. It says so in words as well as colour.
 export function DemoTag() {
@@ -23,7 +26,7 @@ export function DemoTag() {
   );
 }
 
-export function DiskBar({ m }) {
+export function DiskBar({ m }: { m: Pick<MediaSnapshot, "host_disk_total_mb" | "host_disk_free_mb"> }) {
   const free = diskFreePct(m);
   if (free == null) return null;
   const used = 100 - free;
@@ -35,7 +38,7 @@ export function DiskBar({ m }) {
   );
 }
 
-function ServerCard({ m, now }) {
+function ServerCard({ m, now }: { m: MediaSnapshot; now: number }) {
   const state = mediaState(m);
   const s = STATE[state];
   return (
@@ -73,7 +76,7 @@ function ServerCard({ m, now }) {
 
 // Who is watching right now. A silent reporter shows nothing here, on purpose:
 // an old snapshot must not claim someone is still watching.
-function NowStreaming({ servers }) {
+function NowStreaming({ servers }: { servers: MediaSnapshot[] }) {
   const streams = servers.flatMap((m) => m.sessions.map((s) => ({ ...s, server: m.site })));
   if (streams.length === 0) return <Empty>Nobody is watching right now.</Empty>;
   return (
@@ -101,7 +104,7 @@ function NowStreaming({ servers }) {
   );
 }
 
-function History({ plays, now }) {
+function History({ plays, now }: { plays: MediaPlay[]; now: number }) {
   const [days, setDays] = useState(7);
   const shown = within(plays, days, now);
   const users = byUser(shown);
@@ -190,7 +193,7 @@ function MediaHowTo() {
   );
 }
 
-export default function Media({ f }) {
+export default function Media({ f }: { f: Feeds }) {
   const { media, mediaHistory, now } = f;
   const live = media.reduce((n, m) => n + (m.stale ? 0 : m.sessions.length), 0);
   return (

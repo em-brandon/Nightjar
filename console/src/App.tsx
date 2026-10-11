@@ -10,7 +10,7 @@ import { ago, settled, tuning, useHashTab, useInactivity, useNow, usePoll } from
 import Deploys from "./views/Deploys.tsx";
 import Idle from "./views/Idle.jsx";
 import Incidents from "./views/Incidents.tsx";
-import Media from "./views/Media.jsx";
+import Media from "./views/Media.tsx";
 import Overview from "./views/Overview.jsx";
 import Requests from "./views/Requests.tsx";
 import Staging from "./views/Staging.jsx";
