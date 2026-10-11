@@ -1,4 +1,4 @@
-import { Building2, FlaskConical } from "lucide-react";
+import { AppWindow, Building2, FlaskConical } from "lucide-react";
 import type { SiteHealth } from "./api/types.ts";
 import { groupByClient, worstState } from "./grouping.ts";
 import { plural } from "./hooks.ts";
@@ -33,9 +33,15 @@ export default function ClientCards({ sites, now }: { sites: SiteHealth[]; now: 
             </header>
             <div className="client-groups">
               {c.groups.map((g) => (
-                <div key={g.key} className={g.production && g.staging ? "site-pair" : "site-single"}>
-                  {g.production && <SiteCard site={g.production} now={now} />}
-                  {g.staging && <SiteCard site={g.staging} now={now} />}
+                <div key={g.key} className="site-group">
+                  <h4 className="group-title">
+                    <AppWindow size={15} aria-hidden="true" />
+                    {g.key}
+                  </h4>
+                  <div className={g.production && g.staging ? "site-pair" : "site-single"}>
+                    {g.production && <SiteCard site={g.production} now={now} tier="Production" />}
+                    {g.staging && <SiteCard site={g.staging} now={now} tier="Staging" />}
+                  </div>
                 </div>
               ))}
             </div>

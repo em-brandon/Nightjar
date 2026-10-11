@@ -150,7 +150,9 @@ export function Empty({ children }: { children?: ReactNode }) {
 // ---------------------------------------------------------------- site card
 
 // One monitored site: uptime ring, live latency, latency trend, 90-day ribbon.
-export function SiteCard({ site: s, now, big = false }: { site: SiteHealth; now: number; big?: boolean }) {
+// `tier` replaces the site name and env label with a plain "Production" or "Staging", for when the card sits
+// under a heading that already names the app, so the name is not repeated on both cards.
+export function SiteCard({ site: s, now, big = false, tier }: { site: SiteHealth; now: number; big?: boolean; tier?: string }) {
   const total = s.open_p1 + s.open_p2 + s.open_p3;
   const lat = s.latency_ms;
   // The ring and sparkline describe the probe alone. The dot and border carry
@@ -164,8 +166,8 @@ export function SiteCard({ site: s, now, big = false }: { site: SiteHealth; now:
       <div className="site-head">
         <Dot state={s.state} />
         {s.env === "staging" ? <FlaskConical size={15} className="site-tier" aria-label="staging" /> : <Globe size={15} className="site-tier" aria-label="production" />}
-        <b>{s.name}</b>
-        <span className="env">{s.env}</span>
+        <b title={s.name}>{tier ?? s.name}</b>
+        {tier === undefined && <span className="env">{s.env}</span>}
       </div>
 
       {s.monitored ? (

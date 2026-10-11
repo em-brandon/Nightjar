@@ -1,4 +1,4 @@
-import { Building2, FlaskConical, Globe, Plus } from "lucide-react";
+import { AppWindow, Building2, FlaskConical, Globe, Plus } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import type { SiteCreated, SiteHealth, SiteListed, SiteOut, TestEventResult } from "../api/types.ts";
 import type { Feeds } from "../feeds.ts";
@@ -328,7 +328,7 @@ function AddForm({ clients, initial, onCreated }: { clients: string[]; initial?:
   );
 }
 
-function SiteRow({ s, h, now, onSaved, onSetup, onRotated }: { s: SiteListed; h: SiteHealth | undefined; now: number; onSaved: () => void; onSetup: (s: SiteListed) => void; onRotated: (shown: Shown) => void }) {
+function SiteRow({ s, label, h, now, onSaved, onSetup, onRotated }: { s: SiteListed; label?: string; h: SiteHealth | undefined; now: number; onSaved: () => void; onSetup: (s: SiteListed) => void; onRotated: (shown: Shown) => void }) {
   const [editing, setEditing] = useState(false);
   const [url, setUrl] = useState(s.url ?? "");
   const [origins, setOrigins] = useState(s.allowed_origins.join("\n"));
@@ -381,7 +381,7 @@ function SiteRow({ s, h, now, onSaved, onSetup, onRotated }: { s: SiteListed; h:
     <div className="sx-row">
       <div className="sx-row-main">
         {s.env === "staging" ? <FlaskConical size={16} className="sx-icon sx-icon-stage" aria-label="staging" /> : <Globe size={16} className="sx-icon" aria-label="production" />}
-        <b>{s.name}</b>
+        <b title={s.name}>{label ?? s.name}</b>
       </div>
       <div className="sx-row-facts">
         <span>
@@ -531,10 +531,11 @@ export default function Sites({ f }: { f: Feeds }) {
         <div className="sx-clients">
           {groupByClient(sites).map((c) => {
             const health = c.sites.map((x) => byName.get(x.name)).filter((x): x is SiteHealth => x !== undefined);
-            const rowFor = (site: (typeof sites)[number]) => (
+            const rowFor = (site: (typeof sites)[number], label: string) => (
               <SiteRow
                 key={site.id}
                 s={site}
+                label={label}
                 h={byName.get(site.name)}
                 now={now}
                 onSaved={reload}
@@ -559,9 +560,13 @@ export default function Sites({ f }: { f: Feeds }) {
                 </header>
                 {c.groups.map((g) => (
                   <div key={g.key} className="sx-group">
-                    {g.production && rowFor(g.production)}
+                    <h4 className="sx-group-title">
+                      <AppWindow size={15} aria-hidden="true" />
+                      {g.key}
+                    </h4>
+                    {g.production && rowFor(g.production, "Production")}
                     {g.staging ? (
-                      <div className="sx-staging">{rowFor(g.staging)}</div>
+                      <div className="sx-staging">{rowFor(g.staging, "Staging")}</div>
                     ) : (
                       g.production && (
                         <div className="sx-staging sx-nostaging">
