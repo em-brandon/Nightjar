@@ -48,6 +48,15 @@ class Settings(BaseSettings):
     quiet_tz: str = "Africa/Nairobi"
     quiet_start_hour: int = 22
     quiet_end_hour: int = 7
+    # Pushover, the phone channel (hub/notify.py). Both are needed to send. With either empty the hub
+    # still queues alerts, and each one fails visibly in the console with "not configured": an alert that
+    # could not be sent must never look like an alert that was not needed.
+    pushover_token: str = ""
+    pushover_user: str = ""
+    # The hub's public address, for the console link in a push and Pushover's acknowledgement callback.
+    hub_public_url: str = ""
+    # A secret in the callback path, since Pushover's callback carries no signature. Empty disables it.
+    pushover_callback_token: str = ""
 
 
 settings = Settings()
