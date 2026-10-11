@@ -215,5 +215,48 @@ check('install() is idempotent: three calls make one handler, not a loop', $reth
 check('and the exception was queued exactly once', count(Reporter::queued()) === 1, (string) count(Reporter::queued()));
 Reporter::reset();
 
+// ---- a hub that is not https ----------------------------------------------------------------------------------
+
+foreach (['https://nightjar.example', 'https://nightjar.example/', 'http://localhost:8000', 'http://127.0.0.1:9', 'http://[::1]:8000', 'http://app.localhost'] as $good) {
+    check("$good is a usable hub", Reporter::hubRefusal($good) === null);
+}
+foreach (['http://nightjar.example', 'http://10.0.0.5', 'http://192.168.1.20:8000', 'http://hub.test', 'ftp://nightjar.example', 'nightjar.example', '//nightjar.example'] as $bad) {
+    check("$bad is refused", Reporter::hubRefusal($bad) !== null);
+}
+$why = (string) Reporter::hubRefusal('http://user:pa55word@nightjar.example/path?token=abc');
+check('the reason names the host but never the whole address', strpos($why, 'pa55word') === false && strpos($why, 'token=abc') === false && strpos($why, 'user:') === false);
+
+Reporter::reset();
+$logged = [];
+Reporter::setLogger(function ($m) use (&$logged) { $logged[] = $m; });
+$sent = 0;
+Reporter::setTransport(function () use (&$sent) { $sent++; });
+$threw = false;
+try {
+    $ok = Reporter::init(['hub' => 'http://nightjar.example', 'key' => 'K', 'secret' => 's']);
+    Reporter::captureException(new Exception('boom'));
+    Reporter::captureException(new Exception('boom again'));
+    Reporter::flush();
+} catch (\Throwable $e) {
+    $threw = true;
+}
+check('an http:// hub throws nothing', !$threw);
+check('init() says it is not configured', $ok === false);
+check('it says so once, in the app log, not silently', count($logged) === 1 && strpos($logged[0], 'refusing to report errors to http://nightjar.example') !== false, (string) count($logged));
+check('and queues and sends nothing', count(Reporter::queued()) === 0 && $sent === 0);
+Reporter::reset();
+
+$logged = [];
+foreach (['https://nightjar.example', 'http://127.0.0.1:8000', 'http://localhost:8000'] as $hub) {
+    Reporter::reset();
+    Reporter::setLogger(function ($m) use (&$logged) { $logged[] = $m; });
+    Reporter::setTransport(function () {});
+    Reporter::init(['hub' => $hub, 'key' => 'K', 'secret' => 's']);
+    Reporter::captureException(new Exception('boom'));
+    check("$hub still reports", count(Reporter::queued()) === 1);
+}
+check('and a good hub is not warned about', $logged === []);
+Reporter::reset();
+
 echo $failures === 0 ? "\nphp reporter passed\n" : "\n$failures FAILED\n";
 exit($failures === 0 ? 0 : 1);
