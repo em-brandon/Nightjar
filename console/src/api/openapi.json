@@ -28,6 +28,85 @@
         "title": "ActionIn",
         "type": "object"
       },
+      "AlertsStatusOut": {
+        "description": "Whether the alert path can work, and what it is doing. Never carries a secret: only whether one is set.",
+        "properties": {
+          "callback_configured": {
+            "title": "Callback Configured",
+            "type": "boolean"
+          },
+          "deadman_configured": {
+            "title": "Deadman Configured",
+            "type": "boolean"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "pending": {
+            "title": "Pending",
+            "type": "integer"
+          },
+          "pushover_configured": {
+            "title": "Pushover Configured",
+            "type": "boolean"
+          },
+          "retrying": {
+            "title": "Retrying",
+            "type": "integer"
+          },
+          "sender_enabled": {
+            "title": "Sender Enabled",
+            "type": "boolean"
+          },
+          "sender_last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sender Last Error"
+          },
+          "sender_last_pass_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sender Last Pass At"
+          },
+          "sender_poll_s": {
+            "title": "Sender Poll S",
+            "type": "number"
+          },
+          "sent_24h": {
+            "title": "Sent 24H",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "pushover_configured",
+          "callback_configured",
+          "deadman_configured",
+          "sender_enabled",
+          "sender_poll_s",
+          "sender_last_pass_at",
+          "sender_last_error",
+          "pending",
+          "retrying",
+          "failed",
+          "sent_24h"
+        ],
+        "title": "AlertsStatusOut",
+        "type": "object"
+      },
       "DeployOut": {
         "properties": {
           "created_at": {
@@ -886,6 +965,18 @@
             "title": "Created At",
             "type": "string"
           },
+          "expired_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expired At"
+          },
           "id": {
             "title": "Id",
             "type": "integer"
@@ -963,7 +1054,8 @@
           "created_at",
           "next_attempt_at",
           "sent_at",
-          "acked_at"
+          "acked_at",
+          "expired_at"
         ],
         "title": "NotificationOut",
         "type": "object"
@@ -1975,6 +2067,42 @@
         "title": "TestEventOut",
         "type": "object"
       },
+      "TestPushOut": {
+        "description": "What happened to a test push. Always an answer, never an error status, so the console can show why.",
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "retryable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retryable"
+          },
+          "sent": {
+            "title": "Sent",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "sent"
+        ],
+        "title": "TestPushOut",
+        "type": "object"
+      },
       "TicketIn": {
         "properties": {
           "due_at": {
@@ -2813,7 +2941,7 @@
     },
     "/api/notifications": {
       "get": {
-        "description": "Newest first. `failed` is what gave up. `undelivered` is that plus anything that has already\nfailed once and is still being retried, so a flaky provider shows before it exhausts its attempts.",
+        "description": "Newest first. `failed` is what gave up. `undelivered` is that plus anything that has already\nfailed once and is still being retried, so a flaky provider shows before it exhausts its attempts.\n`attention` is everything the console must not let anyone miss: undelivered, plus a P1 whose receipt\nexpired with nobody acknowledging it.",
         "operationId": "list_notifications_api_notifications_get",
         "parameters": [
           {
@@ -2825,7 +2953,8 @@
               "enum": [
                 "all",
                 "failed",
-                "undelivered"
+                "undelivered",
+                "attention"
               ],
               "title": "Status",
               "type": "string"
@@ -2871,6 +3000,93 @@
           }
         },
         "summary": "List Notifications",
+        "tags": [
+          "alerts"
+        ]
+      }
+    },
+    "/api/notifications/status": {
+      "get": {
+        "description": "Whether the alert path can work, and what the sender is doing: the answer to \"would a P1 reach\nmy phone right now?\" without having to cause one.",
+        "operationId": "status_api_notifications_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertsStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Status",
+        "tags": [
+          "alerts"
+        ]
+      }
+    },
+    "/api/notifications/test-push": {
+      "post": {
+        "description": "Send one real push through the real adapter, to prove the phone path works. It is not queued and\nbelongs to no incident, so it cannot be mistaken for an alert, and it always answers 200 with what\nhappened: the reason a push failed is the thing the screen needs to show.",
+        "operationId": "test_push_api_notifications_test_push_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestPushOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Test Push",
+        "tags": [
+          "alerts"
+        ]
+      }
+    },
+    "/api/notifications/{notification_id}/retry": {
+      "post": {
+        "description": "Give a failed alert a fresh set of attempts, for example after fixing the token. Only a failed one\ncan be retried: a pending one is already being retried, and a sent one must not be sent twice.",
+        "operationId": "retry_api_notifications__notification_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "notification_id",
+            "required": true,
+            "schema": {
+              "title": "Notification Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retry",
         "tags": [
           "alerts"
         ]

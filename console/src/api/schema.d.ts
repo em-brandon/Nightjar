@@ -213,10 +213,76 @@ export interface paths {
          * List Notifications
          * @description Newest first. `failed` is what gave up. `undelivered` is that plus anything that has already
          *     failed once and is still being retried, so a flaky provider shows before it exhausts its attempts.
+         *     `attention` is everything the console must not let anyone miss: undelivered, plus a P1 whose receipt
+         *     expired with nobody acknowledging it.
          */
         get: operations["list_notifications_api_notifications_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notifications/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Status
+         * @description Whether the alert path can work, and what the sender is doing: the answer to "would a P1 reach
+         *     my phone right now?" without having to cause one.
+         */
+        get: operations["status_api_notifications_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notifications/test-push": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Push
+         * @description Send one real push through the real adapter, to prove the phone path works. It is not queued and
+         *     belongs to no incident, so it cannot be mistaken for an alert, and it always answers 200 with what
+         *     happened: the reason a push failed is the thing the screen needs to show.
+         */
+        post: operations["test_push_api_notifications_test_push_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notifications/{notification_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry
+         * @description Give a failed alert a fresh set of attempts, for example after fixing the token. Only a failed one
+         *     can be retried: a pending one is already being retried, and a sent one must not be sent twice.
+         */
+        post: operations["retry_api_notifications__notification_id__retry_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -604,6 +670,34 @@ export interface components {
              */
             hours: number;
         };
+        /**
+         * AlertsStatusOut
+         * @description Whether the alert path can work, and what it is doing. Never carries a secret: only whether one is set.
+         */
+        AlertsStatusOut: {
+            /** Callback Configured */
+            callback_configured: boolean;
+            /** Deadman Configured */
+            deadman_configured: boolean;
+            /** Failed */
+            failed: number;
+            /** Pending */
+            pending: number;
+            /** Pushover Configured */
+            pushover_configured: boolean;
+            /** Retrying */
+            retrying: number;
+            /** Sender Enabled */
+            sender_enabled: boolean;
+            /** Sender Last Error */
+            sender_last_error: string | null;
+            /** Sender Last Pass At */
+            sender_last_pass_at: string | null;
+            /** Sender Poll S */
+            sender_poll_s: number;
+            /** Sent 24H */
+            sent_24h: number;
+        };
         /** DeployOut */
         DeployOut: {
             /**
@@ -863,6 +957,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Expired At */
+            expired_at: string | null;
             /** Id */
             id: number;
             /** Issue Id */
@@ -1208,6 +1304,18 @@ export interface components {
             severity: string;
             /** State Change */
             state_change: string | null;
+        };
+        /**
+         * TestPushOut
+         * @description What happened to a test push. Always an answer, never an error status, so the console can show why.
+         */
+        TestPushOut: {
+            /** Error */
+            error?: string | null;
+            /** Retryable */
+            retryable?: boolean | null;
+            /** Sent */
+            sent: boolean;
         };
         /** TicketIn */
         TicketIn: {
@@ -1639,7 +1747,7 @@ export interface operations {
     list_notifications_api_notifications_get: {
         parameters: {
             query?: {
-                status?: "all" | "failed" | "undelivered";
+                status?: "all" | "failed" | "undelivered" | "attention";
                 limit?: number;
             };
             header?: never;
@@ -1655,6 +1763,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NotificationOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    status_api_notifications_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertsStatusOut"];
+                };
+            };
+        };
+    };
+    test_push_api_notifications_test_push_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestPushOut"];
+                };
+            };
+        };
+    };
+    retry_api_notifications__notification_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                notification_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationOut"];
                 };
             };
             /** @description Validation Error */
