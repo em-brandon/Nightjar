@@ -49,8 +49,10 @@ monitoring.
 
 Everything else waits.
 
-**Planned, not started:** moving the console to TypeScript, with API types generated from the hub's own schemas.
-Plan and order in `docs/TYPESCRIPT-MIGRATION.md`. Until it lands, write new console files as `.ts` or `.tsx`.
+**Console is TypeScript.** Every file under `console/src` is `.ts` or `.tsx` (strict), and its API types are generated from the hub's own
+schemas: `python tools/export_openapi.py && (cd console && npm run types)` after any change to a hub response model, then commit both
+generated files. A Python test fails when they are stale. History and the one deliberate departure (TypeScript 5.9, not 7) in
+`docs/TYPESCRIPT-MIGRATION.md`. Write new console files as `.ts` or `.tsx`.
 
 **Planned, not started:** the client sites go behind Cloudflare's free plan, with **Caddy staying** as the web server (nginx
 was considered and not needed, decision #53). The checklist and two small tested additions to the Caddyfile are in
@@ -83,7 +85,7 @@ One FastAPI service, one Postgres, one React console. Nothing else.
 | FastAPI | the hub | yes |
 | PostgreSQL | issues, events, presence | yes |
 | Pushover | push to iPhone | yes |
-| React 19 + Vite | console | chunk 3 |
+| React 19 + TypeScript + Vite | console | chunk 3 |
 | Caddy | TLS, sole ingress | at deploy |
 | Docker Compose | packaging | at deploy |
 
@@ -244,7 +246,7 @@ Data flows, all real tables:
 | Home media | `client/jellyfin_reporter.py` on the ThinkCentre *pushes* Jellyfin's sessions to `POST /ingest/{key}/media` | `/api/media`, `/api/media/history`, the Media tab and an idle-screen panel |
 
 **Staging promotion.** A staging site is paired with its production site by *name*: `<production>-staging`
-belongs to `<production>`. `console/src/promotion.js` decides ready / blocked / in sync / behind. Blockers
+belongs to `<production>`. `console/src/promotion.ts` decides ready / blocked / in sync / behind. Blockers
 (failed or unfinished deploy, uptime under 99%, open P1/P2, silent, degraded or restarting stack) always win.
 
 **A stop is not a crash.** In `client/stack_reporter.py`, exit codes 0, 137, 143 and 255 mean stopped
@@ -270,13 +272,13 @@ or ribbon. Sites are created with `POST /api/sites` (console token; returns the 
 and `PATCH /api/sites/{id}` sets or clears the `url`. No SQL. A staging site must be named
 `<production>-staging`, which is how promotion pairs them. `seed.py` remains for the first demo site.
 
-The **idle screen** (`#/idle`, `console/src/views/Idle.jsx`) starts by itself after 5
+The **idle screen** (`#/idle`, `console/src/views/Idle.tsx`) starts by itself after 5
 minutes with no input and doubles as the wall display. Two production sites at a
 time, rotating every 2 minutes, plus active incidents and production and staging
 deploys. It hides detail, not names: incident titles and commit refs appear only
 after a fingerprint reveal (2 minutes, then it reverts by itself). Only reveal
 then *Unlock console* leaves it; stray input never does. The fingerprint is
-**simulated** until the R307 reader exists (chunk 6): `useReveal()` in `hooks.js`
+**simulated** until the R307 reader exists (chunk 6): `useReveal()` in `hooks.ts`
 is the one seam to swap. Unlock only navigates, and gives no real protection until
 the write endpoints are gated (#32).
 
@@ -353,7 +355,7 @@ hub/
   presence.py      home or away as taps with an expiry (away on expiry or with no record)
   rates.py         /api/rates: cached USD to KES rate (decoration only)
   edge.py          edge-triggered issues shared by every pushed source: open once, resolve themselves
-console/           Vite + React 19 UI: src/views/* is one file per tab
+console/           Vite + React 19 + TypeScript UI: src/views/* is one file per tab; src/api/* is generated from the hub (do not edit)
 client/
   reporter.py      the whole "SDK" — drop into any managed FastAPI app
   browser/nightjar.ts  the browser reporter: one dependency-free file, public key only (docs/KEYS.md)
@@ -416,7 +418,8 @@ The console, in a second terminal:
 
 ```bash
 cd console && npm install && npm run dev    # http://localhost:5173
-npm test                                    # promotion-readiness rules + CSS collision guard (console/src/*.test.mjs)
+npm test                                    # tsc --noEmit, then the console's rules and CSS collision guard (console/src/*.test.mjs)
+npm run types                               # regenerate src/api/schema.d.ts after python tools/export_openapi.py
 python -m unittest discover -s tests        # migrations, auth, stack policy (needs the dev db up)
 python -m unittest discover -s client       # the stack reporter
 ```
