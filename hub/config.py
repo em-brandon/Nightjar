@@ -65,6 +65,13 @@ class Settings(BaseSettings):
     outbox_backoff_s: list[int] = [30, 120, 600, 1800, 3600]
     # A row left "sending" by a crash is taken again once it has been claimed this long.
     outbox_lease_s: int = 120
+    # Run the sender loop in this process (default true). Only the loop is switched off, never the queueing.
+    outbox_enabled: bool = True
+    # An external dead-man's switch (DEPLOY.md section 7, for example a healthchecks.io ping URL). The sender
+    # pings it only after a pass that completed, so a sender that has died or stuck is noticed from outside
+    # instead of looking like a quiet night. Empty means none. The URL is a secret: it is never logged.
+    deadman_url: str = ""
+    deadman_interval_s: int = 120
 
 
 settings = Settings()
