@@ -23,22 +23,25 @@ router = APIRouter(prefix="/api/notifications", tags=["alerts"])
 
 @router.get("", response_model=list[NotificationOut])
 async def list_notifications(
-    status: Literal["all", "failed", "undelivered"] = "all",
+    status: Literal["all", "failed", "undelivered", "attention"] = "all",
     limit: int = Query(default=50, ge=1, le=200),
     session: AsyncSession = Depends(get_session),
 ) -> list[NotificationOut]:
     """Newest first. `failed` is what gave up. `undelivered` is that plus anything that has already
-    failed once and is still being retried, so a flaky provider shows before it exhausts its attempts."""
+    failed once and is still being retried, so a flaky provider shows before it exhausts its attempts.
+    `attention` is everything the console must not let anyone miss: undelivered, plus a P1 whose receipt
+    expired with nobody acknowledging it."""
     query = select(Notification).order_by(Notification.created_at.desc(), Notification.id.desc()).limit(limit)
     if status == "failed":
         query = query.where(Notification.status == "failed")
-    elif status == "undelivered":
-        query = query.where(
-            or_(
-                Notification.status == "failed",
-                (Notification.status.in_(("pending", "sending"))) & (Notification.attempts > 0),
-            )
-        )
+    elif status in ("undelivered", "attention"):
+        conditions = [
+            Notification.status == "failed",
+            (Notification.status.in_(("pending", "sending"))) & (Notification.attempts > 0),
+        ]
+        if status == "attention":
+            conditions.append(Notification.expired_at.is_not(None) & Notification.acked_at.is_(None))
+        query = query.where(or_(*conditions))
     return [NotificationOut.model_validate(n, from_attributes=True) for n in await session.scalars(query)]
 
 

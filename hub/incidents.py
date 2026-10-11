@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from . import notify
 from .api import acknowledged_ids, issue_out
 from .db import get_session
 from .models import Issue, IssueAction, Notification, Site
@@ -109,6 +110,11 @@ async def issue_log(
     ):
         at, text = alert_line(n)
         entries.append(LogEntry(at=at, kind="system", text=text))
+        if n.expired_at is not None and n.acked_at is None:
+            minutes = notify.EMERGENCY_EXPIRE_S // 60
+            entries.append(
+                LogEntry(at=n.expired_at, kind="system", text=f"NOT ACKNOWLEDGED within {minutes} minutes: the phone may not have woken anyone")
+            )
     if issue.event_count > 1:
         entries.append(
             LogEntry(

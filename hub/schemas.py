@@ -236,6 +236,8 @@ class NotificationOut(BaseModel):
     next_attempt_at: datetime
     sent_at: datetime | None
     acked_at: datetime | None
+    # Pushover reported the receipt expired with nobody acknowledging it: the phone did not wake anyone
+    expired_at: datetime | None
 
 
 class TestPushOut(BaseModel):

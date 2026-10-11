@@ -140,6 +140,15 @@ class AlertsApi(unittest.IsolatedAsyncioTestCase):
         ids = {n["id"] for n in await self.listed(status="undelivered")}
         self.assertEqual(ids, {retrying, sending, failed})
 
+    async def test_attention_adds_a_p1_that_expired_with_nobody_acknowledging_it(self):
+        await self.add(status="sent", attempts=1, sent_at=T0, receipt="r-fine")
+        await self.add(status="sent", attempts=1, sent_at=T0, receipt="r-acked", acked_at=T0, expired_at=T0)
+        unanswered = await self.add(status="sent", attempts=1, sent_at=T0, receipt="r-unanswered", expired_at=T0)
+        failed = await self.add(status="failed", attempts=6)
+        ids = {n["id"] for n in await self.listed(status="attention")}
+        self.assertEqual(ids, {unanswered, failed})
+        self.assertNotIn(unanswered, {n["id"] for n in await self.listed(status="undelivered")}, "undelivered is unchanged")
+
     async def test_the_limit_is_honoured_and_bounded(self):
         for _ in range(5):
             await self.add()
@@ -274,6 +283,16 @@ class AlertsApi(unittest.IsolatedAsyncioTestCase):
         log = await self.log()
         self.assertTrue(any("retrying (attempt 2, back after being resolved, normal priority): Pushover timed out" in t for t in log), log)
         self.assertTrue(any("queued for the phone (spiking, quiet, no sound)" in t for t in log), log)
+
+    async def test_a_p1_that_expired_unacknowledged_says_the_phone_may_not_have_woken_anyone(self):
+        await self.add(status="sent", attempts=1, sent_at=T0, receipt="r1", expired_at=T0 + timedelta(minutes=30))
+        line = next(t for t in await self.log() if "NOT ACKNOWLEDGED" in t)
+        self.assertIn("within 30 minutes", line)
+        self.assertIn("may not have woken anyone", line)
+
+    async def test_an_expired_receipt_that_was_acknowledged_is_not_flagged(self):
+        await self.add(status="sent", attempts=1, sent_at=T0, receipt="r1", expired_at=T0, acked_at=T0)
+        self.assertFalse(any("NOT ACKNOWLEDGED" in t for t in await self.log()))
 
     async def test_an_acknowledgement_from_the_phone_is_labelled(self):
         async with self.maker() as session:
