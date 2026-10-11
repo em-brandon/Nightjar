@@ -1,4 +1,4 @@
-import Splash from "./Splash.jsx";
+import Splash from "./Splash.tsx";
 import { Dot } from "./ui.tsx";
 import { demoHome } from "./home.ts";
 import { demoMedia } from "./media.ts";
