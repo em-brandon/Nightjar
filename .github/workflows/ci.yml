@@ -1,0 +1,48 @@
+# Checks for Nightjar itself, on GitHub. Client apps get their own pipeline on Gitea (docs/PIPELINE.md, planned).
+#
+# Every step is a command that also runs on a laptop, so a failure here is reproduced with the same line locally.
+# See docs/CI.md.
+
+name: CI
+
+on:
+  push:
+    branches: [main, "feature/**"]
+  pull_request:
+
+# A newer push to the same branch makes an older run pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Read-only: nothing here needs to write to the repository.
+permissions:
+  contents: read
+
+jobs:
+  console:
+    name: Console (TypeScript)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: console
+    steps:
+      - uses: actions/checkout@v4
+      # Node 24 matches development. The .mjs tests import .ts files directly, which needs a Node that strips types.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            console/package-lock.json
+            tools/typegen/package-lock.json
+      - run: npm ci
+      # tsc under strict, then the console's rules and the CSS collision guard
+      - run: npm test
+      - run: npm run build
+      # The generated API types must match the committed OpenAPI schema. (tests/test_openapi_snapshot.py already
+      # checks the schema against the hub itself, so together a hub change that was not regenerated fails somewhere.)
+      - name: Generated API types are up to date
+        run: |
+          npm run types
+          git diff --exit-code -- src/api || { echo "console/src/api is stale: run 'npm run types' in console/ and commit it"; exit 1; }
