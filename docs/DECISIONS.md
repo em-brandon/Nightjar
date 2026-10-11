@@ -1089,6 +1089,16 @@ the snapshot is stale. A hub change that the console has not caught up with then
   CI job can run the type check and the drift test on every push.
 - **Migrating in one commit.** It goes phase by phase, one view per commit, with the app working after each.
 
+**Update, 2026-10-11: done.** The whole console is TypeScript under `strict`, with types generated from the hub and a Python drift
+test, one module or view per commit. Three things worth knowing:
+
+- **TypeScript is 5.9, not 7.** `openapi-typescript` 7 declares a peer of `typescript ^5` and would not install beside 7.0.2.
+  Forcing the mismatch risks the generator running on a compiler it was not built for. Revisit when it supports 7.
+- **Typing found a real bug.** `rateView` threw when the rate feed said `available` but sent no `rate`, which would have blanked the
+  wall. It was fixed first, in its own commit with a test, as the migration rules require.
+- **`noUncheckedIndexedAccess` is off.** A trial gave 12 errors and no bugs: every one was an array index the caller had already
+  guarded. Not worth the noise.
+
 ---
 
 ## 52. Server reporters for Node, PHP and Java: copied in, one contract, never breaking the app

@@ -1,8 +1,8 @@
 # Console TypeScript migration (planned)
 
-> **Status: in progress. Phases 1 to 4 are done** (tooling, generated API types, the six pure logic modules, `hooks.ts`
-> and `ui.tsx`). Phases 5 to 7 (the shell, the views, tightening) remain. Written down so the work can be picked up
-> cold, and so new console code is not written in a way that makes it harder.
+> **Status: done (2026-10-11).** All seven phases are complete: tooling, generated API types, the pure logic modules,
+> `hooks.ts` and `ui.tsx`, the shell, the seven views, and tightening (`allowJs` dropped, nothing in `console/src` is
+> JavaScript but the `.mjs` tests). Kept as the record of how it was done and why.
 >
 > **TypeScript is pinned at 5.9.3, not 7.** `openapi-typescript` 7 declares a peer of `typescript ^5`, so 7.0.2 would not
 > install beside it, and forcing the mismatch would risk the generator running on a compiler it was not built for.
