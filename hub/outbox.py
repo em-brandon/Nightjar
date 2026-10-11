@@ -9,16 +9,20 @@ ingest cannot write a second row for the same change: the table has a unique key
 of change and when it happened, and the insert does nothing on a conflict.
 """
 
+import asyncio
 import logging
+import time
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 
+import httpx
 from sqlalchemy import or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from . import notify
 from .config import settings
+from .db import SessionLocal
 from .models import Issue, Notification
 from .policy import ALERTING_CHANGES, decide_safely
 from .presence import effective_state
@@ -152,3 +156,54 @@ async def run_once(maker: async_sessionmaker[AsyncSession], send: SendFn = notif
     for n in rows:
         await deliver(maker, n, send, now)
     return len(rows)
+
+
+# ---------------------------------------------------------------- the loop
+
+BATCH = 10
+
+
+class Heartbeat:
+    """Pings the external dead-man's switch, but only when asked after a healthy pass, and no more often
+    than `deadman_interval_s`. A failed ping is logged by class name (the URL is a secret) and retried on
+    the next pass: the switch being down must never stop alerts from being sent."""
+
+    def __init__(self, http: httpx.AsyncClient):
+        self.http = http
+        self.last: float | None = None
+
+    async def beat(self, now: float) -> bool:
+        if not settings.deadman_url:
+            return False
+        if self.last is not None and now - self.last < settings.deadman_interval_s:
+            return False
+        try:
+            res = await self.http.get(settings.deadman_url)
+            res.raise_for_status()
+        except httpx.HTTPError as err:
+            log.warning("dead-man's switch ping failed (%s)", type(err).__name__)
+            return False
+        self.last = now
+        return True
+
+
+async def sender_loop() -> None:
+    """Runs for the life of the app, like the probe. Nothing in here may escape and kill it: a sender
+    that dies quietly looks exactly like a night with nothing to report. The dead-man's switch is pinged
+    only after a pass that completed, so a sender that has died or is stuck stops pinging and gets noticed."""
+    async with httpx.AsyncClient(timeout=10.0) as http:
+        heartbeat = Heartbeat(http)
+        while True:
+            handled = 0
+            healthy = False
+            try:
+                handled = await run_once(SessionLocal, limit=BATCH)
+                healthy = True
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                log.exception("outbox pass failed; will retry")
+            if healthy:
+                await heartbeat.beat(time.monotonic())
+            # a full batch means there may be more waiting, so do not sleep
+            await asyncio.sleep(0 if handled >= BATCH else settings.outbox_poll_s)
