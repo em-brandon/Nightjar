@@ -1,8 +1,9 @@
 so# Data protection (planned)
 
-> **Status: planned, not started.** This records what is and is not encrypted today, and the eight changes that are
-> planned: two small ones, encrypted backups, derived secrets, a secret scanner, secrets as mounted files, an audit trail and a leak
-> runbook. The rest is listed so it is not forgotten, and is not committed to.
+> **Status: in progress.** This records what is and is not encrypted today, and the eight changes planned: two small ones,
+> encrypted backups, derived secrets, a secret scanner, secrets as mounted files, an audit trail and a leak runbook. **Built so far:**
+> 1 (the reporters refuse a plain `http://` hub) and 2 (HSTS). The rest is not started. The "Considered, not planned" list is not
+> committed to.
 
 ## Where things stand
 
@@ -10,7 +11,7 @@ so# Data protection (planned)
 |---|---|
 | **A report on the wire** | Encrypted by TLS **only if the hub URL is `https://`**. Caddy provides the certificate in production |
 | **Who sent it, and was it altered** | Proven by the HMAC signature with the site's ingest secret. This is authenticity, not secrecy |
-| **The reporters and `http://`** | They accept it. A mistyped URL sends readable JSON, though never the secret, which only signs |
+| **The reporters and `http://`** | They refuse it, out loud, except for loopback. A mistyped URL used to send readable JSON, though never the secret, which only signs |
 | **The browser** | The page's address is sent without its query string. The key is public and signs nothing |
 | **In the database** | Error messages, frames and request paths are stored as readable text. Ingest secrets are readable too, because the hub needs them to check each signature |
 | **Backups** | `deploy/backup.sh` writes a gzip, which is compression, not encryption. The optional `rclone` copy is not encrypted by the script |
@@ -18,7 +19,7 @@ so# Data protection (planned)
 
 ## Planned work
 
-### 1. The reporters refuse a plain `http://` hub
+### 1. The reporters refuse a plain `http://` hub (built)
 
 **Problem.** A typo or a copied development URL makes a production reporter send error text unencrypted, with no warning.
 
@@ -37,7 +38,7 @@ keeps the rule that a reporter never breaks the app.
   needs a loopback or `https` address);
 - `docs/REPORTERS.md` says it.
 
-### 2. HSTS on the hub's Caddyfile
+### 2. HSTS on the hub's Caddyfile (built, at one day)
 
 **Problem.** A browser that has been to the console can still be tricked into using plain HTTP on the first request, which
 exposes the console login.
