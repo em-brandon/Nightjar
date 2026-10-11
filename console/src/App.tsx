@@ -12,7 +12,7 @@ import Idle from "./views/Idle.jsx";
 import Incidents from "./views/Incidents.jsx";
 import Media from "./views/Media.jsx";
 import Overview from "./views/Overview.jsx";
-import Requests from "./views/Requests.jsx";
+import Requests from "./views/Requests.tsx";
 import Staging from "./views/Staging.jsx";
 
 const TABS: [Exclude<TabId, "idle">, string][] = [
