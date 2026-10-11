@@ -2,7 +2,7 @@ so# Data protection (planned)
 
 > **Status: in progress.** This records what is and is not encrypted today, and the eight changes planned: two small ones,
 > encrypted backups, derived secrets, a secret scanner, secrets as mounted files, an audit trail and a leak runbook. **Built so far:**
-> 1 (the reporters refuse a plain `http://` hub) and 2 (HSTS). The rest is not started. The "Considered, not planned" list is not
+> 1 (the reporters refuse a plain `http://` hub), 2 (HSTS) and 6 (secrets as mounted files). The rest is not started. The "Considered, not planned" list is not
 > committed to.
 
 ## Where things stand
@@ -121,7 +121,7 @@ and long example tokens in the docs. A baseline or allow list is needed or the h
 **Done when:** a deliberately fake secret in a throwaway commit is blocked, the existing history scans clean, and the allow list
 is short and commented.
 
-### 6. Production secrets as mounted files, not environment variables
+### 6. Production secrets as mounted files, not environment variables (built)
 
 **Problem.** `docker-compose.yml` takes `POSTGRES_PASSWORD` and `CONSOLE_TOKEN` from `.env` as environment variables. OWASP rates
 environment variables as a last resort: they show up in `docker inspect`, in process listings and in crash dumps.

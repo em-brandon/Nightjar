@@ -69,17 +69,23 @@ sudo mkdir -p /opt/nightjar && sudo chown $USER /opt/nightjar
 cd /opt/nightjar
 # copy the repo up, or clone it
 cp .env.prod.example .env
-openssl rand -base64 32          # paste as POSTGRES_PASSWORD
-openssl rand -base64 32          # paste as CONSOLE_TOKEN (the hub will not start without it)
-nano .env                        # set HUB_DOMAIN too
+nano .env                        # set HUB_DOMAIN, and check POSTGRES_USER and POSTGRES_DB
+./deploy/make-secrets.sh         # creates ./secrets: the database password, the console token, and the other secret files
 
 docker compose up -d --build     # the first build downloads Node and compiles the console, so it takes a few minutes
 docker compose logs -f caddy     # watch the certificate get issued
 ```
 
+**Secrets are files, not environment variables.** `make-secrets.sh` writes one file per secret into `./secrets` (mode 700, never
+committed): `postgres_password`, `database_url`, `console_token` and `pushover_callback_token` are generated, and
+`pushover_token`, `pushover_user`, `deadman_url` and `presence_token` are created empty for you to fill in. Compose mounts them under
+`/run/secrets`, so `docker inspect`, process listings and crash dumps never show them (checked: no container's environment holds a
+secret). It never overwrites a file that exists, so running it again is safe. **Back the directory up somewhere other than the
+server**: it is not in git, and the console token inside it is what you sign in with.
+
 The hub migrates its own database on every start, so there is no schema step. It also refuses to start
-if `CONSOLE_TOKEN` is missing or under 16 characters, because otherwise the console API and every write
-would be open to the internet. Sign in at your domain with that token. The session cookie is marked
+if the console token is missing, empty or under 16 characters, because otherwise the console API and every write
+would be open to the internet (checked: an empty `secrets/console_token` makes the hub exit with an error). Sign in at your domain with that token. The session cookie is marked
 `Secure` behind Caddy's TLS, so never use the console over plain http.
 
 **Caddy serves the console too.** `deploy/caddy.Dockerfile` builds the console and bakes it, with the Caddyfile, into the Caddy
