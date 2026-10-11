@@ -21,7 +21,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import settings
 from .db import get_session
-from .models import Issue, IssueAction, Notification
+from .acks import record_acknowledgement
+from .models import Notification
 
 log = logging.getLogger("nightjar.pushover")
 
@@ -47,14 +48,9 @@ async def acknowledged(token: str, request: Request, session: AsyncSession = Dep
         log.info("acknowledgement for a receipt this hub does not know")
         return {"matched": False}
 
-    # Only an acknowledgement counts. The same callback also reports a receipt that expired unanswered.
-    if form.get("acknowledged") != "1" or note.acked_at is not None:
-        return {"matched": True}
-
-    note.acked_at = datetime.now(UTC)
-    # Same lock ingest and the console's actions take, so this cannot interleave with an event
-    issue = await session.scalar(select(Issue).where(Issue.id == note.issue_id).with_for_update())
-    if issue is not None and issue.status == "open":
-        session.add(IssueAction(issue_id=issue.id, action="ack", detail="phone"))
-    await session.commit()
+    # Pushover calls back only when a notification is acknowledged (the form always says acknowledged=1).
+    # A receipt that expired unanswered is not reported here: the receipt poll in hub/outbox.py finds that.
+    if form.get("acknowledged") == "1":
+        await record_acknowledgement(session, note, datetime.now(UTC))
+        await session.commit()
     return {"matched": True}
