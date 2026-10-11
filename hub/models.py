@@ -402,5 +402,12 @@ class Notification(Base):
     # When Pushover reported the receipt expired with nobody acknowledging it: a P1 that did not get a
     # human. The console says so, because it means the phone did not wake anyone.
     expired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Someone dealt with the incident (acknowledged, resolved, muted or snoozed it, or the hub resolved it by
+    # itself) after this alert was sent. Written in the same transaction as that action. A repeating push for
+    # it must stop, and a P1 that expired unanswered no longer needs anyone's attention.
+    dismissed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # When Pushover confirmed it cancelled the repeating push. The sender does this separately and retries,
+    # so a network failure never leaves a phone alarming for an incident that is already handled.
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     issue: Mapped["Issue"] = relationship()
