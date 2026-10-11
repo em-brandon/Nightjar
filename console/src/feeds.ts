@@ -1,6 +1,6 @@
 // The one object App builds from every poll and hands to each view as `f`. Typed in one place so a
 // view that reads a feed the shell does not provide, or reads it as the wrong shape, fails to compile.
-import type { Deploy, HomeSnapshot, Issue, MediaPlay, MediaSnapshot, Presence, Rates, Rising, SiteHealth, Stack, Ticket, Weather } from "./api/types.ts";
+import type { Alert, Deploy, HomeSnapshot, Issue, MediaPlay, MediaSnapshot, Presence, Rates, Rising, SiteHealth, Stack, Ticket, Weather } from "./api/types.ts";
 import type { DemoHome } from "./home.ts";
 import type { DemoMedia } from "./media.ts";
 
@@ -12,6 +12,8 @@ export type Feeds = {
   rising: Rising[];
   tickets: Ticket[];
   deploys: Deploy[];
+  // alerts that failed, or failed once and are being retried: never allowed to read as "nothing wrong"
+  undelivered: Alert[];
   stacks: Stack[];
   media: MediaSnapshot[];
   mediaHistory: MediaPlay[];

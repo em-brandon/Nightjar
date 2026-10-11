@@ -1,6 +1,7 @@
 import { useState, type ReactElement } from "react";
-import type { Deploy, HomeSnapshot, Issue, MediaPlay, MediaSnapshot, Presence, Rates, Rising, SiteHealth, Stack, Ticket, Weather } from "./api/types.ts";
+import type { Alert, Deploy, HomeSnapshot, Issue, MediaPlay, MediaSnapshot, Presence, Rates, Rising, SiteHealth, Stack, Ticket, Weather } from "./api/types.ts";
 import type { Feeds, TabId } from "./feeds.ts";
+import AlertBanner from "./AlertBanner.tsx";
 import Splash from "./Splash.tsx";
 import { Dot } from "./ui.tsx";
 import { demoHome } from "./home.ts";
@@ -48,6 +49,7 @@ export default function App({ onSignOut }: { onSignOut?: () => void }) {
   const rising = usePoll<Rising[]>("/api/errors/rising");
   const tickets = usePoll<Ticket[]>("/api/tickets?status=all");
   const deploys = usePoll<Deploy[]>("/api/deploys");
+  const undelivered = usePoll<Alert[]>("/api/notifications?status=undelivered");
   const stacks = usePoll<Stack[]>("/api/stacks");
   const media = usePoll<MediaSnapshot[]>("/api/media");
   const mediaHistory = usePoll<MediaPlay[]>("/api/media/history?days=30&limit=1000");
@@ -62,7 +64,7 @@ export default function App({ onSignOut }: { onSignOut?: () => void }) {
   const [idleHold, setIdleHold] = useState(false);
   useInactivity(IDLE_AFTER_MS, () => go("idle"), tab !== "idle" && !idleHold);
 
-  const feeds = [health, issues, rising, tickets, deploys, stacks, media, mediaHistory];
+  const feeds = [health, issues, rising, tickets, deploys, undelivered, stacks, media, mediaHistory];
   const hubError = feeds.some((x) => x.error);
   const loaded = feeds.every((x) => x.data);
   const stamps = feeds.map((x) => x.at).filter((t): t is number => t != null);
@@ -74,6 +76,7 @@ export default function App({ onSignOut }: { onSignOut?: () => void }) {
     rising: rising.data ?? [],
     tickets: tickets.data ?? [],
     deploys: settled(deploys.data ?? []),
+    undelivered: undelivered.data ?? [],
     stacks: stacks.data ?? [],
     media: media.data ?? [],
     mediaHistory: mediaHistory.data ?? [],
@@ -165,6 +168,8 @@ export default function App({ onSignOut }: { onSignOut?: () => void }) {
             {updatedAt ? ` (last good data ${ago(updatedAt, now)})` : ""}.
           </div>
         )}
+
+        <AlertBanner alerts={f.undelivered} go={go} />
 
         {loaded || hubError ? <View f={f} /> : <p className="loading">Loading…</p>}
       </div>
