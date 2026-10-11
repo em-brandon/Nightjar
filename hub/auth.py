@@ -57,7 +57,8 @@ def check_config() -> None:
         raise RuntimeError(
             "Refusing to start: VERIFY_SIGNATURES is on (production) but CONSOLE_TOKEN "
             "is not set, so the console API, including every write, would be open to "
-            "anyone who can reach it. Set CONSOLE_TOKEN in the environment."
+            "anyone who can reach it. Set CONSOLE_TOKEN in the environment, or mount it as the file "
+            "/run/secrets/console_token."
         )
     if not token:
         log.warning("console authentication is OFF (CONSOLE_TOKEN is not set). Fine for local development only.")

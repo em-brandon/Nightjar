@@ -1,8 +1,23 @@
+import os
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def secrets_dir(path: str | None = None) -> str | None:
+    """Where secrets are mounted as files, or None if there is no such directory.
+
+    In production Docker mounts each secret as a file under /run/secrets, so no password or token sits in an
+    environment variable, where `docker inspect`, process listings and crash dumps would show it. A file is named
+    after the setting it fills (`console_token`, `database_url`, `pushover_token` ...) and holds only the value. An
+    environment variable still wins over a file, so local development keeps using `.env`, and production simply sets
+    none for the settings it mounts. A directory that is not there is ignored rather than warned about.
+    """
+    path = path or os.environ.get("NIGHTJAR_SECRETS_DIR", "/run/secrets")
+    return path if os.path.isdir(path) else None
+
+
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", secrets_dir=secrets_dir())
 
     database_url: str = "postgresql+asyncpg://hub:hub@localhost:5432/nightjar"
     verify_signatures: bool = False
