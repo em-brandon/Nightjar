@@ -10,7 +10,10 @@ import "@fontsource/space-grotesk/500.css";
 import "@fontsource/space-grotesk/600.css";
 import "./styles.css";
 
-createRoot(document.getElementById("root")).render(
+const mount = document.getElementById("root");
+if (!mount) throw new Error("index.html has no #root element");
+
+createRoot(mount).render(
   <StrictMode>
     <Root />
   </StrictMode>,
