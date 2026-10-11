@@ -1,0 +1,25 @@
+# What a Docker build may see. Anything not needed to build an image stays out, above all secrets: a build context is
+# sent to the Docker daemon and can end up inside an image layer.
+.git
+.github
+.venv
+**/__pycache__
+**/node_modules
+console/dist
+
+# secrets and local files
+.env
+.env.*
+!.env.example
+!.env.prod.example
+pushover-keys
+.site-keys
+
+# not part of any image
+docs
+tests
+mockups
+assets
+client
+tools
+*.md
