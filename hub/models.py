@@ -1,9 +1,10 @@
 import secrets
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -411,3 +412,27 @@ class Notification(Base):
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     issue: Mapped["Issue"] = relationship()
+
+
+class DailyStat(Base):
+    """One site's numbers for one complete UTC day, written by hub/rollup.py before the raw rows
+    behind them are pruned. A row exists only for a day when something was recorded, so a missing
+    row means "no data", which is not the same as zero. Today is never here: it is computed live."""
+
+    __tablename__ = "daily_stats"
+
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), primary_key=True)
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+
+    checks_total: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    checks_ok: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # over successful checks only: a timeout has no meaningful latency
+    latency_avg_ms: Mapped[int | None] = mapped_column(Integer)
+    latency_p95_ms: Mapped[int | None] = mapped_column(Integer)
+
+    events: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    issues_opened: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+
+    alerts_sent: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    alerts_failed: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    p1_expired: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
