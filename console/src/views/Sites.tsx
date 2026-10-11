@@ -109,9 +109,9 @@ function KeysPanel({ shown, onDone }: { shown: Shown; onDone: () => void }) {
         <input value={hub} onChange={(e) => setHub(e.target.value)} spellCheck={false} />
       </label>
 
-      <div className="sx-chips" role="group" aria-label="Stack">
+      <div className="chips" role="group" aria-label="Stack">
         {STACKS.map(({ id, label }) => (
-          <button key={id} type="button" className={`sx-chip ${stack === id ? "sx-on" : ""}`} aria-pressed={stack === id} onClick={() => setStack(id)}>
+          <button key={id} type="button" className={`chip ${stack === id ? "on" : ""}`} aria-pressed={stack === id} onClick={() => setStack(id)}>
             {label}
           </button>
         ))}
