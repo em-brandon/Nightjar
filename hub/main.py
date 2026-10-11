@@ -17,6 +17,7 @@ from .ingest import router as ingest_router
 from .media import ingest_router as media_ingest_router
 from .media import router as media_router
 from .migrate import upgrade
+from .outbox import sender_loop
 from .presence import public_router as presence_public_router
 from .presence import router as presence_router
 from .probe import probe_loop
@@ -38,11 +39,14 @@ async def lifespan(app: FastAPI):
     # start: better than serving requests against the wrong schema.
     await asyncio.to_thread(upgrade)
     prober = asyncio.create_task(probe_loop()) if settings.probe_enabled else None
+    # The alert sender. Alerts are queued whether or not this runs; it only delivers them.
+    sender = asyncio.create_task(sender_loop()) if settings.outbox_enabled else None
     yield
-    if prober:
-        prober.cancel()
-        with suppress(asyncio.CancelledError):
-            await prober
+    for task in (prober, sender):
+        if task:
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
     await engine.dispose()
 
 
