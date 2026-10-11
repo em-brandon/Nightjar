@@ -135,9 +135,38 @@ minutes:
 */5 * * * * curl -fsS -m 10 --retry 3 https://hc-ping.com/<uuid> > /dev/null
 ```
 
-Better, once chunk 2 exists, ping it from inside the app after a successful
-database round-trip — then it proves the whole path is alive, not just that
-cron ran.
+Better, and built: set `DEADMAN_URL` in `.env` to the same ping URL and the hub's alert sender pings
+it after every completed pass (at most every two minutes). That proves the whole path is alive, database
+round-trip and sender included, and not just that cron ran. A sender that has died, stuck, or lost its
+database stops pinging, and healthchecks.io tells you. Keep the cron line too: it notices a hub that is not
+running at all, which the in-app ping cannot.
+
+---
+
+## 7b. Phone alerts (Pushover)
+
+Nothing wakes your phone until this is done. Without it every alert is queued and then shown as **failed**
+in the console, never dropped.
+
+1. Install the Pushover app on the phone (30-day trial, then a one-off licence per platform).
+2. Create an application at <https://pushover.net/apps/build>, named `Nightjar`. Its API token goes in
+   `PUSHOVER_TOKEN`. Your own user key, from the Pushover dashboard, goes in `PUSHOVER_USER`.
+3. For acknowledging a P1 on the phone to reach the console at once, set `HUB_PUBLIC_URL` to the hub's public
+   address and `PUSHOVER_CALLBACK_TOKEN` to a long random string (`openssl rand -hex 24`). Pushover cannot
+   reach a hub on `localhost`; without these the hub checks Pushover for acknowledgements every 30 seconds.
+4. Restart the hub, open the console's **Alerts** tab, and press **Send a test push**. It should arrive on
+   the phone within seconds. If it does not, the tab says why.
+5. Test it for real, as `CLAUDE.md` says to: break a route on staging and confirm the push arrives, then
+   test presence by tapping out and confirming the push still arrives.
+
+What the tab shows, and what each warning means:
+
+| Shown | Meaning |
+|---|---|
+| Pushover **not configured** | The token or user is missing. Nothing can reach the phone. |
+| Sender **stalled** or **switched off** | The loop that delivers alerts is not running. Alerts are queued and wait. |
+| Alert **failed** | Pushover refused it, or it ran out of attempts. It has a **Retry** button. |
+| P1 **not acknowledged** | It was sent but nobody answered within 30 minutes: the phone did not wake anyone. |
 
 ---
 
