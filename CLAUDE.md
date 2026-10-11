@@ -443,6 +443,8 @@ python -m unittest discover -s tests        # migrations, auth, stack policy (ne
 python -m unittest discover -s client       # the stack reporter
 ```
 
+Both, and the console build, run on every push through `.github/workflows/ci.yml` (`docs/CI.md`). It has not yet run on GitHub.
+
 Vite proxies `/api` to the hub on `:8000`, so the hub needs no CORS config. After
 `test_ingest.sh` the console should show one site in `warn` and one open issue,
 its count growing by 200 each run.
