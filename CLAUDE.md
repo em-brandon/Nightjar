@@ -422,6 +422,7 @@ pip install -r requirements.txt
 cp .env.example .env
 docker compose -f docker-compose.dev.yml up -d db
 python seed.py                # prints ingest_key and ingest_secret
+python seed_demo.py           # optional: demo clients, issues, alerts and deploys to look at. --remove takes it out
 uvicorn hub.main:app --reload
 ./test_ingest.sh <ingest_key>
 ```
