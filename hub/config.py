@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     browser_rate_per_key_min: int = 120
     browser_rate_per_ip_min: int = 20
     browser_new_issues_per_hour: int = 10
+    # Quiet hours for the alert policy: only P1 makes noise inside them. The zone is named, not an offset,
+    # so a move or a change of rules is one setting. Hours are local, 0 to 23, and the window may wrap midnight.
+    quiet_tz: str = "Africa/Nairobi"
+    quiet_start_hour: int = 22
+    quiet_end_hour: int = 7
 
 
 settings = Settings()
