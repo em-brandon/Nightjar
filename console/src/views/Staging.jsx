@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ago, plural, send } from "../hooks.ts";
 import { Dot, Odometer, Pill, SiteCard, Spark } from "../ui.tsx";
 import { readiness, runningBuilds } from "../promotion.ts";
-import { DeployHowTo, DeployList } from "./Deploys.jsx";
+import { DeployHowTo, DeployList } from "./Deploys.tsx";
 
 // Where "Manage stacks" points. Start, stop and logs live in Dockge or Portainer
 // on the staging host, reached over Tailscale: Nightjar only shows stacks, and

@@ -1,9 +1,11 @@
+import type { Deploy } from "../api/types.ts";
+import type { Feeds } from "../feeds.ts";
 import { ago } from "../hooks.ts";
 import { Pill } from "../ui.tsx";
 
-const TONE = { success: "ok", failed: "bad", running: "run" };
+const TONE: Record<Deploy["status"], string> = { success: "ok", failed: "bad", running: "run" };
 
-export function DeployList({ deploys, now }) {
+export function DeployList({ deploys, now }: { deploys: Deploy[]; now: number }) {
   return (
     <div className="deploys">
       {deploys.map((d) => (
@@ -20,7 +22,7 @@ export function DeployList({ deploys, now }) {
 
 // Shown while nothing has reported. The steps are the real interface, so the
 // empty state doubles as the documentation for hooking CI up.
-export function DeployHowTo({ env }) {
+export function DeployHowTo({ env }: { env: string }) {
   return (
     <div className="card howto">
       <h2>Nothing reported yet</h2>
@@ -40,7 +42,7 @@ export function DeployHowTo({ env }) {
   );
 }
 
-export default function Deploys({ f }) {
+export default function Deploys({ f }: { f: Feeds }) {
   const { deploys, now } = f;
   const prod = deploys.filter((d) => d.env === "production");
   const failed = prod.filter((d) => d.status === "failed").length;
