@@ -73,7 +73,7 @@ openssl rand -base64 32          # paste as POSTGRES_PASSWORD
 openssl rand -base64 32          # paste as CONSOLE_TOKEN (the hub will not start without it)
 nano .env                        # set HUB_DOMAIN too
 
-docker compose up -d --build
+docker compose up -d --build     # the first build downloads Node and compiles the console, so it takes a few minutes
 docker compose logs -f caddy     # watch the certificate get issued
 ```
 
@@ -81,6 +81,17 @@ The hub migrates its own database on every start, so there is no schema step. It
 if `CONSOLE_TOKEN` is missing or under 16 characters, because otherwise the console API and every write
 would be open to the internet. Sign in at your domain with that token. The session cookie is marked
 `Secure` behind Caddy's TLS, so never use the console over plain http.
+
+**Caddy serves the console too.** `deploy/caddy.Dockerfile` builds the console and bakes it, with the Caddyfile, into the Caddy
+image, so one hostname serves the console, the API it calls, and the endpoints other machines call (`/ingest`, `/healthz`,
+`/pushover/ack`, `/presence`). After changing the console or the Caddyfile, rebuild it:
+`docker compose build caddy && docker compose up -d caddy`.
+
+**HSTS starts at one day** (`max-age=86400` in `deploy/Caddyfile`). It tells browsers to use HTTPS only for this hostname and is
+hard to undo, so raise it in steps: after a day with nothing broken, a week; after that, six months. Do not add
+`includeSubDomains` or `preload` until every subdomain of the domain serves HTTPS. Check it with
+`curl -sI https://<hub domain>/ | grep -i strict-transport`. The responses also carry `nosniff`, no framing, no referrer and a
+Content-Security-Policy that lets the console load only its own files.
 
 Then create the first site and note its keys:
 
