@@ -62,6 +62,8 @@ DayState = Literal["ok", "deg", "out", "gap"]
 class SiteHealthOut(BaseModel):
     id: int
     name: str
+    # who the site belongs to, so the console can group a client's sites and pair each with its staging
+    client: str
     env: str
     # down: an open P1, or 2 failed probes in a row. warn: an open P2, one
     # failed probe, or a probe gone quiet. up: none. Derived, never stored.
