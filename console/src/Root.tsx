@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import App from "./App.jsx";
+import App from "./App.tsx";
 import Login from "./Login.tsx";
 
 // Decides whether to show the console or the login. The console only mounts once
