@@ -13,7 +13,7 @@ import Incidents from "./views/Incidents.tsx";
 import Media from "./views/Media.tsx";
 import Overview from "./views/Overview.jsx";
 import Requests from "./views/Requests.tsx";
-import Staging from "./views/Staging.jsx";
+import Staging from "./views/Staging.tsx";
 
 const TABS: [Exclude<TabId, "idle">, string][] = [
   ["overview", "Overview"],
