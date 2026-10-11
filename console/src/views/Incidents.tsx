@@ -1,24 +1,29 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { Issue, IssueAction, LogEntry } from "../api/types.ts";
+import type { Feeds } from "../feeds.ts";
 import { ago, fmtTime, send } from "../hooks.ts";
 import { Empty, Odometer, Pill, Sev } from "../ui.tsx";
 
-const STATUS_TONE = { open: "bad", resolved: "ok", muted: "run", snoozed: "warn" };
+const STATUS_TONE: Record<Issue["status"], string> = { open: "bad", resolved: "ok", muted: "run", snoozed: "warn" };
 
 // Which actions make sense in which state. The hub enforces the same rules;
 // this only stops the console offering buttons that would be refused.
-function actionsFor(issue) {
+type Act = { action: IssueAction["action"]; label: string; primary?: boolean; hours?: number };
+
+function actionsFor(issue: Issue): Act[] {
   if (issue.status === "open") {
-    return [
+    const acts: (Act | false)[] = [
       !issue.acknowledged && { action: "ack", label: "Acknowledge", primary: true },
       { action: "resolve", label: "Resolve", primary: issue.acknowledged },
       { action: "mute", label: "Mute" },
       { action: "snooze", label: "Snooze 24h", hours: 24 },
-    ].filter(Boolean);
+    ];
+    return acts.filter((a): a is Act => a !== false);
   }
   return [{ action: "reopen", label: "Reopen", primary: true }];
 }
 
-function IssueRow({ issue, now, onOpen }) {
+function IssueRow({ issue, now, onOpen }: { issue: Issue; now: number; onOpen: (id: number) => void }) {
   const quiet = issue.status !== "open";
   return (
     <button className={`issue ${quiet ? "quiet" : ""}`} onClick={() => onOpen(issue.id)}>
@@ -40,16 +45,16 @@ function IssueRow({ issue, now, onOpen }) {
   );
 }
 
-function Drawer({ issue, now, onClose, onChanged }) {
-  const closeRef = useRef(null);
-  const [log, setLog] = useState(null);
+function Drawer({ issue, now, onClose, onChanged }: { issue: Issue; now: number; onClose: () => void; onChanged: () => Promise<unknown> }) {
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const [log, setLog] = useState<LogEntry[] | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
 
   const loadLog = useCallback(async () => {
     try {
       const res = await fetch(`/api/issues/${issue.id}/log`);
-      if (res.ok) setLog(await res.json());
+      if (res.ok) setLog((await res.json()) as LogEntry[]);
     } catch {
       /* the log is supplementary; the actions still work without it */
     }
@@ -62,15 +67,15 @@ function Drawer({ issue, now, onClose, onChanged }) {
   useEffect(() => {
     const prev = document.activeElement;
     closeRef.current?.focus();
-    const onKey = (e) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     addEventListener("keydown", onKey);
     return () => {
       removeEventListener("keydown", onKey);
-      prev?.focus?.();
+      (prev as HTMLElement | null)?.focus?.();
     };
   }, [onClose]);
 
-  const run = async (a) => {
+  const run = async (a: Act) => {
     setBusy(true);
     setError(null);
     try {
@@ -80,7 +85,7 @@ function Drawer({ issue, now, onClose, onChanged }) {
       });
       await onChanged();
     } catch (err) {
-      setError(err.message);
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
@@ -167,10 +172,10 @@ function Drawer({ issue, now, onClose, onChanged }) {
   );
 }
 
-export default function Incidents({ f }) {
+export default function Incidents({ f }: { f: Feeds }) {
   const { issues, now, reloadIssues } = f;
-  const [show, setShow] = useState("open");
-  const [openId, setOpenId] = useState(null);
+  const [show, setShow] = useState<"open" | "all">("open");
+  const [openId, setOpenId] = useState<number | null>(null);
   const close = useCallback(() => setOpenId(null), []);
 
   const open = issues.filter((i) => i.status === "open");
@@ -185,10 +190,10 @@ export default function Incidents({ f }) {
           <Odometer value={open.length} /> open
         </span>
         <div className="chips" role="group" aria-label="Filter">
-          {[
+          {([
             ["open", "Open"],
             ["all", "All"],
-          ].map(([k, label]) => (
+          ] as const).map(([k, label]) => (
             <button key={k} className={`chip ${show === k ? "on" : ""}`} onClick={() => setShow(k)}>
               {label}
             </button>

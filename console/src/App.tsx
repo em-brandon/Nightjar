@@ -9,7 +9,7 @@ import WeatherLine from "./WeatherLine.tsx";
 import { ago, settled, tuning, useHashTab, useInactivity, useNow, usePoll } from "./hooks.ts";
 import Deploys from "./views/Deploys.tsx";
 import Idle from "./views/Idle.jsx";
-import Incidents from "./views/Incidents.jsx";
+import Incidents from "./views/Incidents.tsx";
 import Media from "./views/Media.jsx";
 import Overview from "./views/Overview.jsx";
 import Requests from "./views/Requests.tsx";
