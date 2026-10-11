@@ -5,6 +5,7 @@ import type { components } from "./schema.d.ts";
 
 type S = components["schemas"];
 
+export type Alert = S["NotificationOut"];
 export type SiteHealth = S["SiteHealthOut"];
 export type SiteListed = S["SiteListed"];
 export type SiteOut = S["SiteOut"];
