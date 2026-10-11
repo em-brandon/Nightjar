@@ -106,7 +106,8 @@ export async function send<T = unknown>(method: string, url: string, body?: unkn
   return res.status === 204 ? null : ((await res.json()) as T);
 }
 
-export function ago(iso: string | null | undefined, now: number): string {
+// `iso` is an ISO string from the hub, or epoch milliseconds from a poll's own `at`
+export function ago(iso: string | number | null | undefined, now: number): string {
   if (!iso) return "never";
   const s = Math.max(0, Math.floor((now - new Date(iso).getTime()) / 1000));
   if (s < 60) return `${s}s ago`;
