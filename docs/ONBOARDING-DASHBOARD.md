@@ -82,10 +82,10 @@ pairing look sites up by name), and per-client logins (decision #7).
 
 1. **Client: inline.** The client field is a free text box with the existing clients offered as suggestions, so a typo is the only
    way to make a second "Kubasu Motors". Quicker than a separate step; revisit if it happens.
-2. **Test event: allowed on production, and resolved at once.** It is a `warning` (P3, digest only), marked by its type
+2. **Test event: allowed on production, and muted at once.** It is a `warning` (P3, digest only), marked by its type
    `NightjarTestEvent`, and **left out of a site's "last reported" time**. Otherwise pressing the button would make a site whose app
-   was never wired up look as if it had reported. The panel says a test proves the hub side only. A second test re-opens the
-   resolved issue as a `regression`, which for a P3 is only another digest line.
+   was never wired up look as if it had reported. The panel says a test proves the hub side only. It is muted, not resolved: a muted
+   issue keeps counting but never reports a state change, so a second test cannot reopen it as a regression that reaches the digest.
 3. **Gitea secret: names only.** The screen shows `NIGHTJAR_URL`, `NIGHTJAR_KEY` and `NIGHTJAR_SECRET` to store; writing them
    needs a Gitea token, still a separate decision.
 
@@ -95,5 +95,5 @@ pairing look sites up by name), and per-client logins (decision #7).
   The tab now asks the shell to hold it while a form is open or a secret is showing. Any future screen that holds unrecoverable
   state should do the same through `setIdleHold`.
 - **A secret left on screen clears itself after 10 minutes**, so it is not readable on an unattended display.
-- The `.chip` class has no styles anywhere, so the Incidents filter buttons are unstyled. The Sites tab uses its own `sx-chip`;
-  Incidents is left as it was.
+- The `.chip` class had no styles anywhere, so the Incidents filter buttons were unstyled. It now has them (a solid selected chip),
+  shared by the Incidents filter and the Sites stack picker.
