@@ -257,6 +257,16 @@ class Sites(unittest.IsolatedAsyncioTestCase):
         open_issues = (await self.http.get("/api/issues?status=open")).json()
         self.assertEqual(open_issues, [])
 
+    async def test_a_second_test_event_stays_quiet_and_does_not_reopen_the_issue(self):
+        sid = (await self.http.post("/api/sites", json=site())).json()["id"]
+        first = (await self.http.post(f"/api/sites/{sid}/test-event")).json()
+        second = (await self.http.post(f"/api/sites/{sid}/test-event")).json()
+        self.assertEqual(first["state_change"], "new")
+        self.assertIsNone(second["state_change"], "a repeat must not look like a regression")
+        self.assertEqual(second["issue_id"], first["issue_id"])
+        self.assertEqual(second["event_count"], 2)
+        self.assertEqual((await self.http.get("/api/issues?status=open")).json(), [])
+
     async def test_a_real_report_sets_last_event_and_a_test_does_not_move_it(self):
         made = (await self.http.post("/api/sites", json=site())).json()
         with patch.object(settings, "verify_signatures", False):

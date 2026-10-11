@@ -148,10 +148,12 @@ async def test_event(site_id: int, session: AsyncSession = Depends(get_session))
             environment=site.env,
         ),
     )
-    # Resolved straight away so a test never sits in a client's open list.
+    # Muted straight away, not resolved: a muted issue keeps counting but never reports a state
+    # change, so it never sits in a client's open list and a second test cannot reopen it as a
+    # "regression" that would reach the digest.
     issue = await session.get(Issue, result.issue_id)
     if issue is not None and issue.status == "open":
-        issue.status = "resolved"
+        issue.status = "muted"
         await session.commit()
     return TestEventOut(
         issue_id=result.issue_id,
