@@ -83,8 +83,10 @@ class Rejects(AuthTestCase):
         checked, open_routes = [], []
         async with self.client() as c:
             for path, methods in schema["paths"].items():
-                if path == "/healthz" or path.startswith("/ingest/") or path.startswith("/api/auth/"):
-                    continue  # public by design: probes, per-site-key ingest, and login itself
+                if path in ("/healthz", "/presence") or path.startswith("/ingest/") or path.startswith("/api/auth/"):
+                    # public by design: probes, per-site-key ingest, login itself, and the NFC presence
+                    # tap, which is authenticated by a token in its body (tests/test_home_ingest.py)
+                    continue
                 url = path.replace("{ingest_key}", "x").replace("{issue_id}", "1").replace("{ticket_id}", "1").replace("{site_id}", "1")
                 for method in methods:
                     if method not in ("get", "post", "patch", "put", "delete"):
