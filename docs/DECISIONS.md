@@ -1354,5 +1354,11 @@ or changed:
   happened, so the screen can show why a push failed.
 - **An uptime outage is an ordinary issue** (`hub/uptime.py`): P1 in production, P2 on staging, opened at the second failed check in a
   row (the console's own rule for "down"), edge-triggered like every pushed source, resolved after five passing checks in a row.
+- **Dealing with an incident stops its repeating push.** Acknowledging, resolving, muting or snoozing it in the console, an automatic
+  resolve by the hub, or an acknowledgement on the phone (for the incident's other pushes) stamps its sent alerts as dismissed in the
+  same transaction. The sender then calls Pushover's cancel on each receipt, every pass, until it has, so a network failure cannot
+  leave a phone alarming for something already handled. A push sent for an incident handled while it was queued is dismissed at once.
+  An expired P1 stops needing attention once the incident has been dealt with. **Not built, and written down in `docs/ESCALATION.md`:**
+  escalating a P1 that nobody acknowledges to a second recipient or channel.
 - **Unconfigured is loud, not quiet.** With no token every alert shows as failed with its reason, in a banner on every tab, in the
   incident log, and as a cue on the wall display.

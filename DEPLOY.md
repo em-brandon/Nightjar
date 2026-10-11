@@ -167,6 +167,10 @@ What the tab shows, and what each warning means:
 | Sender **stalled** or **switched off** | The loop that delivers alerts is not running. Alerts are queued and wait. |
 | Alert **failed** | Pushover refused it, or it ran out of attempts. It has a **Retry** button. |
 | P1 **not acknowledged** | It was sent but nobody answered within 30 minutes: the phone did not wake anyone. |
+| **Stopped: incident dealt with** | You acknowledged, resolved, muted or snoozed the incident, or it healed, so the hub told Pushover to stop the repeating push. |
+
+Acknowledging or resolving an incident in the console stops the phone alarming within a few seconds, and a failed attempt to
+stop it is retried until it works. Nothing yet escalates a P1 that nobody answers: see `docs/ESCALATION.md`.
 
 ---
 

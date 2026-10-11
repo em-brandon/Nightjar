@@ -47,7 +47,13 @@ Pushover adapter, the acknowledgement callback and receipt polling, a dead-man's
 opens a P1. It has been tested against fakes and a real database, never against Pushover. It goes live when
 `PUSHOVER_TOKEN` and `PUSHOVER_USER` are set (the Pushover app licence is the only cost) and, for production,
 there is a domain and a VPS. With them unset every alert fails visibly instead of vanishing. `DEPLOY.md` section 7b
-has the steps. Until a real push has been seen on a phone, nothing here should be mistaken for monitoring.
+has the steps. A real P1 has been sent to a phone and acknowledged from it, and acknowledging, resolving, muting or snoozing an
+incident in the console tells Pushover to stop the repeating push (decision #56). Nothing escalates a P1 nobody answers yet.
+Until the hub is deployed and has run for a while, nothing here should be mistaken for monitoring.
+
+**Planned, not started:** escalating a P1 that nobody acknowledges: a short ladder (a second recipient, then SMS or a call, then
+email) that only ever adds channels and stops the moment the incident is dealt with. Plan, rules and open questions in
+`docs/ESCALATION.md`. Also planned there: a fallback when Pushover itself is down.
 
 Everything else waits.
 
