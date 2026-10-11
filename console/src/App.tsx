@@ -8,7 +8,7 @@ import { demoMedia } from "./media.ts";
 import WeatherLine from "./WeatherLine.tsx";
 import { ago, settled, tuning, useHashTab, useInactivity, useNow, usePoll } from "./hooks.ts";
 import Deploys from "./views/Deploys.tsx";
-import Idle from "./views/Idle.jsx";
+import Idle from "./views/Idle.tsx";
 import Incidents from "./views/Incidents.tsx";
 import Media from "./views/Media.tsx";
 import Overview from "./views/Overview.jsx";

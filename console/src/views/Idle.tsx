@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
-import { CircleX, Clapperboard, Inbox, FlaskConical, Rocket, TrendingUp, TriangleAlert } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { CircleX, Clapperboard, Inbox, FlaskConical, Rocket, TrendingUp, TriangleAlert, type LucideIcon } from "lucide-react";
+import type { Deploy, Issue, MediaSnapshot, Rising, Ticket } from "../api/types.ts";
+import type { Feeds } from "../feeds.ts";
 import { ago, plural, tuning, useNow, useReveal } from "../hooks.ts";
 import { Odometer, Pill, Sev, SiteCard, Spark } from "../ui.tsx";
 import { requestsView } from "../home.ts";
@@ -14,13 +16,13 @@ import { Verdict } from "./Overview.jsx";
 const PER_PAGE = 2;
 const ROTATE_MS = tuning("rotate", 120_000);
 const REVEAL_MS = tuning("reveal", 120_000);
-const TONE = { success: "ok", failed: "bad", running: "run" };
+const TONE: Record<Deploy["status"], string> = { success: "ok", failed: "bad", running: "run" };
 
 // Client requests are not a card: a request is a promise to a person, worth a nudge and not a
 // panel. So it is an inbox icon and one number beside the incidents heading, with the words in the
 // tooltip. Nothing shows while the inbox is clear. The number is how many are OVERDUE, turning the
 // pill amber and letting it breathe; with none overdue it is how many are open, and stays dim.
-function RequestsCue({ tickets }) {
+function RequestsCue({ tickets }: { tickets: Ticket[] }) {
   const r = requestsView(tickets);
   if (r.state === "clear") return null;
   const overdue = r.state === "overdue";
@@ -39,7 +41,7 @@ function RequestsCue({ tickets }) {
 
 // Hidden detail is blurred, not replaced: the shape of a title stays, its words do not.
 // aria-hidden keeps a screen reader from reading what the screen is hiding.
-function Veil({ revealed, children }) {
+function Veil({ revealed, children }: { revealed: boolean; children?: ReactNode }) {
   return (
     <span className={`veil ${revealed ? "" : "veiled"}`} aria-hidden={!revealed}>
       {children}
@@ -48,7 +50,7 @@ function Veil({ revealed, children }) {
 }
 
 // A panel heading: icon and title in the panel's own colour.
-function PanelTitle({ icon: Icon, children }) {
+function PanelTitle({ icon: Icon, children }: { icon: LucideIcon; children?: ReactNode }) {
   return (
     <h2>
       <Icon size={18} strokeWidth={2} aria-hidden="true" />
@@ -57,9 +59,9 @@ function PanelTitle({ icon: Icon, children }) {
   );
 }
 
-const clock = (t) =>
+const clock = (t: number) =>
   new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-const mmss = (ms) => {
+const mmss = (ms: number) => {
   const s = Math.ceil(ms / 1000);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 };
@@ -67,7 +69,7 @@ const mmss = (ms) => {
 // Tier 1 rule: hide detail, not names. Site, severity, count and age are always
 // shown; the title (which can carry hostnames and identifiers) only when
 // revealed.
-function IncidentsPanel({ issues, tickets, blind, revealed, now }) {
+function IncidentsPanel({ issues, tickets, blind, revealed, now }: { issues: Issue[]; tickets: Ticket[]; blind: boolean; revealed: boolean; now: number }) {
   const open = issues.filter((i) => i.status === "open");
   const shown = open.slice(0, 5);
   return (
@@ -109,7 +111,7 @@ function IncidentsPanel({ issues, tickets, blind, revealed, now }) {
 }
 
 // Commit refs are detail (decision #13), so they are hidden until revealed.
-function DeployPanel({ title, icon, tone, deploys, revealed, now }) {
+function DeployPanel({ title, icon, tone, deploys, revealed, now }: { title: string; icon: LucideIcon; tone: string; deploys: Deploy[]; revealed: boolean; now: number }) {
   return (
     <section className={`card idle-panel ${tone}`}>
       <header>
@@ -142,7 +144,7 @@ function DeployPanel({ title, icon, tone, deploys, revealed, now }) {
 // than double the 30 before. It is a look-at-it list, not an alert. With nothing climbing it says so
 // in words: an empty panel must not be mistaken for a panel that failed to load. The site and the
 // counts are always shown; the error's title is detail, so it is blurred until the reveal.
-function RisingPanel({ rising, blind, revealed }) {
+function RisingPanel({ rising, blind, revealed }: { rising: Rising[]; blind: boolean; revealed: boolean }) {
   const climbing = rising.length > 0;
   return (
     <section className="card idle-panel tone-red">
@@ -180,10 +182,10 @@ function RisingPanel({ rising, blind, revealed }) {
 // Home media. The state, the number of streams and the disk are always shown;
 // who is watching and what only after the reveal, like incident titles. A silent
 // reporter reads as silent, never as an idle server.
-const MEDIA_TEXT = { up: "up", down: "not responding", low: "disk nearly full", silent: "reporter silent" };
-const MEDIA_TONE = { up: "ok", down: "bad", low: "warn", silent: "warn" };
+const MEDIA_TEXT: Record<ReturnType<typeof mediaState>, string> = { up: "up", down: "not responding", low: "disk nearly full", silent: "reporter silent" };
+const MEDIA_TONE: Record<ReturnType<typeof mediaState>, string> = { up: "ok", down: "bad", low: "warn", silent: "warn" };
 
-function MediaPanel({ media, revealed, demo = false }) {
+function MediaPanel({ media, revealed, demo = false }: { media: MediaSnapshot[]; revealed: boolean; demo?: boolean }) {
   const streams = media.flatMap((m) => (m.stale ? [] : m.sessions));
   return (
     <section className="card idle-panel tone-blue">
@@ -225,7 +227,7 @@ function MediaPanel({ media, revealed, demo = false }) {
   );
 }
 
-export default function Idle({ f, go }) {
+export default function Idle({ f, go }: { f: Feeds; go: Feeds["go"] }) {
   const now = useNow(1000);
   const { revealed, remainingMs, reveal, hide } = useReveal(REVEAL_MS, now);
 
