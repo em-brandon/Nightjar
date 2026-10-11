@@ -56,6 +56,8 @@ export interface RequestInfo {
 export interface Env {
   send(url: string, headers: Record<string, string>, body: string, timeoutMs: number): Promise<void>;
   now(): number;
+  /** Where the one-line warning about an unusable hub goes. Default: standard error. */
+  warn?(message: string): void;
 }
 
 export interface Prepared {
@@ -109,6 +111,29 @@ function describe(thing: unknown): { type: string; message: string; stack?: stri
   return { type: "NonErrorThrown", message: message ?? "" };
 }
 
+const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
+
+/**
+ * Whether this hub address may be used, and if not, why. https is always fine. Plain http is fine only for a machine
+ * talking to itself, which development needs: anywhere else it would send error text, readable, across a network.
+ * Returns null when the address is fine, or one line saying what is wrong. It never includes the whole address, which
+ * could carry a credential.
+ */
+export function hubRefusal(hub: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(hub);
+  } catch {
+    return "Nightjar: the hub address is not a valid URL, so no errors will be reported. Use https://your-hub.";
+  }
+  if (url.protocol === "https:") return null;
+  if (url.protocol === "http:" && (LOOPBACK.has(url.hostname) || url.hostname.endsWith(".localhost"))) return null;
+  return (
+    `Nightjar: refusing to report errors to ${url.protocol}//${url.hostname}: plain http would send them readable ` +
+    "across the network. Use an https:// hub address (http:// is only accepted for localhost). No errors will be reported."
+  );
+}
+
 function resolve(options: Options): Required<Pick<Options, "hub" | "key" | "secret">> & Options {
   const env = typeof process !== "undefined" ? process.env : {};
   return {
@@ -160,9 +185,21 @@ export function createReporter(options: Options, env: Env): Reporter {
   const inflight = new Set<Promise<void>>();
   let sentAt: number[] = [];
 
+  // An unusable hub is never silent: a mistyped address would otherwise look exactly like an app with no errors. It says
+  // so once, here, and then sends nothing. It never throws, because a reporter must not break the app it reports on.
+  const refusal = o.hub ? hubRefusal(o.hub) : null;
+  if (refusal) {
+    try {
+      (env.warn ?? ((m: string) => console.error(m)))(refusal);
+    } catch {
+      // even the warning must not break the app
+    }
+  }
+
   function capture(error: unknown, level: Level = "error", request?: RequestInfo): void {
     try {
       if (!o.hub || !o.key || !o.secret) return; // not configured: report nothing, break nothing
+      if (refusal) return; // already said so, once, when it was created
       const now = env.now();
       sentAt = sentAt.filter((t) => now - t < 60_000);
       if (sentAt.length >= maxPerMinute || inflight.size >= maxInFlight) return;
@@ -212,6 +249,7 @@ export function init(options: Options = {}): Reporter | null {
     const reporter = createReporter(options, realEnv);
     const o = reporter.options;
     if (!o.hub || !o.key || !o.secret) return null;
+    if (hubRefusal(o.hub)) return null; // createReporter has already said why
     active = reporter;
     return reporter;
   } catch {

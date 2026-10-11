@@ -39,7 +39,7 @@ from hub.config import settings  # noqa: E402
 from hub.db import get_session  # noqa: E402
 from hub.main import app  # noqa: E402
 
-HUB = "http://hub.test"
+HUB = "https://hub.test"  # https: the reporters refuse plain http to anywhere but this machine
 
 
 def _admin_url() -> str:
