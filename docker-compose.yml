@@ -1,5 +1,9 @@
 # Nightjar on a VPS: the hub, its database, and Caddy serving the console over TLS.
 #
+# Passwords and tokens are NOT environment variables here. They are files under ./secrets (made by
+# deploy/make-secrets.sh) that Docker mounts at /run/secrets, so `docker inspect`, process listings and crash dumps
+# do not show them. .env holds only settings that are not secret.
+#
 # Note the restart policies: `unless-stopped` everywhere. A watchdog that does
 # not come back after a reboot is worse than no watchdog, because its silence
 # reads as "all clear".
@@ -10,8 +14,11 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+      # the image reads the password from this file; there is no POSTGRES_PASSWORD variable to leak
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -29,13 +36,24 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       VERIFY_SIGNATURES: "true"
-      # Required. Without it the hub refuses to start, because the console API
-      # (including every write) would be open to the internet.
-      CONSOLE_TOKEN: ${CONSOLE_TOKEN:?set CONSOLE_TOKEN in .env (openssl rand -base64 32)}
+      # Settings that are not secret. The secret ones (the database URL, the console token, Pushover and the rest) come
+      # from the files below, which the hub reads by name. The console token is required: without it the hub refuses
+      # to start, because the console API (including every write) would be open to the internet.
+      HUB_PUBLIC_URL: ${HUB_PUBLIC_URL:-}
       SPIKE_THRESHOLD: ${SPIKE_THRESHOLD:-50}
       SPIKE_WINDOW_MIN: ${SPIKE_WINDOW_MIN:-10}
+      QUIET_TZ: ${QUIET_TZ:-Africa/Nairobi}
+      QUIET_START_HOUR: ${QUIET_START_HOUR:-22}
+      QUIET_END_HOUR: ${QUIET_END_HOUR:-7}
+    secrets:
+      - database_url
+      - console_token
+      - pushover_token
+      - pushover_user
+      - pushover_callback_token
+      - deadman_url
+      - presence_token
     # Also not published. Caddy is the only way in.
 
   caddy:
@@ -55,6 +73,26 @@ services:
       HUB_DOMAIN: ${HUB_DOMAIN}
     depends_on:
       - hub
+
+# Each file is made by deploy/make-secrets.sh. `docker compose up` fails with a clear error if one is missing, which
+# is the point: a hub that started without its console token would be open to the internet.
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password
+  database_url:
+    file: ./secrets/database_url
+  console_token:
+    file: ./secrets/console_token
+  pushover_token:
+    file: ./secrets/pushover_token
+  pushover_user:
+    file: ./secrets/pushover_user
+  pushover_callback_token:
+    file: ./secrets/pushover_callback_token
+  deadman_url:
+    file: ./secrets/deadman_url
+  presence_token:
+    file: ./secrets/presence_token
 
 volumes:
   pgdata:
