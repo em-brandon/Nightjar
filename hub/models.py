@@ -399,5 +399,8 @@ class Notification(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     acked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # When Pushover reported the receipt expired with nobody acknowledging it: a P1 that did not get a
+    # human. The console says so, because it means the phone did not wake anyone.
+    expired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     issue: Mapped["Issue"] = relationship()
