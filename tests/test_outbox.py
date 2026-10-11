@@ -10,15 +10,19 @@ import sys
 import unittest
 import uuid
 from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import httpx  # noqa: E402
 from sqlalchemy import pool, select, text  # noqa: E402
 from sqlalchemy.engine import make_url  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
 
 from hub import migrate, outbox  # noqa: E402
 from hub.config import settings  # noqa: E402
+from hub.db import get_session  # noqa: E402
+from hub.main import app  # noqa: E402
 from hub.models import Client, Issue, Notification, Presence, Site  # noqa: E402
 
 DAY = datetime(2026, 10, 12, 9, 0, tzinfo=UTC)  # 12:00 in Nairobi
@@ -169,6 +173,136 @@ class Enqueue(unittest.IsolatedAsyncioTestCase):
         await self.write(change="regression", changed_at=DAY, issue=issue)
         await self.write(change="regression", changed_at=DAY + timedelta(hours=1), issue=issue)
         self.assertEqual([r.change for r in await self.rows()], ["new", "regression", "regression"])
+
+
+@unittest.skipUnless(_reachable(), "Postgres is not reachable (start the dev database container)")
+class ThroughIngest(unittest.IsolatedAsyncioTestCase):
+    """The same rules, driven through the real ingest path."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.name = f"nj_outbox_ing_{uuid.uuid4().hex[:8]}"
+        asyncio.run(_admin(f'CREATE DATABASE "{cls.name}"'))
+        cls.url = make_url(settings.database_url).set(database=cls.name).render_as_string(hide_password=False)
+        migrate.upgrade(cls.url)
+
+    @classmethod
+    def tearDownClass(cls):
+        app.dependency_overrides.pop(get_session, None)
+        asyncio.run(_admin(f'DROP DATABASE IF EXISTS "{cls.name}" WITH (FORCE)'))
+
+    async def asyncSetUp(self):
+        for name, value in (("verify_signatures", False), ("console_token", ""), ("spike_threshold", 50)):
+            p = patch.object(settings, name, value)
+            p.start()
+            self.addCleanup(p.stop)
+        self.engine = create_async_engine(self.url, pool_size=5)
+        self.maker = async_sessionmaker(self.engine, expire_on_commit=False)
+
+        async def override():
+            async with self.maker() as session:
+                yield session
+
+        app.dependency_overrides[get_session] = override
+        async with self.engine.begin() as conn:
+            await conn.execute(text("TRUNCATE clients, sites, issues, events, notifications, presence RESTART IDENTITY CASCADE"))
+        async with self.maker() as session:
+            client = Client(name="Acme")
+            session.add(client)
+            await session.flush()
+            site = Site(client_id=client.id, name="acme-shop")
+            session.add(site)
+            await session.commit()
+            self.key = site.ingest_key
+        self.http = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
+
+    async def asyncTearDown(self):
+        await self.http.aclose()
+        await self.engine.dispose()
+
+    async def crash(self, message="cart is empty", level="error", type_="KeyError"):
+        r = await self.http.post(f"/ingest/{self.key}/event", json={"exception_type": type_, "message": message, "level": level})
+        self.assertEqual(r.status_code, 200, r.text)
+        return r.json()
+
+    async def rows(self):
+        async with self.maker() as session:
+            return list((await session.scalars(select(Notification).order_by(Notification.id))).all())
+
+    async def test_a_new_crash_writes_one_notification(self):
+        out = await self.crash()
+        self.assertEqual(out["state_change"], "new")
+        (row,) = await self.rows()
+        self.assertEqual((row.issue_id, row.change, row.status, row.severity), (out["issue_id"], "new", "pending", "P2"))
+
+    async def test_the_same_crash_again_writes_no_second_row(self):
+        await self.crash()
+        again = await self.crash()
+        self.assertIsNone(again["state_change"])
+        self.assertEqual(again["event_count"], 2)
+        self.assertEqual(len(await self.rows()), 1)
+
+    async def test_two_hundred_identical_crashes_are_one_issue_and_one_notification(self):
+        # the spike threshold is raised so only the dedupe is under test
+        with patch.object(settings, "spike_threshold", 10_000):
+            ids = {(await self.crash())["issue_id"] for _ in range(200)}
+        self.assertEqual(len(ids), 1)
+        self.assertEqual(len(await self.rows()), 1)
+
+    async def test_two_hundred_crashes_past_the_spike_threshold_are_a_few_notifications_not_two_hundred(self):
+        ids = {(await self.crash())["issue_id"] for _ in range(200)}
+        self.assertEqual(len(ids), 1)
+        changes = [r.change for r in await self.rows()]
+        self.assertEqual(changes[0], "new")
+        # the 51st event crosses the threshold: one spike alert for its window (two if the clock ticked over)
+        self.assertTrue(1 <= changes.count("spike") <= 2, changes)
+        self.assertLessEqual(len(changes), 3)
+
+    async def test_a_fatal_is_priority_two_and_a_warning_writes_nothing(self):
+        await self.crash(level="fatal", message="the process died")
+        await self.crash(level="warning", message="a heads up")
+        rows = await self.rows()
+        self.assertEqual([(r.severity, r.priority) for r in rows], [("P1", 2)])
+
+    async def test_a_resolved_issue_that_comes_back_is_a_second_notification(self):
+        out = await self.crash()
+        async with self.maker() as session:
+            issue = await session.get(Issue, out["issue_id"])
+            issue.status = "resolved"
+            await session.commit()
+        back = await self.crash()
+        self.assertEqual(back["state_change"], "regression")
+        self.assertEqual([r.change for r in await self.rows()], ["new", "regression"])
+
+    async def test_a_muted_issue_that_comes_back_writes_nothing(self):
+        out = await self.crash()
+        async with self.maker() as session:
+            issue = await session.get(Issue, out["issue_id"])
+            issue.status = "muted"
+            await session.commit()
+        again = await self.crash()
+        self.assertIsNone(again["state_change"])
+        self.assertEqual(len(await self.rows()), 1, "only the original")
+
+    async def test_a_spike_is_one_notification_per_window_not_one_per_event(self):
+        with patch.object(settings, "spike_threshold", 3):
+            states = [(await self.crash())["state_change"] for _ in range(10)]
+        self.assertEqual(states[0], "new")
+        self.assertIn("spike", states)
+        # a spike can straddle two ten-minute windows if the clock ticks over mid-test, but never more
+        changes = [r.change for r in await self.rows()]
+        self.assertEqual(changes[0], "new")
+        self.assertTrue(1 <= changes.count("spike") <= 2, changes)
+
+    async def test_the_event_and_its_notification_stand_or_fall_together(self):
+        with patch.object(outbox, "enqueue", side_effect=RuntimeError("the outbox is broken")):
+            with self.assertRaises(RuntimeError):
+                await self.crash()
+        async with self.maker() as session:
+            issues = (await session.scalars(select(Issue))).all()
+            events = (await session.execute(text("SELECT count(*) FROM events"))).scalar()
+        self.assertEqual((len(issues), events), (0, 0), "a crash that could not be queued must not be half-recorded")
+        self.assertEqual(await self.rows(), [])
 
 
 if __name__ == "__main__":

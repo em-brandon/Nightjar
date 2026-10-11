@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import fingerprint as fp
+from . import outbox
 from .config import settings
 from .db import get_session
 from .models import Event, Issue, Site
@@ -122,10 +123,19 @@ async def record_event(session: AsyncSession, site: Site, payload: EventIn) -> I
             occurred_at=now,
         )
     )
-    await session.commit()
 
+    # The spike check counts this event, so it is flushed first. It also happens BEFORE the commit:
+    # the notification for a state change is written in the same transaction that records it, so
+    # either both exist or neither does and a restart between the two loses nothing (decision #56).
+    await session.flush()
     if state_change is None and issue.status == "open" and await _is_spike(session, issue.id):
         state_change = "spike"
+    if state_change:
+        wall = datetime.now(UTC)
+        # a spike's time of change is its window, so one window is one alert however many events it holds
+        changed_at = outbox.window_start(wall, settings.spike_window_min) if state_change == "spike" else now
+        await outbox.enqueue(session, issue, site.name, state_change, changed_at, wall)
+    await session.commit()
 
     return IngestOut(
         issue_id=issue.id,
