@@ -21,6 +21,7 @@ from .outbox import sender_loop
 from .presence import public_router as presence_public_router
 from .presence import router as presence_router
 from .probe import probe_loop
+from .pushover import router as pushover_router
 from .rates import router as rates_router
 from .sites import router as sites_router
 from .stacks import ingest_router as stack_ingest_router
@@ -74,6 +75,8 @@ app.include_router(weather_router, dependencies=console)
 app.include_router(home_ingest_router)
 app.include_router(home_router, dependencies=console)
 app.include_router(presence_public_router)
+# Pushover cannot send the console token: this route holds its own secret in the path (hub/pushover.py)
+app.include_router(pushover_router)
 app.include_router(presence_router, dependencies=console)
 app.include_router(rates_router, dependencies=console)
 
