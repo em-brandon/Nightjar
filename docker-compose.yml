@@ -1,4 +1,4 @@
-# Nightjar on a VPS. Chunks 1-4 need nothing else.
+# Nightjar on a VPS: the hub, its database, and Caddy serving the console over TLS.
 #
 # Note the restart policies: `unless-stopped` everywhere. A watchdog that does
 # not come back after a reboot is worse than no watchdog, because its silence
@@ -39,13 +39,16 @@ services:
     # Also not published. Caddy is the only way in.
 
   caddy:
-    image: caddy:2-alpine
+    # Caddy with the compiled console and the Caddyfile baked in (deploy/caddy.Dockerfile). Rebuild it to change either:
+    #   docker compose build caddy && docker compose up -d caddy
+    build:
+      context: .
+      dockerfile: deploy/caddy.Dockerfile
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     environment:

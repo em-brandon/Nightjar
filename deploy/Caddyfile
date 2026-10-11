@@ -1,11 +1,29 @@
-# Caddy fetches and renews the TLS certificate on its own. There is nothing
-# else to configure for HTTPS.
+# The public face of Nightjar. Caddy fetches and renews the TLS certificate on its own, so there is nothing else to
+# configure for HTTPS. Built into the image by deploy/caddy.Dockerfile, together with the compiled console.
+#
+# One hostname serves everything: the console (static files), the API it calls (same origin, so no CORS), and the
+# endpoints other machines call. This hostname must be DNS-only in Cloudflare, never proxied: a challenge or a bot rule
+# in front of /ingest turns an error report into silence (docs/CLOUDFLARE.md).
 
 {$HUB_DOMAIN} {
 	encode zstd gzip
 
-	# Ingest is the only path clients' apps need. It authenticates by
-	# per-site key plus HMAC, so it is safe to expose.
+	header {
+		# HSTS tells a browser to use HTTPS only, for this hostname. It is hard to undo, so it starts at one day.
+		# Raise it (to a week, then six months) once nothing has broken. No includeSubDomains and no preload until
+		# every subdomain of this domain serves HTTPS (docs/DATA-PROTECTION.md).
+		Strict-Transport-Security "max-age=86400"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		# The console loads only its own files and calls only its own origin. Inline style attributes are allowed
+		# because React sets them; scripts are not.
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		-Server
+	}
+
+	# Reports from client apps. Authenticated by per-site key plus HMAC (or, for browsers, an origin-checked public key),
+	# so they are safe to expose.
 	handle /ingest/* {
 		reverse_proxy hub:8000
 	}
@@ -14,10 +32,31 @@
 		reverse_proxy hub:8000
 	}
 
-	# Everything else — the console, once chunk 3 exists — is yours only.
-	# Until real auth is in, keep it off the public internet entirely.
-	handle {
+	# Pushover calls this when a P1 is acknowledged on the phone. It carries its own secret in the path.
+	handle /pushover/ack/* {
 		reverse_proxy hub:8000
+	}
+
+	# The NFC presence tap (an iOS Shortcut). It carries its own token in the body.
+	handle /presence {
+		reverse_proxy hub:8000
+	}
+
+	# Everything the console reads and writes. The hub refuses it without the console token.
+	handle /api/* {
+		reverse_proxy hub:8000
+	}
+
+	# The console. Hashed asset files never change, so they cache for a year; index.html must be re-fetched, or a new
+	# deploy would not reach anyone who already has the old page.
+	handle {
+		root * /srv/console
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		@page not path /assets/*
+		header @page Cache-Control "no-cache"
+		try_files {path} /index.html
+		file_server
 	}
 
 	log {
