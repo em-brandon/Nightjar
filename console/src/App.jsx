@@ -2,7 +2,7 @@ import Splash from "./Splash.tsx";
 import { Dot } from "./ui.tsx";
 import { demoHome } from "./home.ts";
 import { demoMedia } from "./media.ts";
-import WeatherLine from "./WeatherLine.jsx";
+import WeatherLine from "./WeatherLine.tsx";
 import { ago, settled, tuning, useHashTab, useInactivity, useNow, usePoll } from "./hooks.ts";
 import Deploys from "./views/Deploys.jsx";
 import Idle from "./views/Idle.jsx";

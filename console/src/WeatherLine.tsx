@@ -1,8 +1,10 @@
 import { Cloud, CloudFog, CloudLightning, CloudMoon, CloudRain, CloudSnow, CloudSun, Gauge, MapPin, Moon, Mountain, Sun } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import type { Weather } from "./api/types.ts";
 import { weatherView } from "./weather.ts";
 
 // Each condition has its own colour (see .wx-icon in styles.css): a yellow sun, a pale moon, blue rain.
-const ICONS = {
+const ICONS: Record<string, LucideIcon> = {
   sun: Sun,
   moon: Moon,
   partly: CloudSun,
@@ -16,7 +18,7 @@ const ICONS = {
 
 // The wall's weather: a large coloured icon, the temperature, the condition, and beneath it the place,
 // its coordinates and the altitude. `compact` is the sidebar's one-line version.
-export default function WeatherLine({ weather, compact = false }) {
+export default function WeatherLine({ weather, compact = false }: { weather?: Weather | null; compact?: boolean }) {
   const v = weatherView(weather);
   if (!v) return null;
   if (v.state === "off") {

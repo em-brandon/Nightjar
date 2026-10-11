@@ -8,7 +8,7 @@ import { DemoTag, DiskBar } from "./Media.jsx";
 import PushCard from "../PushCard.tsx";
 import { demoPush, pushView } from "../push.ts";
 import StatusTray from "../StatusTray.jsx";
-import WeatherLine from "../WeatherLine.jsx";
+import WeatherLine from "../WeatherLine.tsx";
 import { Verdict } from "./Overview.jsx";
 
 const PER_PAGE = 2;
