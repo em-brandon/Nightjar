@@ -40,11 +40,11 @@ const pct = (part: number | null, total: number | null) => (total ? ((part ?? 0)
 // present would say the internet is fine while the machine that measures it is not answering.
 export function netView(h: Home, now: number) {
   if (!h) return null;
-  if (h.stale) return { state: "silent", text: "reporter silent" };
-  if (!h.net) return { state: "none", text: "no test yet" };
+  if (h.stale) return { state: "silent" as const, text: "reporter silent" };
+  if (!h.net) return { state: "none" as const, text: "no test yet" };
   const ageMin = (now - new Date(h.net.tested_at).getTime()) / 60_000;
   return {
-    state: ageMin > SPEED_OLD_MIN ? "old" : "ok",
+    state: ageMin > SPEED_OLD_MIN ? ("old" as const) : ("ok" as const),
     down: fmtMbps(h.net.down_mbps),
     up: h.net.up_mbps == null ? null : fmtMbps(h.net.up_mbps),
     latency: h.net.latency_ms == null ? null : `${Math.round(h.net.latency_ms)} ms`,
