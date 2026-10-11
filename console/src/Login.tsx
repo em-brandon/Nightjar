@@ -1,14 +1,14 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 
 // The console token is a shared secret, not a per-user password, and there is one
 // operator. The browser never keeps it: the hub answers a successful login with an
 // HttpOnly session cookie that page JavaScript cannot read.
-export default function Login({ onSuccess }) {
+export default function Login({ onSuccess }: { onSuccess: () => void }) {
   const [token, setToken] = useState("");
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const submit = async (e) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setError(null);
@@ -23,7 +23,7 @@ export default function Login({ onSuccess }) {
       setToken("");
       onSuccess();
     } catch (err) {
-      setError(err.message);
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
