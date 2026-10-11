@@ -171,6 +171,16 @@ class Behaviour(unittest.IsolatedAsyncioTestCase):
             action = await session.scalar(select(IssueAction).where(IssueAction.issue_id == issue.id, IssueAction.action == "resolve"))
         self.assertTrue(action.detail.startswith("auto:"), "a resolve by the hub says so")
 
+    async def test_recovery_stops_the_phone_repeating_for_an_outage_that_has_healed_itself(self):
+        await self.probe(self.prod_id, False, False)
+        # the P1 went out and is repeating on the phone
+        async with self.maker() as session:
+            await session.execute(text("UPDATE notifications SET status = 'sent', sent_at = now(), receipt = 'rcpt-up'"))
+            await session.commit()
+        await self.probe(self.prod_id, *[True] * 5)
+        (alert,) = await self.alerts()
+        self.assertIsNotNone(alert.dismissed_at, "the site is back: the push must not keep alarming")
+
     async def test_a_flapping_site_does_not_resolve_between_blips(self):
         await self.probe(self.prod_id, False, False)
         await self.probe(self.prod_id, True, True, False, True, True)

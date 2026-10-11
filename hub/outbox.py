@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from . import notify
 from .acks import record_acknowledgement
+from .api import acknowledged_ids
 from .config import settings
 from .db import SessionLocal
 from .models import Issue, Notification
@@ -117,10 +118,24 @@ async def claim_due(maker: async_sessionmaker[AsyncSession], now: datetime, limi
         return list(rows)
 
 
+async def _already_handled(session: AsyncSession, issue_id: int) -> bool:
+    """Whether someone has dealt with the incident since: it is no longer open, or it has been acknowledged."""
+    issue = await session.get(Issue, issue_id)
+    if issue is None or issue.status != "open":
+        return True
+    return issue.id in await acknowledged_ids(session, [issue.id])
+
+
 async def _finish(maker: async_sessionmaker[AsyncSession], n: Notification, now: datetime, error: str | None, retryable: bool, sent: notify.Sent | None) -> None:
     values: dict = {"claimed_at": None}
     if sent is not None:
         values.update(status="sent", sent_at=now, receipt=sent.receipt, last_error=None)
+        # The incident may have been acknowledged or resolved between queueing this and sending it. The push is
+        # already on its way and will repeat, so it is dismissed at once and the cancel pass stops it.
+        if sent.receipt:
+            async with maker() as check:
+                if await _already_handled(check, n.issue_id):
+                    values["dismissed_at"] = now
     elif retryable and n.attempts < settings.outbox_max_attempts:
         values.update(status="pending", next_attempt_at=now + backoff(n.attempts), last_error=error)
     else:
@@ -186,6 +201,8 @@ async def reconcile_receipts(maker: async_sessionmaker[AsyncSession], check: Che
                     Notification.receipt.is_not(None),
                     Notification.acked_at.is_(None),
                     Notification.expired_at.is_(None),
+                    # once someone has dealt with the incident, an expiry is no longer news
+                    Notification.dismissed_at.is_(None),
                     Notification.sent_at >= now - RECEIPT_GIVE_UP,
                 )
                 .order_by(Notification.sent_at)
@@ -207,6 +224,55 @@ async def reconcile_receipts(maker: async_sessionmaker[AsyncSession], check: Che
                 changed += 1
         await session.commit()
     return changed
+
+
+# ---------------------------------------------------------------- cancelling
+
+CancelFn = Callable[[str], Awaitable[notify.Cancelled]]
+CANCEL_BATCH = 10
+
+
+async def cancel_receipts(maker: async_sessionmaker[AsyncSession], cancel: CancelFn = notify.cancel_receipt, now: datetime | None = None) -> int:
+    """Tell Pushover to stop repeating pushes for incidents someone has dealt with.
+
+    A push is cancelled once it is sent, has a receipt, and its alert was dismissed (acknowledged, resolved, muted
+    or snoozed since), unless it was already acknowledged on the phone or has expired. The dismissal is written
+    with the action itself, so this pass is what makes it durable: a failed call is tried again on the next pass,
+    and a phone is never left alarming for something already handled. A refusal of the receipt is a settled
+    answer (it had expired, or been acknowledged) and is recorded as cancelled so it is not asked about again.
+    Returns how many were settled.
+    """
+    now = now or datetime.now(UTC)
+    settled = 0
+    async with maker() as session:
+        due = (
+            await session.scalars(
+                select(Notification)
+                .where(
+                    Notification.status == "sent",
+                    Notification.receipt.is_not(None),
+                    Notification.dismissed_at.is_not(None),
+                    Notification.cancelled_at.is_(None),
+                    Notification.acked_at.is_(None),
+                    Notification.expired_at.is_(None),
+                    Notification.sent_at >= now - RECEIPT_GIVE_UP,
+                )
+                .order_by(Notification.dismissed_at)
+                .limit(CANCEL_BATCH)
+            )
+        ).all()
+        for note in due:
+            try:
+                await cancel(note.receipt)
+            except notify.NotConfigured:
+                break
+            except notify.SendError as err:
+                log.warning("could not cancel the push for notification %s yet: %s", note.id, err)
+                continue
+            note.cancelled_at = now
+            settled += 1
+        await session.commit()
+    return settled
 
 
 # ---------------------------------------------------------------- the loop
@@ -272,6 +338,14 @@ async def sender_loop() -> None:
                 sender_state.last_error = type(err).__name__
             if healthy:
                 await heartbeat.beat(time.monotonic())
+            # Cancelling is time-sensitive (the phone is alarming), so it runs every pass, not on the receipt schedule.
+            if healthy and notify.configured():
+                try:
+                    await cancel_receipts(SessionLocal)
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    log.exception("cancel pass failed; will retry")
             # Receipts are asked about on their own, gentler schedule, and a failure here never stops sending.
             if notify.configured() and time.monotonic() - last_receipts >= settings.receipt_poll_s:
                 last_receipts = time.monotonic()

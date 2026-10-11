@@ -8,6 +8,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import fingerprint as fp
+from .acks import dismiss_alerts
 from .config import settings
 from .db import get_session
 from .ingest import _load_site, _verify, record_event
@@ -168,6 +169,7 @@ async def _auto_resolve(session, site, payload, timeline, now, still_bad) -> Non
                     detail=f"auto: {payload.stack} has been healthy for {settings.stack_healthy_min} minutes",
                 )
             )
+            await dismiss_alerts(session, issue.id)
             changed = True
     if changed:
         await session.commit()

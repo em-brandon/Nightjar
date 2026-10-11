@@ -149,6 +149,18 @@ class AlertsApi(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ids, {unanswered, failed})
         self.assertNotIn(unanswered, {n["id"] for n in await self.listed(status="undelivered")}, "undelivered is unchanged")
 
+    async def test_an_expired_p1_stops_needing_attention_once_the_incident_was_dealt_with(self):
+        handled = await self.add(status="sent", attempts=1, sent_at=T0, receipt="r-h", expired_at=T0, dismissed_at=T0 + timedelta(hours=1))
+        open_ = await self.add(status="sent", attempts=1, sent_at=T0, receipt="r-o", expired_at=T0)
+        ids = {n["id"] for n in await self.listed(status="attention")}
+        self.assertEqual(ids, {open_})
+        self.assertNotIn(handled, ids)
+
+    async def test_the_feed_says_when_an_alert_was_dismissed_and_its_push_cancelled(self):
+        await self.add(status="sent", attempts=1, sent_at=T0, receipt="r", dismissed_at=T0, cancelled_at=T0 + timedelta(seconds=5))
+        got = (await self.listed())[0]
+        self.assertEqual((got["dismissed_at"], got["cancelled_at"]), ("2026-10-12T09:00:00Z", "2026-10-12T09:00:05Z"))
+
     async def test_the_limit_is_honoured_and_bounded(self):
         for _ in range(5):
             await self.add()
@@ -289,6 +301,10 @@ class AlertsApi(unittest.IsolatedAsyncioTestCase):
         line = next(t for t in await self.log() if "NOT ACKNOWLEDGED" in t)
         self.assertIn("within 30 minutes", line)
         self.assertIn("may not have woken anyone", line)
+
+    async def test_the_log_says_when_the_phone_was_told_to_stop(self):
+        await self.add(status="sent", attempts=1, sent_at=T0, receipt="r", dismissed_at=T0, cancelled_at=T0 + timedelta(seconds=5))
+        self.assertTrue(any("Repeating push stopped on the phone" in t for t in await self.log()))
 
     async def test_an_expired_receipt_that_was_acknowledged_is_not_flagged(self):
         await self.add(status="sent", attempts=1, sent_at=T0, receipt="r1", expired_at=T0, acked_at=T0)

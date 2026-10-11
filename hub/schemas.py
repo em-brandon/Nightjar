@@ -240,6 +240,10 @@ class NotificationOut(BaseModel):
     acked_at: datetime | None
     # Pushover reported the receipt expired with nobody acknowledging it: the phone did not wake anyone
     expired_at: datetime | None
+    # someone dealt with the incident after this alert was sent, so it needs no more attention
+    dismissed_at: datetime | None
+    # Pushover confirmed it stopped this push repeating on the phone
+    cancelled_at: datetime | None
 
 
 class TestPushOut(BaseModel):

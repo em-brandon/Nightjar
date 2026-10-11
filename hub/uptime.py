@@ -21,6 +21,7 @@ import logging
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .acks import dismiss_alerts
 from .config import settings
 from .ingest import record_event
 from .models import Check, Issue, IssueAction, Site
@@ -87,6 +88,7 @@ async def reconcile_site(session: AsyncSession, site: Site) -> str | None:
             issue.status = "resolved"
             issue.snoozed_until = None
             session.add(IssueAction(issue_id=issue.id, action="resolve", detail=f"auto: {settings.uptime_recover_checks} checks in a row passed"))
+            await dismiss_alerts(session, issue.id)
             await session.commit()
             return "resolved"
         await session.rollback()  # release the lock taken above, if any

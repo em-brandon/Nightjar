@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import notify
+from .acks import dismiss_alerts
 from .api import acknowledged_ids, issue_out
 from .db import get_session
 from .models import Issue, IssueAction, Notification, Site
@@ -39,6 +40,9 @@ async def act_on_issue(
             detail = f"{body.hours}h"
 
     session.add(IssueAction(issue_id=issue.id, action=body.action, detail=detail))
+    if body.action != "reopen":
+        # acknowledged, resolved, muted or snoozed: any alert still repeating on the phone is now noise
+        await dismiss_alerts(session, issue.id)
     await session.commit()
 
     site = await session.get(Site, issue.site_id)
@@ -110,6 +114,8 @@ async def issue_log(
     ):
         at, text = alert_line(n)
         entries.append(LogEntry(at=at, kind="system", text=text))
+        if n.cancelled_at is not None:
+            entries.append(LogEntry(at=n.cancelled_at, kind="system", text="Repeating push stopped on the phone: the incident was dealt with"))
         if n.expired_at is not None and n.acked_at is None:
             minutes = notify.EMERGENCY_EXPIRE_S // 60
             entries.append(

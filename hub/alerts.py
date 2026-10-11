@@ -40,7 +40,8 @@ async def list_notifications(
             (Notification.status.in_(("pending", "sending"))) & (Notification.attempts > 0),
         ]
         if status == "attention":
-            conditions.append(Notification.expired_at.is_not(None) & Notification.acked_at.is_(None))
+            # an expired P1 stops needing attention once someone has dealt with the incident since
+            conditions.append(Notification.expired_at.is_not(None) & Notification.acked_at.is_(None) & Notification.dismissed_at.is_(None))
         query = query.where(or_(*conditions))
     return [NotificationOut.model_validate(n, from_attributes=True) for n in await session.scalars(query)]
 
