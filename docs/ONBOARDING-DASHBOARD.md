@@ -1,7 +1,8 @@
 # Onboarding dashboard (planned)
 
-> **Status: planned, not started. Next up.** The API half exists. This is the console screen on top of it, so a new
-> client app can be added, wired up and checked without a terminal.
+> **Status: built (2026-10-11), as the console's Sites tab.** A new client app can be added, wired up and checked without a
+> terminal. Written as `console/src/views/Sites.tsx` with the snippet generator in `console/src/snippets.ts`. The open questions at the
+> end are answered below the table.
 
 ## The problem
 
@@ -19,7 +20,7 @@ silence this project exists to distrust.
 | The Overview names production sites with no `url` | Built |
 | `GET /api/sites/health` has `last_event`, `last_check`, `monitored` per site | Built |
 | A reporter for each stack, with one set of environment variables | Built (`docs/REPORTERS.md`) |
-| **A screen for any of it** | **Not built** |
+| **A screen for any of it** | **Built** (Sites tab) |
 
 ## The screen
 
@@ -76,3 +77,23 @@ pairing look sites up by name), and per-client logins (decision #7).
    safe, but it does put a row in a real client's issue list. It could be marked as a test and resolved at once.
 3. **Where does the Gitea secret get stored?** The screen can only show the names. Writing into Gitea itself would
    need a Gitea token, which is a separate decision.
+
+## Answers, as built
+
+1. **Client: inline.** The client field is a free text box with the existing clients offered as suggestions, so a typo is the only
+   way to make a second "Kubasu Motors". Quicker than a separate step; revisit if it happens.
+2. **Test event: allowed on production, and resolved at once.** It is a `warning` (P3, digest only), marked by its type
+   `NightjarTestEvent`, and **left out of a site's "last reported" time**. Otherwise pressing the button would make a site whose app
+   was never wired up look as if it had reported. The panel says a test proves the hub side only. A second test re-opens the
+   resolved issue as a `regression`, which for a P3 is only another digest line.
+3. **Gitea secret: names only.** The screen shows `NIGHTJAR_URL`, `NIGHTJAR_KEY` and `NIGHTJAR_SECRET` to store; writing them
+   needs a Gitea token, still a separate decision.
+
+## Things found by running it
+
+- **The idle screen would have destroyed the form and the secret.** It starts after 5 minutes with no input and unmounts the tab.
+  The tab now asks the shell to hold it while a form is open or a secret is showing. Any future screen that holds unrecoverable
+  state should do the same through `setIdleHold`.
+- **A secret left on screen clears itself after 10 minutes**, so it is not readable on an unattended display.
+- The `.chip` class has no styles anywhere, so the Incidents filter buttons are unstyled. The Sites tab uses its own `sx-chip`;
+  Incidents is left as it was.

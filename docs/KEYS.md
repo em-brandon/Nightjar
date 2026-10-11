@@ -227,8 +227,9 @@ whenever a site is edited, since neither is secret.
 | **Console token** | Everything, including creating sites and muting issues | Change `CONSOLE_TOKEN` in the VPS `.env` and restart. Every session ends at once |
 | **Presence token** | Set home or away. This can only change which channels fire, never whether something alerts | Change `PRESENCE_TOKEN` and update the Shortcut |
 
-**Rotating an ingest secret.** There is no rotate endpoint yet, so it is one SQL statement. The old signatures
-stop working immediately, so have the new secret ready for the app before you run it:
+**Rotating an ingest secret.** Use **Rotate secret** on the site's row in the console's Sites tab (or
+`POST /api/sites/{id}/rotate-secret`). The new secret is shown once, and the old signatures stop working immediately, so have
+the app's settings open before you press it. If the console is not available, it is one SQL statement:
 
 ```bash
 NEW=$(python -c "import secrets; print(secrets.token_urlsafe(24))")
