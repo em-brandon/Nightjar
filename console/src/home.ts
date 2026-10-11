@@ -152,14 +152,14 @@ export const demoTraffic = (now: number): [number, number] => DEMO_TRAFFIC[Math.
 
 export function backupView(h: Home) {
   if (!h) return null;
-  if (h.stale) return { state: "silent", text: "reporter silent" };
+  if (h.stale) return { state: "silent" as const, text: "reporter silent" };
   // "not tracked" and "tracked, and nothing there" are different: the second is a problem.
-  if (!h.backup_configured) return { state: "untracked", text: "not tracked" };
-  if (h.backup_ok_at == null) return { state: "missing", text: "no backup found" };
+  if (!h.backup_configured) return { state: "untracked" as const, text: "not tracked" };
+  if (h.backup_ok_at == null) return { state: "missing" as const, text: "no backup found" };
   const age = fmtAgeH(h.backup_age_h);
   return (h.backup_age_h ?? 0) > BACKUP_STALE_H
-    ? { state: "stale", text: `${age} old`, age }
-    : { state: "ok", text: `${age} ago`, age };
+    ? { state: "stale" as const, text: `${age} old`, age }
+    : { state: "ok" as const, text: `${age} ago`, age };
 }
 
 // ---------------------------------------------------------------- client requests
