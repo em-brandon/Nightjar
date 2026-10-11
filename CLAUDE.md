@@ -51,8 +51,8 @@ Everything else waits.
 
 **Console is TypeScript.** Every file under `console/src` is `.ts` or `.tsx` (strict), and its API types are generated from the hub's own
 schemas: `python tools/export_openapi.py && (cd console && npm run types)` after any change to a hub response model, then commit both
-generated files. A Python test fails when they are stale. History and the one deliberate departure (TypeScript 5.9, not 7) in
-`docs/TYPESCRIPT-MIGRATION.md`. Write new console files as `.ts` or `.tsx`.
+generated files. A Python test fails when they are stale. The console checks with TypeScript 7; the generator is a separate package
+(`tools/typegen`, TypeScript 5.9) because it cannot run under 7. History in `docs/TYPESCRIPT-MIGRATION.md`. Write new console files as `.ts` or `.tsx`.
 
 **Planned, not started:** the client sites go behind Cloudflare's free plan, with **Caddy staying** as the web server (nginx
 was considered and not needed, decision #53). The checklist and two small tested additions to the Caddyfile are in

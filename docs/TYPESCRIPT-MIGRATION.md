@@ -4,9 +4,10 @@
 > `hooks.ts` and `ui.tsx`, the shell, the seven views, and tightening (`allowJs` dropped, nothing in `console/src` is
 > JavaScript but the `.mjs` tests). Kept as the record of how it was done and why.
 >
-> **TypeScript is pinned at 5.9.3, not 7.** `openapi-typescript` 7 declares a peer of `typescript ^5`, so 7.0.2 would not
-> install beside it, and forcing the mismatch would risk the generator running on a compiler it was not built for.
-> Revisit when `openapi-typescript` supports 7.
+> **The console type-checks with TypeScript 7; the generator runs on 5.9.** `openapi-typescript` needs TypeScript 5's
+> JavaScript API, which 7 (the native compiler) does not have, and it crashes on load under 7. So it lives in its own
+> package, `tools/typegen/`, pinned to 5.9.3, and `npm run types` in `console/` runs it from there. Nothing in the console
+> imports it. Revisit when `openapi-typescript` supports 7, and the two can be one package again.
 >
 > **Found by typing:** `rateView` threw when the feed said `available` but sent no `rate` (fixed first, with a test, in
 > its own commit).

@@ -1092,8 +1092,9 @@ the snapshot is stale. A hub change that the console has not caught up with then
 **Update, 2026-10-11: done.** The whole console is TypeScript under `strict`, with types generated from the hub and a Python drift
 test, one module or view per commit. Three things worth knowing:
 
-- **TypeScript is 5.9, not 7.** `openapi-typescript` 7 declares a peer of `typescript ^5` and would not install beside 7.0.2.
-  Forcing the mismatch risks the generator running on a compiler it was not built for. Revisit when it supports 7.
+- **The console uses TypeScript 7; the type generator uses 5.9, in its own package.** `openapi-typescript` needs TypeScript 5's
+  JavaScript API, which 7 does not have, and crashes under it. `tools/typegen/` pins it to 5.9.3 beside the console, so each tool
+  gets the compiler it was built for. Revisit when the generator supports 7.
 - **Typing found a real bug.** `rateView` threw when the rate feed said `available` but sent no `rate`, which would have blanked the
   wall. It was fixed first, in its own commit with a test, as the migration rules require.
 - **`noUncheckedIndexedAccess` is off.** A trial gave 12 errors and no bugs: every one was an array index the caller had already
