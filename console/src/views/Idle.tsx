@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { CircleX, Clapperboard, Inbox, FlaskConical, Rocket, TrendingUp, TriangleAlert, type LucideIcon } from "lucide-react";
-import type { Deploy, Issue, MediaSnapshot, Rising, Ticket } from "../api/types.ts";
+import { BellOff, CircleX, Clapperboard, Inbox, FlaskConical, Rocket, TrendingUp, TriangleAlert, type LucideIcon } from "lucide-react";
+import type { Alert, Deploy, Issue, MediaSnapshot, Rising, Ticket } from "../api/types.ts";
 import type { Feeds } from "../feeds.ts";
+import { alertNotice } from "../alerts.ts";
 import { ago, plural, tuning, useNow, useReveal } from "../hooks.ts";
 import { Odometer, Pill, Sev, SiteCard, Spark } from "../ui.tsx";
 import { requestsView } from "../home.ts";
@@ -39,6 +40,20 @@ function RequestsCue({ tickets }: { tickets: Ticket[] }) {
   );
 }
 
+// An alert that did not do its job (failed, being retried, or a P1 nobody acknowledged) gets a bell and a count
+// beside the incidents heading, so the wall never reads as all-clear while the phone has not been reached. The
+// words are in the tooltip; the site and the reason are detail and stay in the console.
+function AlertCue({ alerts }: { alerts: Alert[] }) {
+  const notice = alertNotice(alerts);
+  if (!notice) return null;
+  return (
+    <span className={`req-cue ${notice.tone === "bad" ? "al-cue-bad" : "al-cue-warn"}`} title={notice.text} aria-label={notice.text}>
+      <BellOff size={15} strokeWidth={2} aria-hidden="true" />
+      {alerts.length}
+    </span>
+  );
+}
+
 // Hidden detail is blurred, not replaced: the shape of a title stays, its words do not.
 // aria-hidden keeps a screen reader from reading what the screen is hiding.
 function Veil({ revealed, children }: { revealed: boolean; children?: ReactNode }) {
@@ -69,7 +84,7 @@ const mmss = (ms: number) => {
 // Tier 1 rule: hide detail, not names. Site, severity, count and age are always
 // shown; the title (which can carry hostnames and identifiers) only when
 // revealed.
-function IncidentsPanel({ issues, tickets, blind, revealed, now }: { issues: Issue[]; tickets: Ticket[]; blind: boolean; revealed: boolean; now: number }) {
+function IncidentsPanel({ issues, tickets, alerts, blind, revealed, now }: { issues: Issue[]; tickets: Ticket[]; alerts: Alert[]; blind: boolean; revealed: boolean; now: number }) {
   const open = issues.filter((i) => i.status === "open");
   const shown = open.slice(0, 5);
   return (
@@ -77,6 +92,7 @@ function IncidentsPanel({ issues, tickets, blind, revealed, now }: { issues: Iss
       <header>
         <PanelTitle icon={TriangleAlert}>Active incidents</PanelTitle>
         <RequestsCue tickets={tickets} />
+        <AlertCue alerts={alerts} />
         <span className="count"><Odometer value={open.length} /></span>
       </header>
       {open.length === 0 ? (
@@ -296,7 +312,7 @@ export default function Idle({ f, go }: { f: Feeds; go: Feeds["go"] }) {
             visible.map((s) => <SiteCard key={s.id} site={s} now={now} big />)
           )}
         </div>
-        <IncidentsPanel issues={f.issues} tickets={f.tickets} blind={f.hubError} revealed={revealed} now={now} />
+        <IncidentsPanel issues={f.issues} tickets={f.tickets} alerts={f.attention} blind={f.hubError} revealed={revealed} now={now} />
         <DeployPanel title="Production deploys" icon={Rocket} tone="tone-orange" deploys={prodDeploys} revealed={revealed} now={now} />
         <DeployPanel title="Staging deploys" icon={FlaskConical} tone="tone-green" deploys={stagingDeploys} revealed={revealed} now={now} />
         <RisingPanel rising={f.rising} blind={f.hubError} revealed={revealed} />

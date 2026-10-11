@@ -518,7 +518,7 @@ code { font-family: var(--mono); font-size: 0.92em; color: var(--dim); }
 /* ================= reduced motion ================= */
 @media (prefers-reduced-motion: reduce) {
   .odo-strip, .g-fill, .tile, .tab, .splash, .ln, .ln .st, .carousel i, .membar i { transition: none; }
-  .dot.down, .pill.run, .cursor, .drawer, .idle-sites, .il-title, .tone-yellow h2, .tone-yellow .count, .req-overdue, .bar-motion, .bar-rate, .pc-indeterminate i { animation: none; }
+  .dot.down, .pill.run, .cursor, .drawer, .idle-sites, .il-title, .tone-yellow h2, .tone-yellow .count, .req-overdue, .al-cue-bad, .bar-motion, .bar-rate, .pc-indeterminate i { animation: none; }
   .push-card, .push-card.on { transition: none; }
   .veil { transition: none; }
 }
@@ -736,6 +736,8 @@ code { font-family: var(--mono); font-size: 0.92em; color: var(--dim); }
 /* ================= client requests: a nudge, not a card ================= */
 .req-cue { display: inline-flex; align-items: center; gap: 5px; align-self: center; margin-left: 4px; padding: 2px 9px; border: 1px solid var(--line-hi); border-radius: 999px; font-family: var(--mono); font-size: 13px; color: var(--dim); white-space: nowrap; }
 .req-overdue { color: var(--amber); border-color: rgba(232, 163, 61, 0.5); background: rgba(232, 163, 61, 0.08); animation: breathe 2.4s ease-in-out infinite; }
+.al-cue-bad { color: var(--red); border-color: rgba(224, 82, 82, 0.55); background: rgba(224, 82, 82, 0.1); animation: breathe 1.6s ease-in-out infinite; }
+.al-cue-warn { color: var(--amber); border-color: rgba(232, 163, 61, 0.5); background: rgba(232, 163, 61, 0.08); }
 
 /* Short screens, again: the bottom rows take a fixed slice so the site cards keep their footers. */
 @media (min-width: 1101px) and (max-height: 960px) {
