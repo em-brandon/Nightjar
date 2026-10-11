@@ -1118,6 +1118,8 @@ export interface components {
         };
         /** SiteHealthOut */
         SiteHealthOut: {
+            /** Client */
+            client: string;
             /** Env */
             env: string;
             /** Id */

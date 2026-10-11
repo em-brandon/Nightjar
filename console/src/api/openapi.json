@@ -1419,6 +1419,10 @@
       },
       "SiteHealthOut": {
         "properties": {
+          "client": {
+            "title": "Client",
+            "type": "string"
+          },
           "env": {
             "title": "Env",
             "type": "string"
@@ -1548,6 +1552,7 @@
         "required": [
           "id",
           "name",
+          "client",
           "env",
           "state",
           "open_p1",
