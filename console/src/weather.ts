@@ -60,9 +60,9 @@ export function uvView(w: Reading) {
 // reading is stated plainly and never dressed up as a current one.
 export function weatherView(w: Reading) {
   if (!w) return null; // the feed has not answered yet: draw nothing rather than flash a gap
-  if (!w.available) return { state: "off", place: w.place, text: "weather unavailable" };
+  if (!w.available) return { state: "off" as const, place: w.place, text: "weather unavailable" };
   return {
-    state: w.stale ? "old" : "ok",
+    state: w.stale ? ("old" as const) : ("ok" as const),
     place: w.place,
     temp: fmtTemp(w.temperature_c),
     feels: w.feels_like_c != null && Math.round(w.feels_like_c) !== Math.round(w.temperature_c ?? 0) ? fmtTemp(w.feels_like_c) : null,
