@@ -29,8 +29,8 @@ The scarce resource is **attention at inconvenient hours**, not compute.
 **Chunk 1: done.** Stack trace in, one deduplicated issue out. Verified: 200
 crashes with varying IPs and retry counts collapse to a single row.
 
-**Chunk 3: done, and grown.** React console with six tabs (Overview, Incidents,
-Requests, Deploys, Staging, Media), an uptime probe, incident actions with an audit
+**Chunk 3: done, and grown.** React console with seven tabs (Overview, Incidents,
+Requests, Deploys, Staging, Media, Sites), an uptime probe, incident actions with an audit
 trail, client-request tickets and CI deploy reports. 30-second polling. Runs
 locally against the dev database; needs no paid service.
 
@@ -63,8 +63,11 @@ HSTS on the hub's Caddyfile, encrypted backups, per-site secrets derived from a 
 production secrets as mounted files, an audit trail for sites and secrets, and a leak runbook. See `docs/DATA-PROTECTION.md`, which also
 records what is and is not encrypted today.
 
-**Next up:** an onboarding screen in the console: add a site, see its keys once with a ready-made setup snippet for its
-stack, and watch for its first report. The API half exists; the plan is in `docs/ONBOARDING-DASHBOARD.md`.
+**Onboarding screen: built** (the console's Sites tab). Add a site, see its keys once beside a setup snippet for its stack, and watch
+for its first report. Hub: `GET /api/sites`, `POST /api/sites/{id}/rotate-secret`, `POST /api/sites/{id}/test-event`. Snippets are
+`console/src/snippets.ts`. A site's last-reported time ignores the console's own test events, so pressing the test button can never
+make an unwired site look wired. The Sites tab holds the idle screen off while a form is open or a secret is on screen. Details in
+`docs/ONBOARDING-DASHBOARD.md`. Not built: deleting or renaming a site, and writing secrets into Gitea.
 
 ---
 
