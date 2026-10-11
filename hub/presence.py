@@ -33,6 +33,11 @@ async def _current(session: AsyncSession) -> Presence | None:
     return await session.scalar(select(Presence).order_by(Presence.created_at.desc(), Presence.id.desc()).limit(1))
 
 
+async def effective_state(session: AsyncSession, now: datetime) -> str:
+    """"home" or "away" right now, for the alert policy. Away on expiry or with no record at all."""
+    return effective(await _current(session), now).state
+
+
 async def _set(session: AsyncSession, body: PresenceIn) -> PresenceOut:
     now = datetime.now(UTC)
     row = Presence(state=body.state, source=body.source, expires_at=now + timedelta(minutes=body.ttl_minutes))
