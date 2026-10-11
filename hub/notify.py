@@ -6,6 +6,7 @@ means, so a push that could not be sent is recorded and retried and shown, never
 """
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 import httpx
 
@@ -13,6 +14,7 @@ from .config import settings
 from .models import Notification
 
 PUSHOVER_URL = "https://api.pushover.net/1/messages.json"
+RECEIPT_URL = "https://api.pushover.net/1/receipts/{receipt}.json"
 TIMEOUT_S = 10.0
 
 # Priority 2 repeats every `retry` seconds until acknowledged or `expire` seconds pass (Pushover's
@@ -111,3 +113,50 @@ async def send(n: Notification, client: httpx.AsyncClient | None = None) -> Sent
 
     receipt = body.get("receipt")
     return Sent(receipt=str(receipt) if receipt else None)
+
+
+@dataclass(frozen=True)
+class ReceiptState:
+    acknowledged: bool
+    acknowledged_at: datetime | None
+    # the retries have stopped: if nobody acknowledged by now, nobody will
+    expired: bool
+
+
+async def check_receipt(receipt: str, client: httpx.AsyncClient | None = None) -> ReceiptState:
+    """Ask Pushover what became of a priority 2 push. This is the only way to learn it expired
+    unanswered: the callback fires on acknowledgement alone. Pushover asks for no more than one request
+    every 5 seconds, which the caller's schedule respects."""
+    if not configured():
+        raise NotConfigured("Pushover is not configured (set PUSHOVER_TOKEN and PUSHOVER_USER)")
+
+    own = client is None
+    client = client or httpx.AsyncClient(timeout=TIMEOUT_S)
+    try:
+        try:
+            res = await client.get(RECEIPT_URL.format(receipt=receipt), params={"token": settings.pushover_token})
+        except httpx.TimeoutException as err:
+            raise SendError("Pushover timed out", retryable=True) from err
+        except httpx.HTTPError as err:
+            # the class name only: the message can carry the request URL, which holds the token
+            raise SendError(f"Pushover unreachable ({type(err).__name__})", retryable=True) from err
+    finally:
+        if own:
+            await client.aclose()
+
+    if res.status_code >= 500 or res.status_code == 429:
+        raise SendError(f"Pushover answered {res.status_code}", retryable=True)
+    try:
+        body = res.json()
+    except ValueError:
+        raise SendError(f"Pushover answered {res.status_code} with something that was not JSON", retryable=False) from None
+    if res.status_code != 200 or body.get("status") != 1:
+        errors = body.get("errors") if isinstance(body.get("errors"), list) else []
+        raise SendError("Pushover refused the receipt check: " + ("; ".join(str(e) for e in errors)[:200] or f"status {res.status_code}"), retryable=False)
+
+    at = body.get("acknowledged_at") or 0
+    return ReceiptState(
+        acknowledged=body.get("acknowledged") == 1,
+        acknowledged_at=datetime.fromtimestamp(int(at), UTC) if at else None,
+        expired=body.get("expired") == 1,
+    )

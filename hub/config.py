@@ -65,6 +65,10 @@ class Settings(BaseSettings):
     outbox_backoff_s: list[int] = [30, 120, 600, 1800, 3600]
     # A row left "sending" by a crash is taken again once it has been claimed this long.
     outbox_lease_s: int = 120
+    # How often the sender asks Pushover about the receipts of priority 2 pushes it has sent, to learn that
+    # one was acknowledged (when the callback cannot reach the hub) or expired unanswered. Pushover asks for
+    # no faster than once every 5 seconds; this is far gentler.
+    receipt_poll_s: int = 30
     # Run the sender loop in this process (default true). Only the loop is switched off, never the queueing.
     outbox_enabled: bool = True
     # An external dead-man's switch (DEPLOY.md section 7, for example a healthchecks.io ping URL). The sender

@@ -21,6 +21,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from . import notify
+from .acks import record_acknowledgement
 from .config import settings
 from .db import SessionLocal
 from .models import Issue, Notification
@@ -158,6 +159,56 @@ async def run_once(maker: async_sessionmaker[AsyncSession], send: SendFn = notif
     return len(rows)
 
 
+# ---------------------------------------------------------------- receipts
+
+CheckFn = Callable[[str], Awaitable[notify.ReceiptState]]
+RECEIPT_BATCH = 10
+# A receipt this old has long since settled either way: stop asking about it.
+RECEIPT_GIVE_UP = timedelta(hours=24)
+
+
+async def reconcile_receipts(maker: async_sessionmaker[AsyncSession], check: CheckFn = notify.check_receipt, now: datetime | None = None) -> int:
+    """Ask Pushover about priority 2 pushes that are neither acknowledged nor known to have expired.
+
+    Two things are learned. An acknowledgement the callback never delivered (a hub Pushover cannot reach,
+    as on a laptop) is recorded the same way the callback would. And a receipt that expired with nobody
+    acknowledging it is stamped, because that is a P1 that did not get a human and the console must say
+    so. A failed check changes nothing and is tried again on the next pass. Returns how many changed.
+    """
+    now = now or datetime.now(UTC)
+    changed = 0
+    async with maker() as session:
+        due = (
+            await session.scalars(
+                select(Notification)
+                .where(
+                    Notification.status == "sent",
+                    Notification.receipt.is_not(None),
+                    Notification.acked_at.is_(None),
+                    Notification.expired_at.is_(None),
+                    Notification.sent_at >= now - RECEIPT_GIVE_UP,
+                )
+                .order_by(Notification.sent_at)
+                .limit(RECEIPT_BATCH)
+            )
+        ).all()
+        for note in due:
+            try:
+                state = await check(note.receipt)
+            except notify.NotConfigured:
+                break
+            except notify.SendError as err:
+                log.warning("receipt check failed for notification %s: %s", note.id, err)
+                continue
+            if state.acknowledged:
+                changed += await record_acknowledgement(session, note, state.acknowledged_at or now)
+            elif state.expired:
+                note.expired_at = now
+                changed += 1
+        await session.commit()
+    return changed
+
+
 # ---------------------------------------------------------------- the loop
 
 BATCH = 10
@@ -205,6 +256,7 @@ async def sender_loop() -> None:
     only after a pass that completed, so a sender that has died or is stuck stops pinging and gets noticed."""
     async with httpx.AsyncClient(timeout=10.0) as http:
         heartbeat = Heartbeat(http)
+        last_receipts = 0.0
         while True:
             handled = 0
             healthy = False
@@ -220,5 +272,14 @@ async def sender_loop() -> None:
                 sender_state.last_error = type(err).__name__
             if healthy:
                 await heartbeat.beat(time.monotonic())
+            # Receipts are asked about on their own, gentler schedule, and a failure here never stops sending.
+            if notify.configured() and time.monotonic() - last_receipts >= settings.receipt_poll_s:
+                last_receipts = time.monotonic()
+                try:
+                    await reconcile_receipts(SessionLocal)
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    log.exception("receipt check pass failed; will retry")
             # a full batch means there may be more waiting, so do not sleep
             await asyncio.sleep(0 if handled >= BATCH else settings.outbox_poll_s)
