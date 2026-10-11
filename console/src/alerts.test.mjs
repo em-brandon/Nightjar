@@ -1,7 +1,7 @@
 // What the console says about alerts that did not reach the phone. Run with: npm test
 
 import assert from "node:assert/strict";
-import { alertNotice } from "./alerts.ts";
+import { alertNotice, alertState, senderHealth } from "./alerts.ts";
 
 const alert = (over) => ({ id: 1, site: "acme-shop", status: "failed", last_error: "Pushover timed out", created_at: "2026-10-12T09:00:00Z", ...over });
 
@@ -34,5 +34,48 @@ const detail = alertNotice([
 assert.equal(detail, "new-site: fresh reason");
 assert.equal(alertNotice([alert({ last_error: null })]).detail, "acme-shop: no reason recorded", "never a blank reason");
 console.log("  ok   the detail is the newest failure, and never blank");
+
+// a P1 that expired with nobody acknowledging it: sent, but the phone did not wake anyone
+const unacked = (over) => alert({ status: "sent", last_error: null, expired_at: "2026-10-12T09:30:00Z", acked_at: null, title: "ProcessExit: died", ...over });
+const u = alertNotice([unacked()]);
+assert.equal(u.tone, "bad", "a P1 nobody answered is red");
+assert.match(u.text, /^1 alert was not acknowledged, so your phone may not have woken you$/);
+assert.equal(u.detail, "acme-shop: ProcessExit: died");
+assert.match(alertNotice([unacked(), unacked({ id: 2 })]).text, /^2 alerts were not acknowledged/);
+assert.equal(alertNotice([unacked({ acked_at: "2026-10-12T09:31:00Z" })]), null, "acknowledged after all: nothing to say");
+assert.equal(alertNotice([unacked({ expired_at: null })]), null, "sent and still in flight is not a problem yet");
+console.log("  ok   a P1 that expired unacknowledged is red and says the phone may not have woken anyone");
+
+const both = alertNotice([alert(), unacked({ id: 2 }), alert({ id: 3, status: "pending" })]);
+assert.equal(both.tone, "bad");
+assert.equal(both.text, "1 alert could not be sent to your phone · 1 alert was not acknowledged, so your phone may not have woken you · 1 more being retried");
+console.log("  ok   failed, unacknowledged and retrying are counted separately in one notice");
+
+// ---- one alert's label
+const st = (over) => alertState(alert(over));
+assert.deepEqual(st({ status: "failed" }), { label: "failed", tone: "bad" });
+assert.deepEqual(st({ status: "sent", priority: 0, acked_at: null, expired_at: null }), { label: "sent", tone: "ok" });
+assert.equal(st({ status: "sent", priority: 2, acked_at: null, expired_at: null }).label, "sent · awaiting acknowledgement", "a P1 is not done until someone answers");
+assert.deepEqual(st({ status: "sent", priority: 2, acked_at: "2026-10-12T09:01:00Z" }), { label: "acknowledged", tone: "ok" });
+assert.deepEqual(st({ status: "sent", priority: 2, expired_at: "2026-10-12T09:30:00Z", acked_at: null }), { label: "not acknowledged", tone: "bad" });
+assert.equal(st({ status: "pending", attempts: 0 }).label, "queued");
+assert.deepEqual(st({ status: "pending", attempts: 2 }), { label: "retrying (attempt 2)", tone: "warn" });
+assert.equal(st({ status: "sending", attempts: 1 }).label, "sending");
+console.log("  ok   each alert is labelled for what matters: failed, awaiting acknowledgement, not acknowledged");
+
+// ---- the sender
+const NOW = Date.parse("2026-10-12T09:00:00Z");
+const facts = (over) => ({ sender_enabled: true, sender_poll_s: 5, sender_last_pass_at: "2026-10-12T08:59:56Z", sender_last_error: null, ...over });
+assert.deepEqual(senderHealth(facts(), NOW), { state: "ok", tone: "ok", text: "running, last pass 4s ago" });
+assert.equal(senderHealth(facts({ sender_enabled: false }), NOW).state, "off");
+assert.equal(senderHealth(facts({ sender_enabled: false }), NOW).tone, "bad", "a switched-off sender is a problem, not a setting");
+assert.equal(senderHealth(facts({ sender_last_pass_at: null }), NOW).state, "starting");
+const stalled = senderHealth(facts({ sender_last_pass_at: "2026-10-12T08:55:00Z" }), NOW);
+assert.deepEqual([stalled.state, stalled.tone, stalled.text], ["stalled", "bad", "stalled: last pass 5m ago"]);
+assert.equal(senderHealth(facts({ sender_last_pass_at: "2026-10-12T08:59:40Z" }), NOW).state, "ok", "20s is within a few missed polls");
+const failing = senderHealth(facts({ sender_last_error: "OperationalError" }), NOW);
+assert.deepEqual([failing.state, failing.tone], ["ok", "warn"]);
+assert.match(failing.text, /OperationalError/);
+console.log("  ok   a sender that is off, stalled or failing is said plainly");
 
 console.log("alert notice rules passed");
