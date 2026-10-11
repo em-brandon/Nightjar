@@ -89,6 +89,12 @@ class Configured(unittest.TestCase):
         self.assertEqual(form["message"], "KeyError: cart is empty (is back)")
         self.assertEqual(sent.receipt, "rcpt123")
 
+    def test_a_test_push_has_plain_words_with_no_severity_or_change(self):
+        fake = FakePushover()
+        self.send(note(severity="P3", change="test", site="Nightjar", title="Test push. It works."), fake)
+        form = fake.form()
+        self.assertEqual((form["title"], form["message"]), ("Nightjar", "Test push. It works."))
+
     def test_a_quiet_push_carries_its_negative_priority(self):
         fake = FakePushover()
         self.send(note(priority=-1), fake)

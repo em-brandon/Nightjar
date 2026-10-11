@@ -57,8 +57,9 @@ def build(n: Notification) -> dict[str, str | int]:
     fields: dict[str, str | int] = {
         "token": settings.pushover_token,
         "user": settings.pushover_user,
-        "title": f"{n.severity} {n.site}"[:250],
-        "message": f"{n.title} ({CHANGE_WORDS.get(n.change, n.change)})"[:1024],
+        # a test push (the console's Send a test push button) is not about an incident, so it has no severity or change
+        "title": (n.site if n.change == "test" else f"{n.severity} {n.site}")[:250],
+        "message": (n.title if n.change == "test" else f"{n.title} ({CHANGE_WORDS.get(n.change, n.change)})")[:1024],
         "priority": n.priority,
     }
     if settings.hub_public_url:

@@ -238,6 +238,32 @@ class NotificationOut(BaseModel):
     acked_at: datetime | None
 
 
+class TestPushOut(BaseModel):
+    """What happened to a test push. Always an answer, never an error status, so the console can show why."""
+
+    sent: bool
+    error: str | None = None
+    # whether trying again might work: a timeout might clear, a rejected token will not
+    retryable: bool | None = None
+
+
+class AlertsStatusOut(BaseModel):
+    """Whether the alert path can work, and what it is doing. Never carries a secret: only whether one is set."""
+
+    pushover_configured: bool
+    # acknowledging a P1 on the phone needs Pushover to reach the hub: a public address and a callback secret
+    callback_configured: bool
+    deadman_configured: bool
+    sender_enabled: bool
+    sender_poll_s: float
+    sender_last_pass_at: datetime | None
+    sender_last_error: str | None
+    pending: int
+    retrying: int
+    failed: int
+    sent_24h: int
+
+
 TicketKind = Literal["change", "report", "access"]
 
 

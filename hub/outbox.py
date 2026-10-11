@@ -163,6 +163,18 @@ async def run_once(maker: async_sessionmaker[AsyncSession], send: SendFn = notif
 BATCH = 10
 
 
+class SenderState:
+    """What the sender last did, for the console's status panel. In memory and per process, which is
+    right because the hub is one process (CLAUDE.md); the external dead-man's switch is what notices a
+    hub that is not running at all."""
+
+    last_pass_at: datetime | None = None
+    last_error: str | None = None
+
+
+sender_state = SenderState()
+
+
 class Heartbeat:
     """Pings the external dead-man's switch, but only when asked after a healthy pass, and no more often
     than `deadman_interval_s`. A failed ping is logged by class name (the URL is a secret) and retried on
@@ -199,10 +211,13 @@ async def sender_loop() -> None:
             try:
                 handled = await run_once(SessionLocal, limit=BATCH)
                 healthy = True
+                sender_state.last_pass_at = datetime.now(UTC)
+                sender_state.last_error = None
             except asyncio.CancelledError:
                 raise
-            except Exception:
+            except Exception as err:
                 log.exception("outbox pass failed; will retry")
+                sender_state.last_error = type(err).__name__
             if healthy:
                 await heartbeat.beat(time.monotonic())
             # a full batch means there may be more waiting, so do not sleep

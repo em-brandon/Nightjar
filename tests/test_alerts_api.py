@@ -11,7 +11,7 @@ import sys
 import unittest
 import uuid
 from datetime import UTC, datetime, timedelta
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -20,7 +20,7 @@ from sqlalchemy import pool, text  # noqa: E402
 from sqlalchemy.engine import make_url  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
 
-from hub import migrate  # noqa: E402
+from hub import migrate, notify, outbox  # noqa: E402
 from hub.config import settings  # noqa: E402
 from hub.db import get_session  # noqa: E402
 from hub.main import app  # noqa: E402
@@ -150,6 +150,106 @@ class AlertsApi(unittest.IsolatedAsyncioTestCase):
     async def test_an_unknown_status_filter_is_refused(self):
         r = await self.http.get("/api/notifications", params={"status": "bogus"})
         self.assertEqual(r.status_code, 422)
+
+    # ---------------------------------------------------------------- status
+
+    async def status(self):
+        r = await self.http.get("/api/notifications/status")
+        self.assertEqual(r.status_code, 200, r.text)
+        return r.json(), r.text
+
+    async def test_status_says_what_is_configured_and_never_shows_a_secret(self):
+        with patch.multiple(settings, pushover_token="tok-SECRET", pushover_user="usr-SECRET", deadman_url="https://hc-ping.com/SECRET-UUID",
+                            hub_public_url="https://hub.example", pushover_callback_token="cb-SECRET"):
+            body, raw = await self.status()
+        self.assertEqual((body["pushover_configured"], body["callback_configured"], body["deadman_configured"]), (True, True, True))
+        self.assertNotIn("SECRET", raw, "only whether a secret is set, never the secret")
+
+    async def test_status_says_when_nothing_is_configured(self):
+        with patch.multiple(settings, pushover_token="", pushover_user="", deadman_url="", hub_public_url="", pushover_callback_token=""):
+            body, _ = await self.status()
+        self.assertEqual((body["pushover_configured"], body["callback_configured"], body["deadman_configured"]), (False, False, False))
+
+    async def test_a_callback_needs_both_the_public_address_and_the_secret(self):
+        with patch.multiple(settings, hub_public_url="https://hub.example", pushover_callback_token=""):
+            self.assertFalse((await self.status())[0]["callback_configured"])
+        with patch.multiple(settings, hub_public_url="", pushover_callback_token="x"):
+            self.assertFalse((await self.status())[0]["callback_configured"])
+
+    async def test_status_counts_what_is_waiting_retrying_failed_and_recently_sent(self):
+        now = datetime.now(UTC)
+        await self.add(status="pending", attempts=0)
+        await self.add(status="pending", attempts=2)
+        await self.add(status="sending", attempts=1)
+        await self.add(status="failed", attempts=6)
+        await self.add(status="sent", attempts=1, sent_at=now - timedelta(hours=1))
+        await self.add(status="sent", attempts=1, sent_at=now - timedelta(hours=30))
+        body, _ = await self.status()
+        self.assertEqual((body["pending"], body["retrying"], body["failed"], body["sent_24h"]), (1, 2, 1, 1))
+
+    async def test_status_shows_when_the_sender_last_completed_a_pass(self):
+        stamp = datetime(2026, 10, 12, 9, 0, 5, tzinfo=UTC)
+        with patch.object(outbox.sender_state, "last_pass_at", stamp), patch.object(outbox.sender_state, "last_error", "OSError"):
+            body, _ = await self.status()
+        self.assertEqual(body["sender_last_pass_at"], "2026-10-12T09:00:05Z")
+        self.assertEqual(body["sender_last_error"], "OSError")
+
+    # ---------------------------------------------------------------- test push
+
+    async def test_a_test_push_with_nothing_configured_says_so_instead_of_failing(self):
+        with patch.multiple(settings, pushover_token="", pushover_user=""):
+            r = await self.http.post("/api/notifications/test-push")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual((r.json()["sent"], r.json()["retryable"]), (False, False))
+        self.assertIn("not configured", r.json()["error"])
+
+    async def test_a_test_push_goes_through_the_real_adapter_and_is_not_an_alert(self):
+        send = AsyncMock(return_value=notify.Sent(receipt=None))
+        with patch.object(notify, "send", send):
+            r = await self.http.post("/api/notifications/test-push")
+        self.assertEqual(r.json(), {"sent": True, "error": None, "retryable": None})
+        sent_note = send.await_args.args[0]
+        self.assertEqual((sent_note.change, sent_note.priority), ("test", 0))
+        self.assertEqual(await self.listed(), [], "a test push is not queued and belongs to no incident")
+
+    async def test_a_test_push_that_pushover_refuses_reports_why_and_whether_retrying_could_help(self):
+        send = AsyncMock(side_effect=notify.SendError("Pushover refused it: application token is invalid", retryable=False))
+        with patch.object(notify, "send", send):
+            body = (await self.http.post("/api/notifications/test-push")).json()
+        self.assertEqual((body["sent"], body["retryable"]), (False, False))
+        self.assertIn("token is invalid", body["error"])
+        send = AsyncMock(side_effect=notify.SendError("Pushover timed out", retryable=True))
+        with patch.object(notify, "send", send):
+            self.assertTrue((await self.http.post("/api/notifications/test-push")).json()["retryable"])
+
+    # ---------------------------------------------------------------- retry
+
+    async def test_a_failed_alert_can_be_retried_with_a_fresh_set_of_attempts(self):
+        id_ = await self.add(status="failed", attempts=6, last_error="Pushover is not configured")
+        r = await self.http.post(f"/api/notifications/{id_}/retry")
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual((r.json()["status"], r.json()["attempts"], r.json()["last_error"]), ("pending", 0, None))
+
+    async def test_a_retried_alert_is_then_actually_sent(self):
+        id_ = await self.add(status="failed", attempts=6, last_error="x")
+        await self.http.post(f"/api/notifications/{id_}/retry")
+        calls = []
+
+        async def fake(n):
+            calls.append(n.id)
+            return notify.Sent(receipt="r1")
+
+        await outbox.run_once(self.maker, fake)
+        self.assertEqual(calls, [id_])
+        self.assertEqual((await self.listed())[0]["status"], "sent")
+
+    async def test_only_a_failed_alert_can_be_retried(self):
+        for status in ("pending", "sending", "sent"):
+            id_ = await self.add(status=status, attempts=1)
+            self.assertEqual((await self.http.post(f"/api/notifications/{id_}/retry")).status_code, 409, status)
+
+    async def test_retrying_an_unknown_alert_is_404(self):
+        self.assertEqual((await self.http.post("/api/notifications/9999/retry")).status_code, 404)
 
     # ---------------------------------------------------------------- the incident log
 
