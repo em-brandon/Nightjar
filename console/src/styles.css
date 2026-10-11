@@ -44,7 +44,9 @@ code { font-family: var(--mono); font-size: 0.92em; color: var(--dim); }
 .muted { color: var(--muted); }
 
 .app { display: grid; grid-template-columns: 236px minmax(0, 1fr); min-height: 100vh; }
-.main { width: 100%; max-width: 1240px; padding: 8px 36px 72px; }
+/* Fluid up to a generous cap: a wide monitor gets more columns of cards, not a narrow strip beside empty space.
+   The side padding grows with the screen. */
+.main { width: 100%; max-width: 2400px; padding: 8px clamp(14px, 2.5vw, 56px) 72px; }
 
 /* ================= surfaces ================= */
 .card {
@@ -956,7 +958,7 @@ code { font-family: var(--mono); font-size: 0.92em; color: var(--dim); }
 @media (max-width: 800px) { .al-check { grid-template-columns: 14px 1fr; } .al-check > :nth-child(3), .al-hint { grid-column: 2; } .al-row { grid-template-columns: auto 1fr; } }
 
 /* Client cards: a client's sites together, each production site beside its staging site */
-.client-list { display: flex; flex-direction: column; gap: 16px; }
+.client-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 760px), 1fr)); gap: 16px; align-items: start; }
 .client-card { padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 14px; }
 .client-head { display: flex; align-items: center; gap: 10px; }
 .client-head h3 { font-size: 17px; font-weight: 600; }
@@ -972,7 +974,7 @@ code { font-family: var(--mono); font-size: 0.92em; color: var(--dim); }
 .site-tier { color: var(--muted); flex: none; }
 
 /* Sites tab: the same grouping as a list */
-.sx-clients { display: flex; flex-direction: column; gap: 16px; }
+.sx-clients { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 820px), 1fr)); gap: 16px; align-items: start; }
 .sx-client { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 12px; }
 .sx-client-head { display: flex; align-items: center; gap: 10px; }
 .sx-client-head h3 { font-size: 17px; font-weight: 600; }
