@@ -954,3 +954,30 @@ code { font-family: var(--mono); font-size: 0.92em; color: var(--dim); }
 .al-err { font-family: var(--mono); font-size: 12.5px; color: var(--red); overflow-wrap: anywhere; }
 .al-when { font-family: var(--mono); font-size: 12.5px; color: var(--muted); white-space: nowrap; }
 @media (max-width: 800px) { .al-check { grid-template-columns: 14px 1fr; } .al-check > :nth-child(3), .al-hint { grid-column: 2; } .al-row { grid-template-columns: auto 1fr; } }
+
+/* Client cards: a client's sites together, each production site beside its staging site */
+.client-list { display: flex; flex-direction: column; gap: 16px; }
+.client-card { padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 14px; }
+.client-head { display: flex; align-items: center; gap: 10px; }
+.client-head h3 { font-size: 17px; font-weight: 600; }
+.client-icon { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 8px; background: var(--ink-3); color: var(--dim); }
+.client-meta { display: inline-flex; align-items: center; gap: 4px; margin-left: 4px; font-family: var(--mono); font-size: 13px; color: var(--muted); }
+.client-head .dot { margin-left: auto; }
+.client-groups { display: flex; flex-direction: column; gap: 12px; }
+.site-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; padding: 10px; border: 1px dashed var(--line-hi); border-radius: 12px; }
+.site-single { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; }
+.client-card .site { background: var(--ink-3); }
+.site-tier { color: var(--muted); flex: none; }
+
+/* Sites tab: the same grouping as a list */
+.sx-clients { display: flex; flex-direction: column; gap: 16px; }
+.sx-client { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 12px; }
+.sx-client-head { display: flex; align-items: center; gap: 10px; }
+.sx-client-head h3 { font-size: 17px; font-weight: 600; }
+.sx-client-head .dot { margin-left: auto; }
+.sx-client-icon { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 8px; background: var(--ink-3); color: var(--dim); }
+.sx-group { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px dashed var(--line-hi); border-radius: 12px; }
+.sx-staging { margin-left: 22px; padding-left: 14px; border-left: 2px solid var(--line-hi); }
+.sx-nostaging { display: flex; align-items: center; gap: 10px; padding-top: 4px; padding-bottom: 4px; font-size: 14px; }
+.sx-icon { color: var(--dim); flex: none; align-self: center; }
+.sx-icon-stage { color: var(--muted); }

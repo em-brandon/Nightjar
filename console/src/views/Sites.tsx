@@ -1,9 +1,11 @@
+import { Building2, FlaskConical, Globe, Plus } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import type { SiteCreated, SiteHealth, SiteListed, SiteOut, TestEventResult } from "../api/types.ts";
 import type { Feeds } from "../feeds.ts";
-import { ago, send, usePoll } from "../hooks.ts";
+import { ago, plural, send, usePoll } from "../hooks.ts";
+import { groupByClient, worstState } from "../grouping.ts";
 import { SECRET_NAMES, STACKS, snippet, type StackId } from "../snippets.ts";
-import { Empty, Pill } from "../ui.tsx";
+import { Dot, Empty, Pill } from "../ui.tsx";
 
 // Add a site, see its keys once with a ready-made setup snippet, and watch for its first report.
 // Rules (docs/ONBOARDING-DASHBOARD.md): the secret is shown once and lives only in this component's
@@ -223,8 +225,10 @@ function WaitingPanel({ shown, site, health, now, onTest }: { shown: Shown; site
   );
 }
 
-function AddForm({ clients, onCreated }: { clients: string[]; onCreated: (s: Shown) => void }) {
-  const [form, setForm] = useState({ client: "", name: "", env: "production", url: "", origins: "" });
+type Prefill = Partial<{ client: string; name: string; env: string }>;
+
+function AddForm({ clients, initial, onCreated }: { clients: string[]; initial?: Prefill; onCreated: (s: Shown) => void }) {
+  const [form, setForm] = useState({ client: initial?.client ?? "", name: initial?.name ?? "", env: initial?.env ?? "production", url: "", origins: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) => setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -376,9 +380,8 @@ function SiteRow({ s, h, now, onSaved, onSetup, onRotated }: { s: SiteListed; h:
   return (
     <div className="sx-row">
       <div className="sx-row-main">
+        {s.env === "staging" ? <FlaskConical size={16} className="sx-icon sx-icon-stage" aria-label="staging" /> : <Globe size={16} className="sx-icon" aria-label="production" />}
         <b>{s.name}</b>
-        <span className="env">{s.env}</span>
-        <small className="muted">{s.client}</small>
       </div>
       <div className="sx-row-facts">
         <span>
@@ -439,11 +442,11 @@ export default function Sites({ f }: { f: Feeds }) {
   const list = usePoll<SiteListed[]>("/api/sites", 5_000);
   const health = usePoll<SiteHealth[]>("/api/sites/health", 5_000);
   const [shown, setShown] = useState<Shown | null>(null);
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState<Prefill | null>(null);
   const { now, setIdleHold } = f;
 
   // The idle screen must not start over a half-filled form or a secret shown once: either would be lost.
-  const holding = adding || shown?.ingestSecret != null;
+  const holding = adding !== null || shown?.ingestSecret != null;
   useEffect(() => {
     setIdleHold(holding);
     return () => setIdleHold(false);
@@ -466,7 +469,7 @@ export default function Sites({ f }: { f: Feeds }) {
   const reload = () => Promise.all([list.reload(), health.reload()]);
   const open = (s: Shown) => {
     setShown(s);
-    setAdding(false);
+    setAdding(null);
     reload();
   };
 
@@ -475,8 +478,8 @@ export default function Sites({ f }: { f: Feeds }) {
       <div className="page-head">
         <h1>Sites</h1>
         <span className="count">{sites.length} registered</span>
-        {!adding && !shown && (
-          <button className="btn pri" onClick={() => setAdding(true)}>
+        {adding === null && !shown && (
+          <button className="btn pri" onClick={() => setAdding({})}>
             Add a site
           </button>
         )}
@@ -488,10 +491,10 @@ export default function Sites({ f }: { f: Feeds }) {
         </p>
       )}
 
-      {adding && (
+      {adding !== null && (
         <>
-          <AddForm clients={clients} onCreated={open} />
-          <button className="btn sx-cancel" onClick={() => setAdding(false)}>
+          <AddForm key={JSON.stringify(adding)} clients={clients} initial={adding} onCreated={open} />
+          <button className="btn sx-cancel" onClick={() => setAdding(null)}>
             Cancel
           </button>
         </>
@@ -525,20 +528,56 @@ export default function Sites({ f }: { f: Feeds }) {
       ) : sites.length === 0 ? (
         <Empty>No sites yet. Add the first one above.</Empty>
       ) : (
-        <div className="sx-list">
-          {sites.map((s) => (
-            <SiteRow
-              key={s.id}
-              s={s}
-              h={byName.get(s.name)}
-              now={now}
-              onSaved={reload}
-              onSetup={(site) =>
-                open({ kind: "setup", siteId: site.id, name: site.name, ingestKey: site.ingest_key, ingestSecret: null, publicKey: site.public_key ?? null, startedAt: Date.now() })
-              }
-              onRotated={open}
-            />
-          ))}
+        <div className="sx-clients">
+          {groupByClient(sites).map((c) => {
+            const health = c.sites.map((x) => byName.get(x.name)).filter((x): x is SiteHealth => x !== undefined);
+            const rowFor = (site: (typeof sites)[number]) => (
+              <SiteRow
+                key={site.id}
+                s={site}
+                h={byName.get(site.name)}
+                now={now}
+                onSaved={reload}
+                onSetup={(x) =>
+                  open({ kind: "setup", siteId: x.id, name: x.name, ingestKey: x.ingest_key, ingestSecret: null, publicKey: x.public_key ?? null, startedAt: Date.now() })
+                }
+                onRotated={open}
+              />
+            );
+            return (
+              <section key={c.client} className="card sx-client" aria-label={c.client}>
+                <header className="sx-client-head">
+                  <span className="sx-client-icon">
+                    <Building2 size={18} aria-hidden="true" />
+                  </span>
+                  <h3>{c.client}</h3>
+                  <span className="muted">
+                    {plural(c.sites.filter((x) => x.env !== "staging").length, "site", "sites")}
+                    {c.sites.some((x) => x.env === "staging") && ` · ${c.sites.filter((x) => x.env === "staging").length} staging`}
+                  </span>
+                  {health.length > 0 && <Dot state={worstState(health)} />}
+                </header>
+                {c.groups.map((g) => (
+                  <div key={g.key} className="sx-group">
+                    {g.production && rowFor(g.production)}
+                    {g.staging ? (
+                      <div className="sx-staging">{rowFor(g.staging)}</div>
+                    ) : (
+                      g.production && (
+                        <div className="sx-staging sx-nostaging">
+                          <FlaskConical size={16} className="sx-icon sx-icon-stage" aria-hidden="true" />
+                          <span className="muted">No staging site</span>
+                          <button className="btn" onClick={() => setAdding({ client: c.client, name: `${g.production!.name}-staging`, env: "staging" })}>
+                            <Plus size={14} aria-hidden="true" /> Add staging
+                          </button>
+                        </div>
+                      )
+                    )}
+                  </div>
+                ))}
+              </section>
+            );
+          })}
         </div>
       )}
     </>

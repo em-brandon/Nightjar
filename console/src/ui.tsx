@@ -1,3 +1,4 @@
+import { FlaskConical, Globe } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import type { SiteHealth } from "./api/types.ts";
 import { ago, fmtPct, plural } from "./hooks.ts";
@@ -162,6 +163,7 @@ export function SiteCard({ site: s, now, big = false }: { site: SiteHealth; now:
     <div className={`card site ${s.state} ${big ? "big" : ""}`}>
       <div className="site-head">
         <Dot state={s.state} />
+        {s.env === "staging" ? <FlaskConical size={15} className="site-tier" aria-label="staging" /> : <Globe size={15} className="site-tier" aria-label="production" />}
         <b>{s.name}</b>
         <span className="env">{s.env}</span>
       </div>
