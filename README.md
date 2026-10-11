@@ -1070,7 +1070,7 @@ background uptime probe, which serverless platforms freeze between requests.
 |---|---|---|
 | 1 | Models, fingerprinting, ingest, HMAC, reporter, dedupe test | Done |
 | 3 | React console, uptime probe, incident actions, tickets, deploys, idle screen | Done |
-| 2 | Alert policy, presence, Pushover, speaker | **Next, blocked on cost.** The whole point of the project |
+| 2 | Alert policy, presence, Pushover, speaker. Delivery through a durable Postgres outbox, with no worker service (decision #56) | **Next, blocked on cost.** The whole point of the project |
 | 4 | Email intake and the 07:30 digest | Not started |
 | 4b | Fleet onboarding: published reporters and an `add-site` CLI, extended into a client integration kit (push checks, heartbeats, an npm CLI, `nightjar.sh`) | The small hub pieces and the shell script are worth doing early. The packages wait for the third or fourth app. See [`docs/CLIENT-INTEGRATION.md`](docs/CLIENT-INTEGRATION.md) |
 | 5 | Wall display route and kiosk | Designed. The idle screen exists |
@@ -1153,6 +1153,7 @@ job is narrow: deduplicate, decide, deliver.
 | [`docs/KEYS.md`](docs/KEYS.md) | Every key, secret and token: what it does, who holds it, what a leak costs, with diagrams |
 | [`docs/TYPESCRIPT-MIGRATION.md`](docs/TYPESCRIPT-MIGRATION.md) | Planned: moving the console to TypeScript, with API types generated from the hub's schemas |
 | [`docs/ONBOARDING-DASHBOARD.md`](docs/ONBOARDING-DASHBOARD.md) | Planned, next up: a console screen to add a client app, see its keys once and confirm it is reporting |
+| [`docs/DATA-PROTECTION.md`](docs/DATA-PROTECTION.md) | Planned: what is encrypted today and eight hardening changes (refusing plain `http://`, HSTS, encrypted backups, derived secrets, a secret scanner, mounted secret files, an audit trail, a leak runbook), and the case for key pairs |
 | [`docs/CLOUDFLARE.md`](docs/CLOUDFLARE.md) | Planned: a free-plan Cloudflare checklist (what to proxy, what to leave DNS-only, bot rules, caching), with Caddy staying as the web server |
 | [`mockups/`](mockups/) | Working HTML: console, wall display, boot splash, detail drawer |
 

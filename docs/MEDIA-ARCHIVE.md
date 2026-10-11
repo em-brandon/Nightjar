@@ -193,7 +193,7 @@ slow staging but never a client's live site.
 | Ingest: `POST /ingest/{key}/media`, signed like every other source | `hub/media.py` |
 | Feeds: `GET /api/media` (live) and `GET /api/media/history` | `hub/media.py` |
 | Tables: `media_reports` (live snapshots, pruned after 7 days), `media_plays` (history) | migration `0002` |
-| Console: the **Media** tab, and a panel on the idle screen | `console/src/views/Media.jsx`, `views/Idle.jsx` |
+| Console: the **Media** tab, and a panel on the idle screen | `console/src/views/Media.tsx`, `views/Idle.tsx` |
 
 The media server is a site with `env = media`. It is left out of `/api/sites/health`, so it never appears among
 client sites, the verdict or the wall's site cards. The Jellyfin API key is a broad admin key: it stays on the

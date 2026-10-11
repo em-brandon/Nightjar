@@ -1,7 +1,7 @@
 // Home strip rules. Run with: npm test
 
 import assert from "node:assert/strict";
-import { ACTIVE_BPS, CYCLE_MS, TEMP_RANGES, activityView, backupView, demoHome, demoTraffic, fmtRate, pairAt, rangeText, tempState, tempsView, fmtAgeH, fmtAgeMin, fmtMbps, hostView, netView, presenceView, rateView, requestsView } from "./home.js";
+import { ACTIVE_BPS, CYCLE_MS, TEMP_RANGES, activityView, backupView, demoHome, demoTraffic, fmtRate, pairAt, rangeText, tempState, tempsView, fmtAgeH, fmtAgeMin, fmtMbps, hostView, netView, presenceView, rateView, requestsView } from "./home.ts";
 
 const ok = (name) => console.log(`  ok   ${name}`);
 const NOW = Date.parse("2026-09-21T12:00:00Z");
@@ -81,6 +81,7 @@ const rv = rateView(good);
 assert.deepEqual(rv.pairs.map((p) => [p.code, p.symbol, p.value]), [["USD", "$", "129.57"], ["GBP", "£", "173.36"], ["CNY", "¥", "19.33"]]);
 assert.equal(rateView({ available: true, stale: false, base: "USD", quote: "KES", rate: 129.5 }).pairs.length, 1, "an older feed with no pairs still shows the dollar");
 assert.equal(rateView({ available: true, stale: true, base: "USD", quote: "KES", rate: 129 }).state, "old");
+assert.equal(rateView({ available: true, stale: false, base: "USD", quote: "KES" }).state, "off", "available with no rate must not throw");
 ok("exchange rate");
 
 assert.equal(tempsView(null), null);

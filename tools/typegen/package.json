@@ -1,0 +1,13 @@
+{
+  "name": "nightjar-typegen",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Generates the console's API types from the hub's OpenAPI schema. Separate from console/ because openapi-typescript needs TypeScript 5's JavaScript API, which TypeScript 7 does not have.",
+  "scripts": {
+    "generate": "openapi-typescript ../../console/src/api/openapi.json -o ../../console/src/api/schema.d.ts"
+  },
+  "devDependencies": {
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.9.3"
+  }
+}

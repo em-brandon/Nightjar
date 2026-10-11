@@ -1,7 +1,7 @@
 // Weather wording. Run with: npm test
 
 import assert from "node:assert/strict";
-import { fmtCoords, fmtElevation, fmtTemp, iconKey, pressureView, rainView, uvLevel, uvView, weatherView } from "./weather.js";
+import { fmtCoords, fmtElevation, fmtTemp, iconKey, pressureView, rainView, uvLevel, uvView, weatherView } from "./weather.ts";
 
 const ok = (name) => console.log(`  ok   ${name}`);
 const reading = (over = {}) => ({

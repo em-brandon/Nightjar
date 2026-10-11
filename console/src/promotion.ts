@@ -6,42 +6,51 @@
 // belongs to "<production>". A naming convention rather than a column in the
 // database, which keeps sites independent, and is documented in the README.
 
+import type { Deploy, SiteHealth, Stack } from "./api/types.ts";
+
+export type Verdict = "ready" | "blocked" | "insync" | "behind";
+export type CompareState = "unpaired" | "unknown" | "insync" | "behind" | "ahead";
+export type Comparison = { state: CompareState; text: string; staging?: Deploy; production?: Deploy };
+
 const SUFFIX = /-staging$/;
-export const productionNameOf = (name) => name.replace(SUFFIX, "");
+export const productionNameOf = (name: string) => name.replace(SUFFIX, "");
 
 const HOUR = 3_600_000;
 // Below this a staging site is too flaky to trust a promotion decision to.
 export const UPTIME_MIN = 99;
 
 // "main@1f9c4a2" -> "1f9c4a2". Refs without an @ compare as a whole.
-export const shaOf = (ref) => (ref || "").split("@").pop();
+export const shaOf = (ref: string | null | undefined) => (ref || "").split("@").pop();
 
 // Floor, not round: 98.96% must not read as 99.
-const pct = (p) => (Math.floor(p * 10) / 10).toFixed(1);
-const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+const pct = (p: number) => (Math.floor(p * 10) / 10).toFixed(1);
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 // Builds still in flight. A "running" report older than an hour is a CI job that
 // never said it finished, so it does not count as a build using the machine.
-export function runningBuilds(deploys, now) {
-  return deploys.filter((d) => d.status === "running" && now - new Date(d.created_at) < HOUR);
+export function runningBuilds(deploys: Deploy[], now: number): Deploy[] {
+  return deploys.filter((d) => d.status === "running" && now - new Date(d.created_at).getTime() < HOUR);
 }
 
 /**
- * @param site    a staging entry from /api/sites/health
- * @param sites   every site from /api/sites/health
- * @param deploys /api/deploys, newest first
- * @param stacks  /api/stacks
- * @returns {{verdict: "ready"|"blocked"|"insync"|"behind", blockers: string[], compare: object}}
+ * `site` is a staging entry from /api/sites/health, `sites` is every site from it, `deploys` is
+ * /api/deploys newest first, and `stacks` is /api/stacks.
  */
-export function readiness({ site, sites, deploys, stacks, now }) {
-  const blockers = [];
+export function readiness({ site, sites, deploys, stacks, now }: {
+  site: SiteHealth;
+  sites: SiteHealth[];
+  deploys: Deploy[];
+  stacks: Pick<Stack, "site" | "stale" | "state" | "restart_loop">[];
+  now: number;
+}): { verdict: Verdict; blockers: string[]; compare: Comparison } {
+  const blockers: string[] = [];
 
   const mine = deploys.filter((d) => d.site === site.name);
   const last = mine[0];
   if (!last) blockers.push("no deploy recorded");
   else if (last.status === "failed") blockers.push("last deploy failed");
   else if (last.status === "running") {
-    blockers.push(now - new Date(last.created_at) > HOUR ? "deploy never reported finishing" : "deploy in progress");
+    blockers.push(now - new Date(last.created_at).getTime() > HOUR ? "deploy never reported finishing" : "deploy in progress");
   }
 
   if (!site.monitored) blockers.push("no health check");
@@ -63,11 +72,11 @@ export function readiness({ site, sites, deploys, stacks, now }) {
   return { blockers, compare: compare(site, sites, mine, deploys), ...verdictOf(blockers, site, sites, deploys) };
 }
 
-function lastSuccess(deploys, name) {
+function lastSuccess(deploys: Deploy[], name: string): Deploy | undefined {
   return deploys.find((d) => d.site === name && d.status === "success");
 }
 
-function compare(site, sites, mine, deploys) {
+function compare(site: SiteHealth, sites: SiteHealth[], mine: Deploy[], deploys: Deploy[]): Comparison {
   const prodName = productionNameOf(site.name);
   const prodSite = sites.find((s) => s.env === "production" && s.name === prodName);
   const staging = lastSuccess(mine, site.name);
@@ -85,7 +94,7 @@ function compare(site, sites, mine, deploys) {
   return { state: "ahead", text: "staging is ahead of production", staging, production };
 }
 
-function verdictOf(blockers, site, sites, deploys) {
+function verdictOf(blockers: string[], site: SiteHealth, sites: SiteHealth[], deploys: Deploy[]): { verdict: Verdict } {
   const c = compare(site, sites, deploys.filter((d) => d.site === site.name), deploys);
   // Blockers win. Only a clean staging can be "nothing to promote" or "behind".
   if (blockers.length) return { verdict: "blocked" };

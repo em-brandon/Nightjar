@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
-import { ago, fmtPct, plural } from "./hooks.js";
+import { useEffect, useState, type ReactNode } from "react";
+import type { SiteHealth } from "./api/types.ts";
+import { ago, fmtPct, plural } from "./hooks.ts";
 
 // ---------------------------------------------------------------- odometer
 
 const DIGITS = "0123456789".split("");
 
-function Digit({ d }) {
+function Digit({ d }: { d: number }) {
   // Mount showing 0 and roll to the real value, so the first paint animates
   // in like a real counter instead of just appearing.
   const [shown, setShown] = useState(0);
@@ -27,7 +28,7 @@ function Digit({ d }) {
 // Rolling-digit counter. Anything that is not a digit ("," "." "%" "—") is
 // drawn as-is. Keys count from the right so that 99 -> 100 keeps the existing
 // digits rolling instead of remounting all of them.
-export function Odometer({ value, className = "" }) {
+export function Odometer({ value, className = "" }: { value: string | number; className?: string }) {
   const text = String(value);
   return (
     <span className={`odo ${className}`} role="img" aria-label={text}>
@@ -46,7 +47,7 @@ export function Odometer({ value, className = "" }) {
 
 // ---------------------------------------------------------------- gauge
 
-export function Gauge({ percent, state = "up", size = 92, children }) {
+export function Gauge({ percent, state = "up", size = 92, children }: { percent: number | null | undefined; state?: string; size?: number; children?: ReactNode }) {
   const stroke = 7;
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
@@ -75,8 +76,8 @@ export function Gauge({ percent, state = "up", size = 92, children }) {
 
 // `points` is numbers, with null marking a failed check. Failures are drawn as
 // red ticks on the floor rather than silently bridged over.
-export function Spark({ points, width = 132, height = 30, tone = "var(--green)" }) {
-  const nums = points.filter((p) => p != null);
+export function Spark({ points, width = 132, height = 30, tone = "var(--green)" }: { points: (number | null)[]; width?: number; height?: number; tone?: string }) {
+  const nums = points.filter((p): p is number => p != null);
   if (nums.length < 2) {
     return <svg className="spark" width={width} height={height} aria-hidden="true">
       <line x1="0" x2={width} y1={height - 2} y2={height - 2} className="spark-idle" />
@@ -84,10 +85,10 @@ export function Spark({ points, width = 132, height = 30, tone = "var(--green)" 
   }
   const max = Math.max(...nums, 1);
   const step = width / (points.length - 1);
-  const y = (v) => height - 4 - (v / max) * (height - 8);
+  const y = (v: number) => height - 4 - (v / max) * (height - 8);
   let d = "";
   let pen = false;
-  const ticks = [];
+  const ticks: number[] = [];
   points.forEach((p, i) => {
     if (p == null) {
       pen = false;
@@ -109,9 +110,9 @@ export function Spark({ points, width = 132, height = 30, tone = "var(--green)" 
 
 // ---------------------------------------------------------------- ribbon
 
-const RIBBON_LABEL = { ok: "no failures", deg: "some failed checks", out: "outage", gap: "no data" };
+const RIBBON_LABEL: Record<SiteHealth["ribbon"][number], string> = { ok: "no failures", deg: "some failed checks", out: "outage", gap: "no data" };
 
-export function Ribbon({ days }) {
+export function Ribbon({ days }: { days: SiteHealth["ribbon"] }) {
   return (
     <div>
       <div className="ribbon" role="img" aria-label="90 day check history">
@@ -129,26 +130,26 @@ export function Ribbon({ days }) {
 
 // ---------------------------------------------------------------- small parts
 
-export function Dot({ state }) {
+export function Dot({ state }: { state: string }) {
   return <span className={`dot ${state}`} aria-hidden="true" />;
 }
 
-export function Sev({ level }) {
+export function Sev({ level }: { level: string }) {
   return <span className={`sev ${level.toLowerCase()}`}>{level}</span>;
 }
 
-export function Pill({ tone, children }) {
+export function Pill({ tone, children }: { tone: string; children?: ReactNode }) {
   return <span className={`pill ${tone}`}>{children}</span>;
 }
 
-export function Empty({ children }) {
+export function Empty({ children }: { children?: ReactNode }) {
   return <p className="empty">{children}</p>;
 }
 
 // ---------------------------------------------------------------- site card
 
 // One monitored site: uptime ring, live latency, latency trend, 90-day ribbon.
-export function SiteCard({ site: s, now, big = false }) {
+export function SiteCard({ site: s, now, big = false }: { site: SiteHealth; now: number; big?: boolean }) {
   const total = s.open_p1 + s.open_p2 + s.open_p3;
   const lat = s.latency_ms;
   // The ring and sparkline describe the probe alone. The dot and border carry

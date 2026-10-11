@@ -200,6 +200,92 @@ class Sites(unittest.IsolatedAsyncioTestCase):
         r = await self.http.patch("/api/sites/1", json={"url": "https://x.example/"})
         self.assertEqual(r.status_code, 404)
 
+    async def test_the_list_shows_keys_and_never_a_secret(self):
+        made = (await self.http.post("/api/sites", json=site())).json()
+        r = await self.http.get("/api/sites")
+        self.assertEqual(r.status_code, 200)
+        row = r.json()[0]
+        self.assertEqual((row["name"], row["ingest_key"], row["last_event"]), ("kubasu-motors", made["ingest_key"], None))
+        self.assertNotIn("ingest_secret", r.text)
+        self.assertNotIn(made["ingest_secret"], r.text)
+
+    async def test_the_list_leaves_out_the_home_host(self):
+        async with self.engine.begin() as conn:
+            await conn.execute(text("INSERT INTO clients (name) VALUES ('me')"))
+            await conn.execute(
+                text("INSERT INTO sites (client_id, name, env, ingest_key, ingest_secret) "
+                     "VALUES (1, 'thinkcentre', 'home', 'hk', 'hs')")
+            )
+        self.assertEqual((await self.http.get("/api/sites")).json(), [])
+
+    async def test_rotating_returns_a_new_secret_once_and_the_old_one_stops_working(self):
+        made = (await self.http.post("/api/sites", json=site())).json()
+        r = await self.http.post(f"/api/sites/{made['id']}/rotate-secret")
+        self.assertEqual(r.status_code, 200, r.text)
+        new = r.json()
+        self.assertEqual(new["ingest_key"], made["ingest_key"])
+        self.assertNotEqual(new["ingest_secret"], made["ingest_secret"])
+        self.assertNotIn(new["ingest_secret"], (await self.http.get("/api/sites")).text)
+        import hashlib
+        import hmac
+
+        body = b'{"exception_type": "Boom", "message": "x"}'
+
+        async def post(secret):
+            sig = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+            with patch.object(settings, "verify_signatures", True):
+                return await self.http.post(
+                    f"/ingest/{made['ingest_key']}/event",
+                    content=body,
+                    headers={"X-Hub-Signature": sig, "Content-Type": "application/json"},
+                )
+
+        self.assertEqual((await post(made["ingest_secret"])).status_code, 401)
+        self.assertEqual((await post(new["ingest_secret"])).status_code, 200)
+
+    async def test_rotating_an_unknown_site_is_404(self):
+        self.assertEqual((await self.http.post("/api/sites/999/rotate-secret")).status_code, 404)
+
+    async def test_a_test_event_goes_through_ingest_as_a_p3_and_does_not_stay_open(self):
+        sid = (await self.http.post("/api/sites", json=site())).json()["id"]
+        r = await self.http.post(f"/api/sites/{sid}/test-event")
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual((r.json()["severity"], r.json()["state_change"]), ("P3", "new"))
+        # a test proves the hub side only: it must not make the site look as if its app had reported
+        listed = (await self.http.get("/api/sites")).json()[0]
+        self.assertIsNone(listed["last_event"])
+        open_issues = (await self.http.get("/api/issues?status=open")).json()
+        self.assertEqual(open_issues, [])
+
+    async def test_a_second_test_event_stays_quiet_and_does_not_reopen_the_issue(self):
+        sid = (await self.http.post("/api/sites", json=site())).json()["id"]
+        first = (await self.http.post(f"/api/sites/{sid}/test-event")).json()
+        second = (await self.http.post(f"/api/sites/{sid}/test-event")).json()
+        self.assertEqual(first["state_change"], "new")
+        self.assertIsNone(second["state_change"], "a repeat must not look like a regression")
+        self.assertEqual(second["issue_id"], first["issue_id"])
+        self.assertEqual(second["event_count"], 2)
+        self.assertEqual((await self.http.get("/api/issues?status=open")).json(), [])
+
+    async def test_a_real_report_sets_last_event_and_a_test_does_not_move_it(self):
+        made = (await self.http.post("/api/sites", json=site())).json()
+        with patch.object(settings, "verify_signatures", False):
+            await self.http.post(f"/ingest/{made['ingest_key']}/event", json={"exception_type": "Boom", "message": "x"})
+        first = (await self.http.get("/api/sites")).json()[0]["last_event"]
+        self.assertIsNotNone(first)
+        await self.http.post(f"/api/sites/{made['id']}/test-event")
+        self.assertEqual((await self.http.get("/api/sites")).json()[0]["last_event"], first)
+
+    async def test_the_home_host_cannot_be_tested_or_rotated(self):
+        async with self.engine.begin() as conn:
+            await conn.execute(text("INSERT INTO clients (name) VALUES ('me')"))
+            await conn.execute(
+                text("INSERT INTO sites (client_id, name, env, ingest_key, ingest_secret) "
+                     "VALUES (1, 'thinkcentre', 'home', 'hk', 'hs')")
+            )
+        self.assertEqual((await self.http.post("/api/sites/1/test-event")).status_code, 404)
+        self.assertEqual((await self.http.post("/api/sites/1/rotate-secret")).status_code, 404)
+
 
 if __name__ == "__main__":
     unittest.main()

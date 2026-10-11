@@ -9,6 +9,18 @@
 // stack it fed is actually up, so "complete" needs the stack's own report as proof. Pure functions,
 // so the timing rules can be tested without a browser. See push.test.mjs.
 
+import type { Deploy, Stack } from "./api/types.ts";
+
+export type PushState = "loading" | "done" | "complete" | "failed";
+export type PushCard = {
+  site: string;
+  ref: string | null;
+  ageMin: number;
+  state: PushState;
+  // 0..100, or null when the pipeline did not report one
+  progress: number | null;
+};
+
 const MIN = 60_000;
 // A "running" report older than an hour is a CI job that never said it finished (the same cut-off
 // the dashboard uses for builds), so it is not shown as still going.
@@ -21,20 +33,18 @@ export const FAILED_SHOW_MIN = 60;
 
 // Has the staging stack for this site reported healthy since the deploy? A silent reporter proves
 // nothing, and a degraded stack is not complete.
-export function stackHealthySince(stacks, site, since) {
+export function stackHealthySince(stacks: Pick<Stack, "site" | "env" | "stale" | "state" | "reported_at">[], site: string, since: number): boolean {
   return stacks.some(
     (s) => s.site === site && s.env === "staging" && !s.stale && s.state === "running" && new Date(s.reported_at).getTime() >= since,
   );
 }
 
 /**
- * @param deploys /api/deploys as the console holds it (already settled: a running row is dropped once
- *                a newer row for the same site and ref exists), newest first
- * @param stacks  /api/stacks
- * @returns null when there is nothing to show, else {state, site, ref, progress, ageMin}
- *          state is "loading" | "done" | "complete" | "failed"; progress is 0..100 or null (not reported)
+ * `deploys` is /api/deploys as the console holds it (already settled: a running row is dropped once
+ * a newer row for the same site and ref exists), newest first; `stacks` is /api/stacks. Returns null
+ * when there is nothing to show.
  */
-export function pushView(deploys, now, stacks = []) {
+export function pushView(deploys: Deploy[], now: number, stacks: Parameters<typeof stackHealthySince>[0] = []): PushCard | null {
   const d = deploys.find((x) => x.env === "staging");
   if (!d) return null;
   const at = new Date(d.created_at).getTime();
@@ -62,7 +72,7 @@ export const DEMO_GAPS_S = [40, 30];
 const SHOWN_S = DEMO_LOADING_S + DEMO_DONE_S + DEMO_COMPLETE_S;
 export const DEMO_PERIOD_S = DEMO_GAPS_S.reduce((sum, gap) => sum + SHOWN_S + gap, 0);
 
-export function demoPush(now) {
+export function demoPush(now: number): PushCard | null {
   let t = (now / 1000) % DEMO_PERIOD_S;
   for (const gap of DEMO_GAPS_S) {
     if (t < SHOWN_S) {

@@ -1,6 +1,8 @@
-import { useState } from "react";
-import { ago, send } from "../hooks.js";
-import { Empty, Odometer, Pill } from "../ui.jsx";
+import { useState, type ChangeEvent, type FormEvent } from "react";
+import type { SiteHealth, Ticket } from "../api/types.ts";
+import type { Feeds } from "../feeds.ts";
+import { ago, send } from "../hooks.ts";
+import { Empty, Odometer, Pill } from "../ui.tsx";
 
 const KINDS = [
   ["change", "Change"],
@@ -8,13 +10,15 @@ const KINDS = [
   ["access", "Access"],
 ];
 
-function NewRequest({ sites, onCreated }) {
-  const [form, setForm] = useState({ kind: "change", subject: "", sender: "", site: "", due: "" });
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
-  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+type Form = { kind: Ticket["kind"]; subject: string; sender: string; site: string; due: string };
 
-  const submit = async (e) => {
+function NewRequest({ sites, onCreated }: { sites: SiteHealth[]; onCreated: () => Promise<void> }) {
+  const [form, setForm] = useState<Form>({ kind: "change", subject: "", sender: "", site: "", due: "" });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const set = (k: keyof Form) => (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setError(null);
@@ -29,7 +33,7 @@ function NewRequest({ sites, onCreated }) {
       setForm({ kind: form.kind, subject: "", sender: "", site: "", due: "" });
       await onCreated();
     } catch (err) {
-      setError(err.message);
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
@@ -84,7 +88,7 @@ function NewRequest({ sites, onCreated }) {
   );
 }
 
-function Row({ t, now, onToggle }) {
+function Row({ t, now, onToggle }: { t: Ticket; now: number; onToggle: (t: Ticket) => void }) {
   return (
     <div className={`req ${t.status}`}>
       <span className={`kind ${t.kind}`}>{t.kind}</span>
@@ -106,20 +110,20 @@ function Row({ t, now, onToggle }) {
   );
 }
 
-export default function Requests({ f }) {
+export default function Requests({ f }: { f: Feeds }) {
   const { tickets, sites, now, reloadTickets } = f;
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const open = tickets.filter((t) => t.status === "open");
   const closed = tickets.filter((t) => t.status === "closed").slice(0, 10);
   const overdue = open.filter((t) => t.overdue).length;
 
-  const toggle = async (t) => {
+  const toggle = async (t: Ticket) => {
     setError(null);
     try {
       await send("PATCH", `/api/tickets/${t.id}`, { status: t.status === "open" ? "closed" : "open" });
       await reloadTickets();
     } catch (err) {
-      setError(err.message);
+      setError(err instanceof Error ? err.message : String(err));
     }
   };
 

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import App from "./App.jsx";
-import Login from "./Login.jsx";
+import App from "./App.tsx";
+import Login from "./Login.tsx";
 
 // Decides whether to show the console or the login. The console only mounts once
 // we are allowed in, so nothing polls the hub (and gets a wall of 401s) before then.
 export default function Root() {
-  const [phase, setPhase] = useState("checking"); // checking | login | ready
+  const [phase, setPhase] = useState<"checking" | "login" | "ready">("checking");
   const [required, setRequired] = useState(false);
   // bumped on each sign-in, so the console remounts with fresh feeds
   const [session, setSession] = useState(0);
@@ -13,7 +13,7 @@ export default function Root() {
   const check = useCallback(async () => {
     try {
       const res = await fetch("/api/auth/status");
-      const status = await res.json();
+      const status = (await res.json()) as { required: boolean; authenticated: boolean };
       setRequired(status.required);
       setPhase(!status.required || status.authenticated ? "ready" : "login");
     } catch {

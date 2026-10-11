@@ -29,8 +29,8 @@ The scarce resource is **attention at inconvenient hours**, not compute.
 **Chunk 1: done.** Stack trace in, one deduplicated issue out. Verified: 200
 crashes with varying IPs and retry counts collapse to a single row.
 
-**Chunk 3: done, and grown.** React console with six tabs (Overview, Incidents,
-Requests, Deploys, Staging, Media), an uptime probe, incident actions with an audit
+**Chunk 3: done, and grown.** React console with seven tabs (Overview, Incidents,
+Requests, Deploys, Staging, Media, Sites), an uptime probe, incident actions with an audit
 trail, client-request tickets and CI deploy reports. 30-second polling. Runs
 locally against the dev database; needs no paid service.
 
@@ -49,15 +49,25 @@ monitoring.
 
 Everything else waits.
 
-**Planned, not started:** moving the console to TypeScript, with API types generated from the hub's own schemas.
-Plan and order in `docs/TYPESCRIPT-MIGRATION.md`. Until it lands, write new console files as `.ts` or `.tsx`.
+**Console is TypeScript.** Every file under `console/src` is `.ts` or `.tsx` (strict), and its API types are generated from the hub's own
+schemas: `python tools/export_openapi.py && (cd console && npm run types)` after any change to a hub response model, then commit both
+generated files. A Python test fails when they are stale. The console checks with TypeScript 7; the generator is a separate package
+(`tools/typegen`, TypeScript 5.9) because it cannot run under 7. History in `docs/TYPESCRIPT-MIGRATION.md`. Write new console files as `.ts` or `.tsx`.
 
 **Planned, not started:** the client sites go behind Cloudflare's free plan, with **Caddy staying** as the web server (nginx
 was considered and not needed, decision #53). The checklist and two small tested additions to the Caddyfile are in
 `docs/CLOUDFLARE.md`. The hub's own hostname stays DNS-only, so a bot rule can never turn an error report into silence.
 
-**Next up:** an onboarding screen in the console: add a site, see its keys once with a ready-made setup snippet for its
-stack, and watch for its first report. The API half exists; the plan is in `docs/ONBOARDING-DASHBOARD.md`.
+**Planned, not started:** eight data-protection changes: the reporters refuse a plain `http://` hub (and say so in the app's log, never silently),
+HSTS on the hub's Caddyfile, encrypted backups, per-site secrets derived from a master key instead of stored, a secret scanner before commits,
+production secrets as mounted files, an audit trail for sites and secrets, and a leak runbook. See `docs/DATA-PROTECTION.md`, which also
+records what is and is not encrypted today.
+
+**Onboarding screen: built** (the console's Sites tab). Add a site, see its keys once beside a setup snippet for its stack, and watch
+for its first report. Hub: `GET /api/sites`, `POST /api/sites/{id}/rotate-secret`, `POST /api/sites/{id}/test-event`. Snippets are
+`console/src/snippets.ts`. A site's last-reported time ignores the console's own test events, so pressing the test button can never
+make an unwired site look wired. The Sites tab holds the idle screen off while a form is open or a secret is on screen. Details in
+`docs/ONBOARDING-DASHBOARD.md`. Not built: deleting or renaming a site, and writing secrets into Gitea.
 
 ---
 
@@ -78,7 +88,7 @@ One FastAPI service, one Postgres, one React console. Nothing else.
 | FastAPI | the hub | yes |
 | PostgreSQL | issues, events, presence | yes |
 | Pushover | push to iPhone | yes |
-| React 19 + Vite | console | chunk 3 |
+| React 19 + TypeScript + Vite | console | chunk 3 |
 | Caddy | TLS, sole ingress | at deploy |
 | Docker Compose | packaging | at deploy |
 
@@ -193,8 +203,21 @@ reporter snippet, the dedupe harness.
   separate signed ack link is needed** — handle it at `POST /pushover/ack`.
 - `POST /presence` accepts `{state, ttl_minutes, source, token}`, called by iOS
   Shortcuts NFC automations.
+- **Delivery goes through a durable outbox in Postgres, not a worker or a queue service** (decision #56). A `state_change`
+  writes a `notifications` row **in the same transaction** that records it, so either both exist or neither does. A sender loop
+  in the hub, started like the probe, picks up due rows with `FOR UPDATE SKIP LOCKED`, calls `notify.send`, and backs off on
+  failure. A restart loses nothing. Delivery is at-least-once, so a crash mid-send can repeat a push, which is better than losing
+  one. Muted issues write no row. A retried ingest must not write a second row for the same change (a unique key on issue,
+  change and time of the change). A row that exhausts its attempts becomes `failed` and **is shown in the console**: an alert
+  that could not be sent must never look like an alert that was not needed.
+- **The policy fails toward the reliable channel.** If the policy itself errors, send the Pushover push at normal priority
+  anyway; nothing may suppress an alert.
+- The outbox is also the source of the "alert sent" lines in the incident log, which are still missing.
+- The loop pings the external dead-man's switch (`DEPLOY.md`, section 7) only while it is alive, so a stuck sender is noticed.
 - Test by breaking a staging route, not with a unit test. Test presence by
-  tapping out and confirming the push *still arrives*.
+  tapping out and confirming the push *still arrives*. The outbox itself does get unit tests: one row per state change, none
+  for a muted issue, none duplicated by a retried ingest, backoff on failure, `failed` made visible, and a row left `sending`
+  by a crash is picked up again.
 
 **Chunk 3 — done.** React console, 30-second polling, no websockets. Planned as
 one page and two endpoints (`/api/sites/health`, `/api/issues`); it grew to five
@@ -226,7 +249,7 @@ Data flows, all real tables:
 | Home media | `client/jellyfin_reporter.py` on the ThinkCentre *pushes* Jellyfin's sessions to `POST /ingest/{key}/media` | `/api/media`, `/api/media/history`, the Media tab and an idle-screen panel |
 
 **Staging promotion.** A staging site is paired with its production site by *name*: `<production>-staging`
-belongs to `<production>`. `console/src/promotion.js` decides ready / blocked / in sync / behind. Blockers
+belongs to `<production>`. `console/src/promotion.ts` decides ready / blocked / in sync / behind. Blockers
 (failed or unfinished deploy, uptime under 99%, open P1/P2, silent, degraded or restarting stack) always win.
 
 **A stop is not a crash.** In `client/stack_reporter.py`, exit codes 0, 137, 143 and 255 mean stopped
@@ -252,13 +275,13 @@ or ribbon. Sites are created with `POST /api/sites` (console token; returns the 
 and `PATCH /api/sites/{id}` sets or clears the `url`. No SQL. A staging site must be named
 `<production>-staging`, which is how promotion pairs them. `seed.py` remains for the first demo site.
 
-The **idle screen** (`#/idle`, `console/src/views/Idle.jsx`) starts by itself after 5
+The **idle screen** (`#/idle`, `console/src/views/Idle.tsx`) starts by itself after 5
 minutes with no input and doubles as the wall display. Two production sites at a
 time, rotating every 2 minutes, plus active incidents and production and staging
 deploys. It hides detail, not names: incident titles and commit refs appear only
 after a fingerprint reveal (2 minutes, then it reverts by itself). Only reveal
 then *Unlock console* leaves it; stray input never does. The fingerprint is
-**simulated** until the R307 reader exists (chunk 6): `useReveal()` in `hooks.js`
+**simulated** until the R307 reader exists (chunk 6): `useReveal()` in `hooks.ts`
 is the one seam to swap. Unlock only navigates, and gives no real protection until
 the write endpoints are gated (#32).
 
@@ -335,7 +358,7 @@ hub/
   presence.py      home or away as taps with an expiry (away on expiry or with no record)
   rates.py         /api/rates: cached USD to KES rate (decoration only)
   edge.py          edge-triggered issues shared by every pushed source: open once, resolve themselves
-console/           Vite + React 19 UI: src/views/* is one file per tab
+console/           Vite + React 19 + TypeScript UI: src/views/* is one file per tab; src/api/* is generated from the hub (do not edit)
 client/
   reporter.py      the whole "SDK" — drop into any managed FastAPI app
   browser/nightjar.ts  the browser reporter: one dependency-free file, public key only (docs/KEYS.md)
@@ -398,7 +421,8 @@ The console, in a second terminal:
 
 ```bash
 cd console && npm install && npm run dev    # http://localhost:5173
-npm test                                    # promotion-readiness rules + CSS collision guard (console/src/*.test.mjs)
+npm test                                    # tsc --noEmit, then the console's rules and CSS collision guard (console/src/*.test.mjs)
+npm run types                               # regenerate src/api/schema.d.ts after python tools/export_openapi.py
 python -m unittest discover -s tests        # migrations, auth, stack policy (needs the dev db up)
 python -m unittest discover -s client       # the stack reporter
 ```
@@ -441,6 +465,11 @@ signed against a hub with `VERIFY_SIGNATURES` on.
   `client/reporter.py` is wrapped and swallowed.
 - Ingest bursts serialise with `SELECT ... FOR UPDATE` on the issue row.
   Intentional: correctness over throughput at this scale.
+- **The hub is one process on purpose** (`uvicorn` without `--workers`). Do not scale it out without moving three things into
+  the database first: the probe loop, which would otherwise check every site once per process; the browser route's rate limits
+  and new-issue cap, which live in memory per process; and anything else that assumes it is alone. The alert sender
+  (chunk 2) is the exception, because `SKIP LOCKED` makes it safe with several. There is no Celery, RQ or Redis, and none is
+  wanted (decisions #54 and #56).
 - Comments explain *why*, not *what*. The fingerprint exclusions and the
   serialisation choice are where future-you will want the reasoning.
 

@@ -1,7 +1,16 @@
 # Console TypeScript migration (planned)
 
-> **Status: planned, not started.** Nothing in `console/` is TypeScript today. This is written down so the work
-> can be picked up cold, and so new console code is not written in a way that makes it harder.
+> **Status: done (2026-10-11).** All seven phases are complete: tooling, generated API types, the pure logic modules,
+> `hooks.ts` and `ui.tsx`, the shell, the seven views, and tightening (`allowJs` dropped, nothing in `console/src` is
+> JavaScript but the `.mjs` tests). Kept as the record of how it was done and why.
+>
+> **The console type-checks with TypeScript 7; the generator runs on 5.9.** `openapi-typescript` needs TypeScript 5's
+> JavaScript API, which 7 (the native compiler) does not have, and it crashes on load under 7. So it lives in its own
+> package, `tools/typegen/`, pinned to 5.9.3, and `npm run types` in `console/` runs it from there. Nothing in the console
+> imports it. Revisit when `openapi-typescript` supports 7, and the two can be one package again.
+>
+> **Found by typing:** `rateView` threw when the feed said `available` but sent no `rate` (fixed first, with a test, in
+> its own commit).
 
 ## Why
 

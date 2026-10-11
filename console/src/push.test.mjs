@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import {
   COMPLETE_SHOW_MIN, DEMO_COMPLETE_S, DEMO_DONE_S, DEMO_GAPS_S, DEMO_LOADING_S, DEMO_PERIOD_S,
   DONE_SHOW_MIN, FAILED_SHOW_MIN, RUNNING_MAX_MIN, demoPush, pushView, stackHealthySince,
-} from "./push.js";
+} from "./push.ts";
 
 const ok = (name) => console.log(`  ok   ${name}`);
 const NOW = Date.parse("2026-09-21T12:00:00Z");

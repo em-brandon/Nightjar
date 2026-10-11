@@ -1,11 +1,16 @@
 import { ArrowDownUp, Banknote, CloudDownload, CloudUpload, Cpu, DatabaseBackup, House, Plane, ThermometerSnowflake, ThermometerSun, Wifi, WifiOff } from "lucide-react";
-import { activityView, backupView, hostView, netView, pairAt, presenceView, rateView, tempsView } from "./home.js";
-import { Odometer } from "./ui.jsx";
+import type { ReactNode } from "react";
+import type { LucideIcon } from "lucide-react";
+import type { Presence, Rates } from "./api/types.ts";
+import { activityView, backupView, hostView, netView, pairAt, presenceView, rateView, tempsView } from "./home.ts";
+import type { DemoHome } from "./home.ts";
+import type { HomeSnapshot } from "./api/types.ts";
+import { Odometer } from "./ui.tsx";
 
 // A few small status icons, like a phone's notification area: an icon with a live number beside it.
 // Dim while all is well, amber for "look soon", red for "look now". A silent reporter is an amber
 // icon with a dash, never a healthy number. Hover (or focus) an icon for what it means.
-function Item({ icon: Icon, tone = "", motion = "", tip, children }) {
+function Item({ icon: Icon, tone = "", motion = "", tip, children }: { icon: LucideIcon; tone?: string; motion?: string; tip: string; children?: ReactNode }) {
   return (
     <span className={`tip bar-item ${tone ? `bar-${tone}` : ""}`} data-tip={tip} tabIndex={0}>
       <Icon size={19} strokeWidth={1.9} className={motion ? `bar-motion bar-${motion}` : undefined} aria-hidden="true" />
@@ -14,22 +19,30 @@ function Item({ icon: Icon, tone = "", motion = "", tip, children }) {
   );
 }
 
-const Num = ({ value, unit }) => (
+const Num = ({ value, unit }: { value: string | number | null | undefined; unit?: string | null }) => (
   <span className="bar-num">
     {value == null ? "—" : <Odometer value={String(value)} />}
     {unit && <small>{unit}</small>}
   </span>
 );
 
-const TONE = { silent: "warn", old: "warn", none: "", hot: "bad", low: "bad", warm: "warn", stale: "warn", missing: "warn", offline: "bad" };
+const TONE: Record<string, string> = { silent: "warn", old: "warn", none: "", hot: "bad", low: "bad", warm: "warn", stale: "warn", missing: "warn", offline: "bad" };
 // Temperatures colour by their own range: cool, operating, high.
-const TEMP_TONE = { cool: "cool", op: "op", high: "high" };
+const TEMP_TONE: Record<string, string> = { cool: "cool", op: "op", high: "high" };
+const tempTone = (state: string | null | undefined) => (state ? TEMP_TONE[state] : undefined);
 
 // The internet icon changes with what the line is doing.
-const NET_ICON = { offline: WifiOff, silent: WifiOff, idle: Wifi, down: CloudDownload, up: CloudUpload, both: ArrowDownUp };
-const NET_WORDS = { offline: "Offline", silent: "Reporter silent", idle: "Connected, idle", down: "Downloading", up: "Uploading", both: "Downloading and uploading" };
+const NET_ICON: Record<string, LucideIcon> = { offline: WifiOff, silent: WifiOff, idle: Wifi, down: CloudDownload, up: CloudUpload, both: ArrowDownUp };
+const NET_WORDS: Record<string, string> = { offline: "Offline", silent: "Reporter silent", idle: "Connected, idle", down: "Downloading", up: "Uploading", both: "Downloading and uploading" };
 
-export default function StatusTray({ home, homeDemo, presence, rates, offline = false, now }) {
+export default function StatusTray({ home, homeDemo, presence, rates, offline = false, now }: {
+  home: HomeSnapshot[];
+  homeDemo: DemoHome[] | null;
+  presence: Presence | null | undefined;
+  rates: Rates | null | undefined;
+  offline?: boolean;
+  now: number;
+}) {
   const isDemo = home.length === 0 && !!homeDemo;
   const h = home[0] ?? homeDemo?.[0] ?? null;
 
@@ -79,19 +92,19 @@ export default function StatusTray({ home, homeDemo, presence, rates, offline = 
       )}
 
       {temps && !temps.silent && temps.intake && (
-        <Item icon={ThermometerSnowflake} tone={TEMP_TONE[temps.intake.state]} tip={`Cabinet intake: ${temps.intake.value}°C\nAir going into the cabinet\n${temps.intake.range}${sample}`}>
+        <Item icon={ThermometerSnowflake} tone={tempTone(temps.intake.state)} tip={`Cabinet intake: ${temps.intake.value}°C\nAir going into the cabinet\n${temps.intake.range}${sample}`}>
           <Num value={temps.intake.value} unit="°" />
         </Item>
       )}
       {temps && !temps.silent && temps.exhaust && (
-        <Item icon={ThermometerSun} tone={TEMP_TONE[temps.exhaust.state]} tip={`Cabinet exhaust: ${temps.exhaust.value}°C\nAir leaving the cabinet\n${temps.exhaust.range}${sample}`}>
+        <Item icon={ThermometerSun} tone={tempTone(temps.exhaust.state)} tip={`Cabinet exhaust: ${temps.exhaust.value}°C\nAir leaving the cabinet\n${temps.exhaust.range}${sample}`}>
           <Num value={temps.exhaust.value} unit="°" />
         </Item>
       )}
       {host && (
         <Item
           icon={Cpu}
-          tone={host.state === "silent" ? "warn" : host.state === "low" ? "bad" : TEMP_TONE[temps?.cpu?.state] ?? ""}
+          tone={host.state === "silent" ? "warn" : host.state === "low" ? "bad" : tempTone(temps?.cpu?.state) ?? ""}
           tip={
             host.state === "silent"
               ? "ThinkCentre\nreporter silent"

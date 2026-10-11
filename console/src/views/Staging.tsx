@@ -1,25 +1,27 @@
 import { useState } from "react";
-import { ago, plural, send } from "../hooks.js";
-import { Dot, Odometer, Pill, SiteCard, Spark } from "../ui.jsx";
-import { readiness, runningBuilds } from "../promotion.js";
-import { DeployHowTo, DeployList } from "./Deploys.jsx";
+import type { Deploy, SiteHealth, Stack } from "../api/types.ts";
+import type { Feeds } from "../feeds.ts";
+import { ago, plural, send } from "../hooks.ts";
+import { Dot, Odometer, Pill, SiteCard, Spark } from "../ui.tsx";
+import { readiness, runningBuilds } from "../promotion.ts";
+import { DeployHowTo, DeployList } from "./Deploys.tsx";
 
 // Where "Manage stacks" points. Start, stop and logs live in Dockge or Portainer
 // on the staging host, reached over Tailscale: Nightjar only shows stacks, and
 // is never given the power to control them.
-const CONTROL_URL = import.meta.env.VITE_STACK_CONTROL_URL;
+const CONTROL_URL = import.meta.env.VITE_STACK_CONTROL_URL as string | undefined;
 
-const STATE_DOT = { running: "up", degraded: "warn", stopped: "idle" };
-const TONE = { running: "ok", degraded: "warn", stopped: "run" };
-const DEPLOY_TONE = { success: "ok", failed: "bad", running: "run" };
+const STATE_DOT: Record<Stack["state"], string> = { running: "up", degraded: "warn", stopped: "idle" };
+const TONE: Record<Stack["state"], string> = { running: "ok", degraded: "warn", stopped: "run" };
+const DEPLOY_TONE: Record<Deploy["status"], string> = { success: "ok", failed: "bad", running: "run" };
 
 // Docker reports binary units, so label them as such.
-const gb = (mb) => `${(mb / 1024).toFixed(mb >= 10240 ? 0 : 1)} GiB`;
-const mem = (mb) => (mb == null ? "—" : mb >= 1024 ? gb(mb) : `${mb} MiB`);
+const gb = (mb: number) => `${(mb / 1024).toFixed(mb >= 10240 ? 0 : 1)} GiB`;
+const mem = (mb: number | null | undefined) => (mb == null ? "—" : mb >= 1024 ? gb(mb) : `${mb} MiB`);
 
 // Memory against a limit. With no limit the bar is drawn dashed against the
 // whole host and labelled, because one runaway app can then take the machine.
-function MemBar({ used, limit, host }) {
+function MemBar({ used, limit, host }: { used: number; limit: number | null | undefined; host: number | null | undefined }) {
   const total = limit ?? host;
   const pct = total ? Math.min(100, (used / total) * 100) : 0;
   const tone = pct >= 90 ? "bad" : pct >= 75 ? "warn" : "";
@@ -30,14 +32,14 @@ function MemBar({ used, limit, host }) {
   );
 }
 
-const VERDICT = {
+const VERDICT: Record<ReturnType<typeof readiness>["verdict"], { tone: string; label: string }> = {
   ready: { tone: "ok", label: "Ready to promote" },
   blocked: { tone: "bad", label: "Not ready" },
   insync: { tone: "run", label: "Nothing to promote" },
   behind: { tone: "warn", label: "Behind production" },
 };
 
-function RefLine({ label, d, now }) {
+function RefLine({ label, d, now }: { label: string; d: Deploy | undefined; now: number }) {
   return (
     <div className="ref-line">
       <span className="k">{label}</span>
@@ -48,7 +50,7 @@ function RefLine({ label, d, now }) {
 }
 
 // One staging site: can it go to production, and what would change if it did.
-function PromotionCard({ site, r, now }) {
+function PromotionCard({ site, r, now }: { site: SiteHealth; r: ReturnType<typeof readiness>; now: number }) {
   const v = VERDICT[r.verdict];
   return (
     <div className={`card promo ${r.verdict}`}>
@@ -83,7 +85,7 @@ function PromotionCard({ site, r, now }) {
   );
 }
 
-function StackCard({ s, deploy, now, onRemove }) {
+function StackCard({ s, deploy, now, onRemove }: { s: Stack; deploy: Deploy | undefined; now: number; onRemove: (s: Stack) => void }) {
   const silent = s.stale;
   const running = s.state === "running" || s.state === "degraded";
   const unlimited = running && s.mem_limit_mb == null;
@@ -139,7 +141,7 @@ function StackCard({ s, deploy, now, onRemove }) {
               </span>
               <span className="svc-mem">
                 {v.mem_mb == null ? v.state : mem(v.mem_mb)}
-                {v.restarts > 0 && <span className="c-warn"> · {plural(v.restarts, "restart", "restarts")}</span>}
+                {v.restarts != null && v.restarts > 0 && <span className="c-warn"> · {plural(v.restarts, "restart", "restarts")}</span>}
               </span>
             </li>
           ))
@@ -183,20 +185,20 @@ function StackHowTo() {
   );
 }
 
-export default function Staging({ f }) {
+export default function Staging({ f }: { f: Feeds }) {
   const { sites, deploys, stacks, now, reloadStacks } = f;
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
 
   // Only offered for a silent stack: a stack that stops reporting stays visible
   // until someone says it was decommissioned.
-  const remove = async (s) => {
+  const remove = async (s: Stack) => {
     if (!confirm(`Forget stack "${s.stack}"? Its history is deleted. Only do this if it was decommissioned.`)) return;
     setError(null);
     try {
       await send("DELETE", `/api/stacks?site=${encodeURIComponent(s.site)}&stack=${encodeURIComponent(s.stack)}`);
       await reloadStacks();
     } catch (err) {
-      setError(err.message);
+      setError(err instanceof Error ? err.message : String(err));
     }
   };
   const staging = sites.filter((s) => s.env === "staging");
@@ -213,11 +215,12 @@ export default function Staging({ f }) {
 
   // Host disk is a property of the machine, so any live report will do.
   const disk = live.find((s) => s.host_disk_total_mb);
-  const diskFreePct = disk ? (disk.host_disk_free_mb / disk.host_disk_total_mb) * 100 : null;
+  const diskTotal = disk?.host_disk_total_mb;
+  const diskFreePct = disk && diskTotal ? ((disk.host_disk_free_mb ?? 0) / diskTotal) * 100 : null;
   const builds = runningBuilds(deploys, now).length;
   const promotions = staging.map((site) => ({ site, r: readiness({ site, sites, deploys, stacks, now }) }));
 
-  const latestDeploy = (site) => stagingDeploys.find((d) => d.site === site);
+  const latestDeploy = (site: string) => stagingDeploys.find((d) => d.site === site);
 
   return (
     <>
@@ -278,7 +281,7 @@ export default function Staging({ f }) {
               <span className="k">Host disk free</span>
               <span className="big">{diskFreePct == null ? "—" : `${Math.round(diskFreePct)}%`}</span>
               <span className="sub">
-                {disk ? `${gb(disk.host_disk_free_mb)} of ${gb(disk.host_disk_total_mb)}` : "not reported"}
+                {disk && diskTotal ? `${gb(disk.host_disk_free_mb ?? 0)} of ${gb(diskTotal)}` : "not reported"}
               </span>
             </div>
             <div className={`card stat ${builds > 1 ? "warn" : ""}`}>

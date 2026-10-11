@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactElement } from "react";
 
 // Cosmetic for now: the lines tick over on a timer and do not check anything.
 // When chunk 2 lands, replace STEP_MS scheduling with real checks (hub /healthz,
@@ -21,7 +21,7 @@ const FADE_MS = 450;
 const SEEN_KEY = "nightjar.splash.seen";
 
 // Original geometric marks (from the mockup), not the projects' official logos.
-const GLYPHS = {
+const GLYPHS: Record<string, ReactElement> = {
   caddy: (
     <>
       <circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" strokeWidth="1.6" />
@@ -90,8 +90,8 @@ export default function Splash() {
 
   useEffect(() => {
     if (gone) return;
-    const timers = [];
-    const at = (ms, fn) => timers.push(setTimeout(fn, reduce ? 0 : ms));
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const at = (ms: number, fn: () => void) => timers.push(setTimeout(fn, reduce ? 0 : ms));
 
     STEPS.forEach((_, i) => at(FIRST_MS + i * STEP_MS, () => setShown(i + 1)));
     const readyAt = FIRST_MS + STEPS.length * STEP_MS;
@@ -107,7 +107,7 @@ export default function Splash() {
 
   useEffect(() => {
     if (gone) return;
-    const skip = (e) => {
+    const skip = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         markSeen();
         setGone(true);
