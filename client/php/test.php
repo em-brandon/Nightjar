@@ -69,8 +69,10 @@ check('the innermost frame is the method that threw', end($cart) === 'Cart::tota
 
 $p = Reporter::prepare(OPTS, fails_with(), 'error', ['method' => 'POST', 'path' => '/cart']);
 check('the url has the key and no double slash', $p['url'] === 'https://nightjar.example/ingest/KEY1/event', $p['url']);
-$expected = 'sha256=' . hash_hmac('sha256', $p['body'], 's3cret');
-check('the HMAC is over exactly the bytes sent', $p['headers']['X-Hub-Signature'] === $expected);
+$ts = $p['headers']['X-Hub-Timestamp'];
+check('a timestamp in whole seconds, and it is now', preg_match('/^\d{10}$/', $ts) === 1 && abs(time() - (int) $ts) < 5, $ts);
+$expected = 'sha256=' . hash_hmac('sha256', $ts . '.' . $p['body'], 's3cret');
+check('the HMAC is over the timestamp, a dot and exactly the bytes sent', $p['headers']['X-Hub-Signature'] === $expected);
 $b = json_decode($p['body'], true);
 check('type, message, level, release and environment', [$b['exception_type'], $b['message'], $b['level'], $b['release'], $b['environment']] === ['InvalidArgumentException', 'bad value 42', 'error', 'v2', 'production']);
 check('the request has a method and a path', $b['request'] === ['method' => 'POST', 'path' => '/cart']);

@@ -160,11 +160,13 @@ export function prepare(options: Options, error: unknown, level: Level = "error"
     // the path only: a query string can carry a token or a person's details
     request: request ? { method: request.method, path: request.path?.split("?")[0] } : undefined,
   });
-  // The HMAC is over exactly these bytes, which is what the hub verifies.
-  const signature = "sha256=" + createHmac("sha256", o.secret).update(body).digest("hex");
+  // The HMAC is over the timestamp, a dot and exactly these bytes, which is what the hub verifies. The timestamp is
+  // inside the signature so a captured report cannot be replayed later (hub/ingest.py).
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const signature = "sha256=" + createHmac("sha256", o.secret).update(`${timestamp}.${body}`).digest("hex");
   return {
     url: `${o.hub}/ingest/${o.key}/event`,
-    headers: { "Content-Type": "application/json", "X-Hub-Signature": signature },
+    headers: { "Content-Type": "application/json", "X-Hub-Timestamp": timestamp, "X-Hub-Signature": signature },
     body,
   };
 }

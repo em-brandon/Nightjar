@@ -171,7 +171,7 @@ def run_java(key: str, secret: str, pad: int = 0, message: str = DEFAULT_MESSAGE
         "  public static void main(String[] a) {\n"
         "    try { render(); } catch (Exception e) {\n"
         '      Nightjar.Prepared p = Nightjar.prepare(new Nightjar.Options(), e, Nightjar.Level.ERROR, "GET", "/cart?token=SECRET");\n'
-        '      System.out.println(p.url + "\\n" + p.headers.get("X-Hub-Signature") + "\\n" + p.body);\n'
+        '      System.out.println(p.url + "\\n" + p.headers.get("X-Hub-Timestamp") + "\\n" + p.headers.get("X-Hub-Signature") + "\\n" + p.body);\n'
         "    }\n"
         "  }\n"
         "}\n"
@@ -186,8 +186,9 @@ def run_java(key: str, secret: str, pad: int = 0, message: str = DEFAULT_MESSAGE
         )
     if done.returncode != 0:
         raise AssertionError(done.stderr)
-    url, signature, body = done.stdout.strip().split("\n", 2)
-    return {"url": url, "headers": {"Content-Type": "application/json", "X-Hub-Signature": signature}, "body": body}
+    url, timestamp, signature, body = done.stdout.strip().split("\n", 3)
+    headers = {"Content-Type": "application/json", "X-Hub-Timestamp": timestamp, "X-Hub-Signature": signature}
+    return {"url": url, "headers": headers, "body": body}
 
 
 PHP = find_php()
@@ -295,7 +296,10 @@ class ServerReporters(unittest.IsolatedAsyncioTestCase):
     async def test_the_signature_is_over_the_exact_bytes_sent(self):
         async def check(name, runner):
             p = self.prepared(runner)
-            expected = "sha256=" + hmac.new(self.secret.encode(), p["body"].encode(), hashlib.sha256).hexdigest()
+            ts = p["headers"]["X-Hub-Timestamp"]
+            self.assertLess(abs(time.time() - int(ts)), 5, f"{name}: a timestamp, and it is now")
+            signed = ts.encode() + b"." + p["body"].encode()
+            expected = "sha256=" + hmac.new(self.secret.encode(), signed, hashlib.sha256).hexdigest()
             self.assertEqual(p["headers"]["X-Hub-Signature"], expected, name)
 
         await self.each(check)
@@ -344,7 +348,14 @@ class Receiver:
         class Handler(BaseHTTPRequestHandler):
             def do_POST(self):  # noqa: N802
                 body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
-                outer.got.append({"path": self.path, "sig": self.headers.get("X-Hub-Signature"), "body": body})
+                outer.got.append(
+                    {
+                        "path": self.path,
+                        "sig": self.headers.get("X-Hub-Signature"),
+                        "ts": self.headers.get("X-Hub-Timestamp"),
+                        "body": body,
+                    }
+                )
                 self.send_response(200)
                 self.send_header("Content-Length", "2")
                 self.end_headers()
@@ -391,7 +402,9 @@ class PhpCrashes(unittest.TestCase):
             return done, time.monotonic() - started
 
     def check_signed(self, sent: dict):
-        expected = "sha256=" + hmac.new(b"s3cret", sent["body"], hashlib.sha256).hexdigest()
+        self.assertIsNotNone(sent["ts"], "a timestamp was sent")
+        signed = sent["ts"].encode() + b"." + sent["body"]
+        expected = "sha256=" + hmac.new(b"s3cret", signed, hashlib.sha256).hexdigest()
         self.assertEqual(sent["sig"], expected)
         self.assertEqual(sent["path"], "/ingest/KEY1/event")
 

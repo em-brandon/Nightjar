@@ -122,8 +122,11 @@ const settle = () => new Promise((r) => setTimeout(r, 5));
   const err = new RangeError("out of range");
   const p = prepare(OPTS, err, "error", { method: "POST", path: "/cart?token=SECRET" });
   assert.equal(p.url, "https://nightjar.example/ingest/KEY1/event", "trailing slash on the hub is tolerated");
-  const expected = "sha256=" + createHmac("sha256", "s3cret").update(p.body).digest("hex");
-  assert.equal(p.headers["X-Hub-Signature"], expected, "the HMAC is over exactly the bytes sent");
+  const ts = p.headers["X-Hub-Timestamp"];
+  assert.match(ts, /^\d{10}$/, "a timestamp in whole seconds");
+  assert.ok(Math.abs(Date.now() / 1000 - Number(ts)) < 5, "and it is now");
+  const expected = "sha256=" + createHmac("sha256", "s3cret").update(`${ts}.${p.body}`).digest("hex");
+  assert.equal(p.headers["X-Hub-Signature"], expected, "the HMAC is over the timestamp, a dot and exactly the bytes sent");
   const b = JSON.parse(p.body);
   assert.deepEqual([b.exception_type, b.message, b.level, b.release, b.environment], ["RangeError", "out of range", "error", "v2", "production"]);
   assert.deepEqual(b.request, { method: "POST", path: "/cart" }, "the query string is never sent");
@@ -251,7 +254,7 @@ async function crash(script, hubUrl) {
     let body = "";
     req.on("data", (c) => (body += c));
     req.on("end", () => {
-      got.push({ url: req.url, sig: req.headers["x-hub-signature"], body });
+      got.push({ url: req.url, sig: req.headers["x-hub-signature"], ts: req.headers["x-hub-timestamp"], body });
       res.writeHead(200).end("{}");
     });
   });
@@ -265,7 +268,7 @@ async function crash(script, hubUrl) {
   const b = JSON.parse(got[0].body);
   assert.deepEqual([b.exception_type, b.message, b.level], ["TypeError", "kaboom", "fatal"]);
   assert.equal(got[0].url, "/ingest/KEY1/event");
-  assert.equal(got[0].sig, "sha256=" + createHmac("sha256", "s3cret").update(got[0].body).digest("hex"));
+  assert.equal(got[0].sig, "sha256=" + createHmac("sha256", "s3cret").update(`${got[0].ts}.${got[0].body}`).digest("hex"));
   ok("an uncaught exception is reported as fatal, signed, and the process still exits 1");
 
   got.length = 0;

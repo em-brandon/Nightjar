@@ -76,7 +76,9 @@ public final class NightjarTest {
         // ---- the signed request ---------------------------------------------------------
         Nightjar.Prepared p = Nightjar.prepare(opts(), deepA(), Nightjar.Level.ERROR, "POST", "/cart?token=SECRET");
         check("the url has the key and no double slash", p.url.equals("https://nightjar.example/ingest/KEY1/event"), p.url);
-        check("the HMAC is over exactly the bytes sent", p.headers.get("X-Hub-Signature").equals("sha256=" + hmac("s3cret", p.body)));
+        String ts = p.headers.get("X-Hub-Timestamp");
+        check("a timestamp in whole seconds, and it is now", ts.matches("\\d{10}") && Math.abs(System.currentTimeMillis() / 1000 - Long.parseLong(ts)) < 5, ts);
+        check("the HMAC is over the timestamp, a dot and exactly the bytes sent", p.headers.get("X-Hub-Signature").equals("sha256=" + hmac("s3cret", ts + "." + p.body)));
         check("type, message, level, release, environment",
                 p.body.contains("\"exception_type\":\"java.lang.IllegalArgumentException\"")
                         && p.body.contains("\"message\":\"bad value 42\"")
@@ -218,6 +220,7 @@ public final class NightjarTest {
         Nightjar.reset();
         final List<String> got = new CopyOnWriteArrayList<>();
         final List<String> sigs = new CopyOnWriteArrayList<>();
+        final List<String> stamps = new CopyOnWriteArrayList<>();
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", ex -> {
             ByteArrayOutputStream buf = new ByteArrayOutputStream();
@@ -226,6 +229,7 @@ public final class NightjarTest {
             }
             got.add(ex.getRequestURI().getPath() + "\n" + buf.toString(StandardCharsets.UTF_8));
             sigs.add(ex.getRequestHeaders().getFirst("X-Hub-Signature"));
+            stamps.add(ex.getRequestHeaders().getFirst("X-Hub-Timestamp"));
             ex.sendResponseHeaders(200, 2);
             ex.getResponseBody().write("{}".getBytes());
             ex.close();
@@ -239,7 +243,7 @@ public final class NightjarTest {
             if (got.size() == 1) {
                 String[] parts = got.get(0).split("\n", 2);
                 check("at the right path", parts[0].equals("/ingest/KEY1/event"), parts[0]);
-                check("and the signature matches the bytes that arrived", sigs.get(0).equals("sha256=" + hmac("s3cret", parts[1])), sigs.get(0));
+                check("and the signature matches the bytes that arrived", sigs.get(0).equals("sha256=" + hmac("s3cret", stamps.get(0) + "." + parts[1])), sigs.get(0));
                 check("including a multi-byte character", parts[1].contains("😀"));
             }
         } finally {
