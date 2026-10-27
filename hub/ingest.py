@@ -24,7 +24,9 @@ def _verify(secret: str, body: bytes, signature: str | None) -> None:
     if not signature:
         raise HTTPException(401, "missing signature")
     expected = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(expected, signature):
+    # As bytes: compare_digest raises TypeError on a str holding non-ASCII text, and a header is attacker-controlled, so
+    # a junk signature must be a 401 and not a 500.
+    if not hmac.compare_digest(expected.encode(), signature.encode("utf-8", "replace")):
         raise HTTPException(401, "bad signature")
 
 
