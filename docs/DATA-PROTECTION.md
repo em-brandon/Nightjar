@@ -23,7 +23,8 @@ so# Data protection (planned)
 
 **Problem.** A typo or a copied development URL makes a production reporter send error text unencrypted, with no warning.
 
-**Change.** Each reporter (Python, Node, PHP, Java and browser) treats an `http://` hub as unusable unless the host is
+**Change.** Each reporter (Python, Node, PHP, Java and browser, and the four home-side scripts: stack, home, Jellyfin and
+thermal) treats an `http://` hub as unusable unless the host is
 loopback (`localhost`, `127.0.0.1` or `::1`), which development needs.
 
 **One rule that must not be broken.** Refusing must **not** be silent. A reporter that quietly does nothing is the failure

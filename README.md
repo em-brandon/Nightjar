@@ -1389,7 +1389,7 @@ The plan, with the reasoning and the care each item needs, is in [`docs/DATA-PRO
 |---|---|
 | TLS, HSTS, no sniffing, no framing, no referrer, a Content-Security-Policy, and no `Server` header | **Built.** HSTS starts at one day (it is hard to undo) and is raised in steps. Checked by running the production stack and signing in with no policy violation |
 | Secrets as mounted files, none in `docker inspect` | **Built and checked** on a production-shaped stack, including that an empty token file makes the hub refuse to start |
-| The reporters refuse a plain `http://` hub, out loud | **Built** in all five |
+| The reporters refuse a plain `http://` hub, out loud | **Built** in all five app reporters and in the four home-side scripts (stack, home, Jellyfin, thermal). The Jellyfin script carries viewing history, which is personal data |
 | Build contexts exclude `.env`, `secrets/` and `node_modules` | **Built** (`.dockerignore`) |
 | Encrypted backups | **Built.** `deploy/backup.sh` encrypts with `age` to a public key and refuses to run without one; `deploy/restore.sh` restores. Tested on a stand-in dump; a real `pg_dump` restore is still to do. Keep the private key off the server |
 | Spoofable client-IP headers stripped, request bodies capped at 64 KB | **Built.** `caddy validate` passes |

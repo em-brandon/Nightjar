@@ -51,6 +51,7 @@ import sys
 import tempfile
 import time
 import urllib.request
+from urllib.parse import urlsplit
 from datetime import datetime, timezone
 
 TIMEOUT = 10
@@ -63,6 +64,31 @@ UP_URL = "https://speed.cloudflare.com/__up"
 
 
 # ---------------------------------------------------------------- host readings
+
+_LOOPBACK = {"localhost", "127.0.0.1", "::1"}
+
+
+def hub_refusal(url: str) -> str | None:
+    """Why this hub address may not be used, or None when it may. https is always fine. Plain http is fine only for a
+    machine talking to itself, which development needs: anywhere else it would send this host's data, readable, across
+    a network. The message names the host but never the whole address, which could carry a credential. Same rule as
+    client/reporter.py, copied because each of these scripts is deployed on its own."""
+    try:
+        parts = urlsplit(url)
+        scheme, host = parts.scheme.lower(), (parts.hostname or "").lower()
+    except ValueError:
+        scheme, host = "", ""
+    if not scheme or not host:
+        return "Nightjar: the hub address is not a valid URL, so nothing will be reported. Use https://your-hub."
+    if scheme == "https":
+        return None
+    if scheme == "http" and (host in _LOOPBACK or host.endswith(".localhost")):
+        return None
+    return (
+        f"Nightjar: refusing to report to {scheme}://{host}: plain http would send it readable across the network. "
+        "Use an https:// hub address (http:// is only accepted for localhost). Nothing will be reported."
+    )
+
 
 def parse_meminfo(text: str) -> tuple[int, int] | None:
     """(total, available) in MiB from /proc/meminfo."""
@@ -363,6 +389,9 @@ def post(base: str, key: str, secret: str | None, payload: dict) -> None:
 
 def run_once() -> None:
     hub = os.environ["NIGHTJAR_URL"].rstrip("/")
+    refusal = hub_refusal(hub)
+    if refusal:
+        raise ValueError(refusal)  # safe_run prints it: a refused hub must be loud, not look like a quiet host
     key = os.environ["NIGHTJAR_HOME_KEY"]
     secret = os.environ.get("NIGHTJAR_HOME_SECRET")
     configured, backup_at = backup_state()

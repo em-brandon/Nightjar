@@ -55,7 +55,9 @@ A Nightjar outage has to be invisible to a client's checkout page. Concretely, e
    `[::1]` and `*.localhost`, which development needs. Anywhere else it would send error text, readable, across a network. A
    refusal is never silent, because a mistyped address would look exactly like an app with no errors: the reporter writes one
    line to the app's own log (standard error, `error_log`, or the browser console) when it starts, sends nothing, and never
-   throws. The line names the host but never the whole address, which could carry a credential:
+   throws. The line names the host but never the whole address, which could carry a credential. The home-side scripts
+   (`stack_reporter.py`, `home_reporter.py`, `jellyfin_reporter.py`, `thermal_probe.py`) follow the same rule, but as one-shot
+   processes they print the reason to standard error and fail (the thermal probe exits 1) rather than staying quiet:
    `Nightjar: refusing to report errors to http://nightjar.example: plain http would send them readable across the network. ...`
 
 ## The wire contract

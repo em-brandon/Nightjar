@@ -14,7 +14,9 @@ import json
 import os
 import re
 import subprocess
+import sys
 import urllib.request
+from urllib.parse import urlsplit
 
 INGEST_URL = os.environ["NIGHTJAR_INGEST_URL"]      # .../ingest/<key>/event
 INGEST_SECRET = os.environ["NIGHTJAR_INGEST_SECRET"]
@@ -24,6 +26,31 @@ NVME_DEVICE = os.environ.get("NVME_DEVICE", "/dev/nvme0n1")
 # hear about it while it is still a ticket and not yet a shutdown.
 CPU_WARN, CPU_CRIT = 80, 95      # Tjmax on the i5-8500T is 100
 NVME_WARN, NVME_CRIT = 65, 75    # M.2 drives self-throttle around 70
+
+
+_LOOPBACK = {"localhost", "127.0.0.1", "::1"}
+
+
+def hub_refusal(url: str) -> str | None:
+    """Why this hub address may not be used, or None when it may. https is always fine. Plain http is fine only for a
+    machine talking to itself, which development needs: anywhere else it would send this host's data, readable, across
+    a network. The message names the host but never the whole address, which could carry a credential. Same rule as
+    client/reporter.py, copied because each of these scripts is deployed on its own."""
+    try:
+        parts = urlsplit(url)
+        scheme, host = parts.scheme.lower(), (parts.hostname or "").lower()
+    except ValueError:
+        scheme, host = "", ""
+    if not scheme or not host:
+        return "Nightjar: the hub address is not a valid URL, so nothing will be reported. Use https://your-hub."
+    if scheme == "https":
+        return None
+    if scheme == "http" and (host in _LOOPBACK or host.endswith(".localhost")):
+        return None
+    return (
+        f"Nightjar: refusing to report to {scheme}://{host}: plain http would send it readable across the network. "
+        "Use an https:// hub address (http:// is only accepted for localhost). Nothing will be reported."
+    )
 
 
 def cpu_temp() -> float | None:
@@ -75,6 +102,12 @@ def report(exception_type: str, message: str, level: str, extra: dict) -> None:
             "extra": extra,
         }
     ).encode()
+
+    refusal = hub_refusal(INGEST_URL)
+    if refusal:
+        # A cabinet running hot is a P1, so say so on stderr (a failed timer unit) and not nowhere.
+        print(f"thermal_probe: {refusal}", file=sys.stderr)
+        raise SystemExit(1)
 
     signature = "sha256=" + hmac.new(
         INGEST_SECRET.encode(), body, hashlib.sha256

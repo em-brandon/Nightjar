@@ -36,6 +36,7 @@ import shutil
 import sys
 import time
 import urllib.request
+from urllib.parse import urlsplit
 
 TIMEOUT = 10
 TICKS_PER_S = 10_000_000  # Jellyfin counts time in 100-nanosecond ticks
@@ -46,6 +47,31 @@ MAX_SESSIONS = 40
 MB = 1024**2
 
 PLAY_METHODS = {"directplay": "direct_play", "directstream": "direct_stream", "transcode": "transcode"}
+
+
+_LOOPBACK = {"localhost", "127.0.0.1", "::1"}
+
+
+def hub_refusal(url: str) -> str | None:
+    """Why this hub address may not be used, or None when it may. https is always fine. Plain http is fine only for a
+    machine talking to itself, which development needs: anywhere else it would send this host's data, readable, across
+    a network. The message names the host but never the whole address, which could carry a credential. Same rule as
+    client/reporter.py, copied because each of these scripts is deployed on its own."""
+    try:
+        parts = urlsplit(url)
+        scheme, host = parts.scheme.lower(), (parts.hostname or "").lower()
+    except ValueError:
+        scheme, host = "", ""
+    if not scheme or not host:
+        return "Nightjar: the hub address is not a valid URL, so nothing will be reported. Use https://your-hub."
+    if scheme == "https":
+        return None
+    if scheme == "http" and (host in _LOOPBACK or host.endswith(".localhost")):
+        return None
+    return (
+        f"Nightjar: refusing to report to {scheme}://{host}: plain http would send it readable across the network. "
+        "Use an https:// hub address (http:// is only accepted for localhost). Nothing will be reported."
+    )
 
 
 def clip(value, limit):
@@ -152,6 +178,9 @@ def post(base: str, key: str, secret: str | None, payload: dict) -> None:
 
 def run_once() -> None:
     hub = os.environ["NIGHTJAR_URL"].rstrip("/")
+    refusal = hub_refusal(hub)
+    if refusal:
+        raise ValueError(refusal)  # safe_run prints it: a refused hub must be loud, not look like a quiet host
     key = os.environ["NIGHTJAR_MEDIA_KEY"]
     secret = os.environ.get("NIGHTJAR_MEDIA_SECRET")
     base = os.environ.get("JELLYFIN_URL", "http://127.0.0.1:8096").rstrip("/")
