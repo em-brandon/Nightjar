@@ -42,7 +42,12 @@ A Nightjar outage has to be invisible to a client's checkout page. Concretely, e
 
 1. Wraps every path and swallows every failure, including a hostile exception object whose getters throw.
 2. Sends with a timeout of about three seconds and **never retries**.
-3. Has no queue that can grow. A report arriving while too many are waiting is dropped.
+3. Has no queue that can grow. A report arriving while too many are waiting is dropped. Node and Python send at most 60 a
+   minute and 5 at once; PHP holds 5 a request; Java queues a bounded few behind one thread; the browser sends 6 a minute.
+   A storm of errors therefore costs a handful of requests, not one per failure.
+   **A slow hub must not slow the app's reply.** Node, Java and Python send in the background and the browser uses
+   `sendBeacon`. PHP sends after the visitor has been served on PHP-FPM; on Apache `mod_php` or the built-in server the
+   worker stays busy until the sends finish, which is at most five of them and stops at the first failure.
 4. Does not change what a crash does: after reporting, the process or request fails exactly as it would have, or
    the app's own handler runs.
 5. Has **no dependencies** beyond the language's standard library, because it runs with a client's secret.
@@ -208,6 +213,10 @@ public class NightjarResolver implements HandlerExceptionResolver {
 from reporter import install_reporter
 install_reporter(app, url="https://nightjar.example.co.ke/ingest/<key>/event", secret=os.environ["NIGHTJAR_SECRET"])
 ```
+
+It sends in a background task, so a slow or dead hub never delays the 500, and drops reports beyond 60 a minute or 5 at once
+(`max_per_minute` and `max_in_flight` change those). Before this it waited on the hub, up to three seconds, inside every
+failing request.
 
 This was the first reporter and it takes the **full event URL**, where the others take the hub's address and the key
 separately. Django has no reporter file; `INTEGRATE.md` has a middleware snippet.
