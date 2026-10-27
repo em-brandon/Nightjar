@@ -13,7 +13,7 @@ Named for a bird that only becomes active after dark, which is when this system 
 - [Why Nightjar exists](#why-nightjar-exists)
 - [How it works](#how-it-works)
   - [How the uptime probe and the reporters fit together](#how-the-uptime-probe-and-the-reporters-fit-together)
-- [Data flow and how security is enforced](#data-flow-and-how-security-is-enforced)
+- [How a report travels, and what guards each step](#how-a-report-travels-and-what-guards-each-step)
 - [Alerting: from a state change to your phone](#alerting-from-a-state-change-to-your-phone)
   - [If you do not acknowledge](#if-you-do-not-acknowledge)
   - [What has been proven, and what has not](#what-has-been-proven-and-what-has-not)
@@ -72,7 +72,7 @@ Named for a bird that only becomes active after dark, which is when this system 
 | Onboarding: add a site, see its keys once beside a setup snippet, watch for its first report | **Done.** The console's **Sites** tab ([how](#adding-a-site)) |
 | Alerting (chunk 2): policy, outbox, sender, Pushover, acknowledgement, cancel, dead-man's switch | **Built and tested, not live.** A real P1 was sent to a phone and acknowledged from it. It needs a deployed hub and your Pushover keys to run for real ([how it works](#alerting-from-a-state-change-to-your-phone)) |
 | An uptime outage raising a P1 | **Done.** Two failed checks in a row open an issue: P1 in production, P2 on staging |
-| Production hardening | **In progress.** Built: the console served by Caddy, security headers and HSTS, spoofable-header stripping, secrets as mounted files, reporters that refuse a plain `http://` hub, encrypted backups, a secret scanner. Planned: derived secrets, an audit trail, a leak runbook ([the flow](#data-flow-and-how-security-is-enforced), [where it stands](#hardening-and-what-is-still-open)) |
+| Production hardening | **In progress.** Built: the console served by Caddy, security headers and HSTS, spoofable-header stripping, secrets as mounted files, reporters that refuse a plain `http://` hub, encrypted backups, a secret scanner. Planned: derived secrets, an audit trail, a leak runbook ([the flow](#how-a-report-travels-and-what-guards-each-step), [where it stands](#hardening-and-what-is-still-open)) |
 | CI for Nightjar itself | **Written, not yet run on GitHub** ([details](#continuous-integration)) |
 | Escalating a P1 nobody acknowledges | **Planned, not started.** [`docs/ESCALATION.md`](docs/ESCALATION.md) |
 | Email intake and the 07:30 digest (chunk 4) | Not started. A P3 has nowhere to go but the console |
@@ -228,7 +228,7 @@ instead. See [`docs/KEYS.md`](docs/KEYS.md) for who is allowed to send what.
 
 ---
 
-## Data flow and how security is enforced
+## How a report travels, and what guards each step
 
 Every byte takes the same route in: **source, then Caddy, then the hub, then Postgres.** Each layer checks something
 different, so a failure in one does not open the door. Green boxes are built; dashed amber boxes are planned and not yet in
