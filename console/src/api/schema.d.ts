@@ -2352,6 +2352,7 @@ export interface operations {
             query?: never;
             header?: {
                 "x-hub-signature"?: string | null;
+                "x-hub-timestamp"?: string | null;
             };
             path: {
                 ingest_key: string;
@@ -2385,6 +2386,7 @@ export interface operations {
             query?: never;
             header?: {
                 "x-hub-signature"?: string | null;
+                "x-hub-timestamp"?: string | null;
             };
             path: {
                 ingest_key: string;
@@ -2418,6 +2420,7 @@ export interface operations {
             query?: never;
             header?: {
                 "x-hub-signature"?: string | null;
+                "x-hub-timestamp"?: string | null;
             };
             path: {
                 ingest_key: string;
@@ -2451,6 +2454,7 @@ export interface operations {
             query?: never;
             header?: {
                 "x-hub-signature"?: string | null;
+                "x-hub-timestamp"?: string | null;
             };
             path: {
                 ingest_key: string;
@@ -2484,6 +2488,7 @@ export interface operations {
             query?: never;
             header?: {
                 "x-hub-signature"?: string | null;
+                "x-hub-timestamp"?: string | null;
             };
             path: {
                 ingest_key: string;

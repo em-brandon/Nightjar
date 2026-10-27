@@ -3786,6 +3786,22 @@
               ],
               "title": "X-Hub-Signature"
             }
+          },
+          {
+            "in": "header",
+            "name": "x-hub-timestamp",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Hub-Timestamp"
+            }
           }
         ],
         "responses": {
@@ -3843,6 +3859,22 @@
                 }
               ],
               "title": "X-Hub-Signature"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-hub-timestamp",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Hub-Timestamp"
             }
           }
         ],
@@ -3902,6 +3934,22 @@
               ],
               "title": "X-Hub-Signature"
             }
+          },
+          {
+            "in": "header",
+            "name": "x-hub-timestamp",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Hub-Timestamp"
+            }
           }
         ],
         "responses": {
@@ -3960,6 +4008,22 @@
               ],
               "title": "X-Hub-Signature"
             }
+          },
+          {
+            "in": "header",
+            "name": "x-hub-timestamp",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Hub-Timestamp"
+            }
           }
         ],
         "responses": {
@@ -4017,6 +4081,22 @@
                 }
               ],
               "title": "X-Hub-Signature"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-hub-timestamp",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Hub-Timestamp"
             }
           }
         ],

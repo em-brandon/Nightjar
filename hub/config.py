@@ -21,6 +21,11 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+asyncpg://hub:hub@localhost:5432/nightjar"
     verify_signatures: bool = False
+    # Replay protection. A reporter that sends X-Hub-Timestamp signs "<timestamp>.<body>" and the hub rejects it when
+    # the timestamp is further than this from now. Off by default so a client that has not been updated keeps working;
+    # turn it on once every reporter sends one, and a captured request can no longer be replayed at all outside the window.
+    require_signed_timestamp: bool = False
+    signature_max_age_s: int = 300
     spike_threshold: int = 50
     spike_window_min: int = 10
     probe_enabled: bool = True

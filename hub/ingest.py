@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import time
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
@@ -18,12 +19,28 @@ router = APIRouter(prefix="/ingest", tags=["ingest"])
 SEVERITY_BY_LEVEL = {"fatal": "P1", "error": "P2", "warning": "P3"}
 
 
-def _verify(secret: str, body: bytes, signature: str | None) -> None:
+def _signed_bytes(body: bytes, timestamp: str | None) -> bytes:
+    """What the signature covers: the body alone (the original scheme), or the timestamp, a dot and the body. Putting the
+    timestamp inside the signature is what stops a captured request being replayed later, or a fresh timestamp being
+    attached to an old capture: either changes the bytes and the signature no longer matches."""
+    return body if timestamp is None else timestamp.encode() + b"." + body
+
+
+def _verify(secret: str, body: bytes, signature: str | None, timestamp: str | None = None) -> None:
     if not settings.verify_signatures:
         return
     if not signature:
         raise HTTPException(401, "missing signature")
-    expected = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    if timestamp is None:
+        if settings.require_signed_timestamp:
+            raise HTTPException(401, "missing timestamp")
+    else:
+        # Digits only and short, so int() cannot be fed something strange, then a window either side of now.
+        if not (timestamp.isascii() and timestamp.isdigit() and len(timestamp) <= 12):
+            raise HTTPException(401, "bad timestamp")
+        if abs(time.time() - int(timestamp)) > settings.signature_max_age_s:
+            raise HTTPException(401, "stale timestamp")
+    expected = "sha256=" + hmac.new(secret.encode(), _signed_bytes(body, timestamp), hashlib.sha256).hexdigest()
     # As bytes: compare_digest raises TypeError on a str holding non-ASCII text, and a header is attacker-controlled, so
     # a junk signature must be a 401 and not a 500.
     if not hmac.compare_digest(expected.encode(), signature.encode("utf-8", "replace")):
@@ -52,11 +69,12 @@ async def ingest_event(
     ingest_key: str,
     request: Request,
     x_hub_signature: str | None = Header(default=None),
+    x_hub_timestamp: str | None = Header(default=None),
     session: AsyncSession = Depends(get_session),
 ) -> IngestOut:
     raw = await request.body()
     site = await _load_site(session, ingest_key)
-    _verify(site.ingest_secret, raw, x_hub_signature)
+    _verify(site.ingest_secret, raw, x_hub_signature, x_hub_timestamp)
 
     payload = EventIn.model_validate_json(raw)
     return await record_event(session, site, payload)
