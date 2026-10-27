@@ -3,6 +3,7 @@
     python -m unittest discover -s client
 """
 
+import asyncio
 import logging
 import os
 import sys
@@ -29,8 +30,19 @@ def app_with(url: str) -> FastAPI:
     return app
 
 
+async def _drain(app: FastAPI) -> None:
+    pending = list(app.state.nightjar_in_flight)
+    if pending:
+        await asyncio.wait(pending, timeout=5)
+
+
 def hit(app: FastAPI):
-    return TestClient(app, raise_server_exceptions=False).get("/boom")
+    """One failing request. Reports are sent in the background, so keep the app's event loop alive until they finish;
+    without that the test client would tear the loop down and cancel them."""
+    with TestClient(app, raise_server_exceptions=False) as client:
+        resp = client.get("/boom")
+        client.portal.call(_drain, app)
+    return resp
 
 
 class HubRefusal(unittest.TestCase):
