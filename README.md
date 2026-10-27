@@ -317,6 +317,7 @@ wall display can add channels; if all of them fail, Pushover still fires.
 | TLS, HSTS (one day to start), CSP, no framing, no `Server` header | Built | `deploy/Caddyfile` |
 | Spoofable `CF-Connecting-IP` and `True-Client-IP` stripped, 64 KB body cap | Built, `caddy validate` passes | `deploy/Caddyfile` |
 | Signature check, Origin check, rate limits, console token | Built | `hub/` |
+| Signed timestamp, so a captured report expires after five minutes | Built and sent by every signer. **Not enforced until `REQUIRE_SIGNED_TIMESTAMP=true`**, so a request with no timestamp is still replayable | `hub/ingest.py` |
 | Reporters refuse a plain `http://` hub, out loud | Built, all five | `client/` |
 | Secrets as mounted files | Built, checked on a production-shaped stack | `deploy/make-secrets.sh` |
 | Backups encrypted with `age` to a public key | Built. A restore of a real `pg_dump` is still to do | `deploy/backup.sh`, `deploy/restore.sh` |
@@ -1046,7 +1047,7 @@ The complete, current schema is generated from the hub: `python tools/export_ope
 a test fails if that file is out of date. (The hub switches its served `/openapi.json` and docs off when auth is on.)
 
 **Ingest**, called by client apps, CI and the home reporters. Authenticated by the per-site key in the URL. With
-`VERIFY_SIGNATURES=true`, also by an `X-Hub-Signature: sha256=<hmac-sha256 of the raw body>` header.
+`VERIFY_SIGNATURES=true`, also by an `X-Hub-Timestamp` header (seconds) and an `X-Hub-Signature: sha256=<hmac-sha256 of "<timestamp>.<raw body>">` header; a timestamp more than five minutes off is refused, so a captured request expires ([`docs/KEYS.md`](docs/KEYS.md)).
 
 | Method and path | Purpose |
 |---|---|
@@ -1152,6 +1153,8 @@ checked.
 |---|---|---|
 | `DATABASE_URL` | `.env.example` sets `...@localhost:5433/nightjar` | Database connection. The built-in fallback is port 5432 |
 | `VERIFY_SIGNATURES` | `false` | HMAC check on ingest. Off in dev, **on in prod** |
+| `REQUIRE_SIGNED_TIMESTAMP` | `false` | Refuse an ingest request that carries no timestamp, so a captured one cannot be replayed. Turn on once every reporter has been updated; until then a request without one is still accepted |
+| `SIGNATURE_MAX_AGE_S` | `300` | How far a request's timestamp may be from the hub's clock, either way |
 | `SPIKE_THRESHOLD` | `50` | Events inside the window that count as a spike |
 | `SPIKE_WINDOW_MIN` | `10` | The window, in minutes |
 | `PROBE_ENABLED` | `true` | Run the uptime checker |

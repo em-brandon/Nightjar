@@ -208,7 +208,7 @@ operator and a lot with many customers (decision #54), where the hub would other
 | A web page | Cannot hold either | Cannot hold either, so browsers do not benefit |
 
 **What it does not fix.** It does not hide the body (TLS does that) and it does not stop a captured request being replayed
-(a timestamp in the signed body does that, with either scheme).
+(a timestamp in the signed body does that, with either scheme; **built** for the shared secret, see `docs/KEYS.md`).
 
 **A middle path** if the hub ever holds many customers' secrets: keep HMAC, but store each secret encrypted with a key held
 outside the database, so a database leak alone is not enough.

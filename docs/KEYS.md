@@ -63,8 +63,8 @@ sequenceDiagram
     participant Hub
     participant DB as Postgres
 
-    Note over App: body = the JSON bytes<br/>sig = HMAC-SHA256(secret, body)
-    App->>Caddy: POST /ingest/KEY/event<br/>X-Hub-Signature: sha256=sig
+    Note over App: body = the JSON bytes<br/>ts = the time now, in seconds<br/>sig = HMAC-SHA256(secret, ts.body)
+    App->>Caddy: POST /ingest/KEY/event<br/>X-Hub-Timestamp: ts<br/>X-Hub-Signature: sha256=sig
     Caddy->>Hub: forwards, TLS ended here
     Hub->>DB: find the site with ingest_key = KEY
     alt no such site
@@ -80,18 +80,25 @@ sequenceDiagram
     end
 ```
 
-How the signature is made. The HMAC is over the **raw request bytes**, so sign exactly what you send:
+How the signature is made. The HMAC is over the **timestamp, a dot and the raw request bytes**, so sign exactly what you
+send. The timestamp is whole seconds since 1970, and it goes in the signature so a captured request expires:
 
 ```python
-sig = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
-# send it as the header   X-Hub-Signature: <sig>
+ts = str(int(time.time()))
+sig = "sha256=" + hmac.new(secret.encode(), ts.encode() + b"." + body, hashlib.sha256).hexdigest()
+# send them as the headers   X-Hub-Timestamp: <ts>   and   X-Hub-Signature: <sig>
 ```
+
+The hub refuses a timestamp more than five minutes from its own clock (`SIGNATURE_MAX_AGE_S`), in either direction, so a
+machine with a wrong clock is refused with `stale timestamp`: keep NTP on. A request with **no** timestamp is still accepted
+(signed over the body alone, the original scheme) until the hub is told to require one with `REQUIRE_SIGNED_TIMESTAMP=true`.
 
 ```bash
 # the same thing in a shell, which is what CI uses
-SIG="sha256=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "$NIGHTJAR_SECRET" -hex | sed 's/^.* //')"
+TS="$(date +%s)"
+SIG="sha256=$(printf '%s.%s' "$TS" "$BODY" | openssl dgst -sha256 -hmac "$NIGHTJAR_SECRET" -hex | sed 's/^.* //')"
 curl -sS -X POST "$NIGHTJAR_URL/ingest/$NIGHTJAR_KEY/deploy" \
-  -H "Content-Type: application/json" -H "X-Hub-Signature: $SIG" -d "$BODY"
+  -H "Content-Type: application/json" -H "X-Hub-Timestamp: $TS" -H "X-Hub-Signature: $SIG" -d "$BODY"
 ```
 
 Why both a key and a secret? The key says **which site** and lets the hub find the right secret. The secret
@@ -253,9 +260,11 @@ Rotating the ingest **key** is the same statement on `ingest_key`, and also chan
 
 ## Limits worth knowing
 
-- **Signatures have no timestamp.** A captured signed request can be replayed and would be recorded again. The
-  damage is a duplicate event or deploy row, not access. Fixing it means adding a timestamp to the signed body,
-  which is a change to every reporter.
+- **A captured request can still be replayed for five minutes.** Reporters sign a timestamp and the hub refuses one older
+  than `SIGNATURE_MAX_AGE_S` (300), so a capture expires, and a fresh timestamp cannot be attached to an old capture. Inside
+  the window a replay is accepted and recorded again; the damage is a duplicate row, not access. Until
+  `REQUIRE_SIGNED_TIMESTAMP=true`, a request sent **without** a timestamp is still accepted, so an old capture of one is
+  replayable for ever: turn it on once every reporter has been updated.
 - **Keys appear in Caddy's access log**, because they are in the URL. That is acceptable for an identifier that is
   not secret, which is why signatures matter. Never put a secret in a URL.
 - **The browser limits are in memory.** A hub restart resets them. They are a brake, not an accounting system.

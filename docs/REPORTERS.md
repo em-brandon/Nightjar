@@ -26,7 +26,7 @@ flowchart TD
     B -- yes --> C{"Under the caps?<br/>reports per minute,<br/>and sends waiting"}
     C -- no --> Z2(["Drop it. Never queue without a limit"])
     C -- yes --> D["Build the JSON<br/>type, message, frames innermost last"]
-    D --> E["Sign it<br/>HMAC-SHA256 of the exact bytes"]
+    D --> E["Sign it<br/>HMAC-SHA256 of the timestamp<br/>and the exact bytes"]
     E --> F["Send with a short timeout<br/>about 3 seconds, no retry"]
     F --> G{"Answer?"}
     G -- yes --> Z3(["Ignore the answer"])
@@ -62,9 +62,14 @@ A Nightjar outage has to be invisible to a client's checkout page. Concretely, e
 
 ## The wire contract
 
-`POST {hub}/ingest/{key}/event`, with a JSON body and the header `X-Hub-Signature: sha256=<hex>`, where the hex is
-the HMAC-SHA256 of the **exact bytes sent**, keyed with the ingest secret. The hub finds the site by the key and
-checks the signature. See [`KEYS.md`](KEYS.md).
+`POST {hub}/ingest/{key}/event`, with a JSON body and two headers: `X-Hub-Timestamp: <seconds since 1970>` and
+`X-Hub-Signature: sha256=<hex>`, where the hex is the HMAC-SHA256 of the **timestamp, a dot and the exact bytes sent**,
+keyed with the ingest secret. The hub finds the site by the key, refuses a timestamp more than five minutes from its own
+clock, and checks the signature. The timestamp is inside the signature so a captured report expires. See [`KEYS.md`](KEYS.md).
+
+**Rolling it out: update the hub first.** A hub that has not been updated checks the body alone and would refuse a reporter
+that sends a timestamp. An updated hub still accepts the old body-only form, so reporters can then be updated one at a time;
+once all are, set `REQUIRE_SIGNED_TIMESTAMP=true`.
 
 ```json
 {
