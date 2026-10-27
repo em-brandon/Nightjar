@@ -97,3 +97,14 @@ jobs:
       # The client-side reporters and the staging stack reporter, which run on other machines and need no database
       - name: Client reporter tests
         run: python -m unittest discover -s client
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      # The whole history, so a secret committed and then deleted is still found.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # The same image and config as the pre-commit hook, so a failure reproduces locally (docs/DATA-PROTECTION.md).
+      - run: docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest detect --source /repo --config /repo/.gitleaks.toml --redact --no-banner

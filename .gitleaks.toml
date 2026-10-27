@@ -1,0 +1,17 @@
+# Secret scanning: gitleaks with its default rules plus a short allowlist for the look-alikes this repository really has.
+# Run it by hand with `gitleaks detect --source .`. The pre-commit hook (.githooks/) and CI use this same file.
+# Every entry needs a reason. An allowlist nobody can justify is how a real secret gets waved through.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Test fixtures and example files, which hold fake values by design"
+paths = [
+  # Tests use obvious fakes such as "from-the-environment-0123" and KEY123. A real secret pasted into a test would be
+  # missed here, so keep real values out of tests.
+  '''^tests/''',
+  '''\.test\.mjs$''',
+  # The example env files hold placeholders (nightjar.yourdomain.co.ke, <ingest_secret>), never real values.
+  '''^\.env(\.[a-z]+)?\.example$''',
+]

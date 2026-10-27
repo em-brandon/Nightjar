@@ -2,7 +2,7 @@ so# Data protection (planned)
 
 > **Status: in progress.** This records what is and is not encrypted today, and the eight changes planned: two small ones,
 > encrypted backups, derived secrets, a secret scanner, secrets as mounted files, an audit trail and a leak runbook. **Built so far:**
-> 1 (the reporters refuse a plain `http://` hub), 2 (HSTS), 3 (encrypted backups) and 6 (secrets as mounted files). The rest is not started. The "Considered, not planned" list is not
+> 1 (the reporters refuse a plain `http://` hub), 2 (HSTS), 3 (encrypted backups), 5 (secret scanner) and 6 (secrets as mounted files). The rest is not started. The "Considered, not planned" list is not
 > committed to.
 
 ## Where things stand
@@ -110,7 +110,7 @@ with the rotate endpoint.
 derived and legacy sites, and that rotating invalidates the old secret; `docs/KEYS.md` is updated; and a production hub
 refuses to start without the master key.
 
-### 5. A secret scanner before every commit
+### 5. A secret scanner before every commit (built)
 
 **Problem.** Nothing stops a real secret being committed. `.env` and `.site-keys` are git-ignored, and the history was checked
 by hand before the last push, but that depends on remembering. OWASP's secrets guidance asks for detection at the developer's
@@ -123,8 +123,16 @@ and check its current setup before relying on it.
 **Care needed.** The repository has harmless look-alikes: the `hub:hub` password in `.env.example`, test keys such as `s3cret`,
 and long example tokens in the docs. A baseline or allow list is needed or the hook gets switched off, which is worse than none.
 
+**Built with gitleaks.** `.gitleaks.toml` extends the default rules and allowlists three things, each commented: `tests/`, `*.test.mjs`
+and the `.env*.example` files. `.githooks/pre-commit` scans staged changes (local `gitleaks`, else its Docker image) and **fails if
+neither exists** rather than skipping. CI runs the same scan over the full history. Enable the hook once per clone:
+`git config core.hooksPath .githooks`. **Tried:** a staged file holding a fake AWS key and a GitHub-style token was blocked
+(exit 1); the full history of 210 commits scans clean with the allowlist. Without it, the scan flagged five look-alikes.
+
+**Care:** the `tests/` allowlist would also miss a real secret pasted into a test. Keep real values out of tests.
+
 **Done when:** a deliberately fake secret in a throwaway commit is blocked, the existing history scans clean, and the allow list
-is short and commented.
+is short and commented. (Met, except that the CI job has not yet run on GitHub.)
 
 ### 6. Production secrets as mounted files, not environment variables (built)
 
