@@ -13,6 +13,7 @@ Named for a bird that only becomes active after dark, which is when this system 
 - [Why Nightjar exists](#why-nightjar-exists)
 - [How it works](#how-it-works)
   - [How the uptime probe and the reporters fit together](#how-the-uptime-probe-and-the-reporters-fit-together)
+- [Data flow and how security is enforced](#data-flow-and-how-security-is-enforced)
 - [Alerting: from a state change to your phone](#alerting-from-a-state-change-to-your-phone)
   - [If you do not acknowledge](#if-you-do-not-acknowledge)
   - [What has been proven, and what has not](#what-has-been-proven-and-what-has-not)
@@ -71,7 +72,7 @@ Named for a bird that only becomes active after dark, which is when this system 
 | Onboarding: add a site, see its keys once beside a setup snippet, watch for its first report | **Done.** The console's **Sites** tab ([how](#adding-a-site)) |
 | Alerting (chunk 2): policy, outbox, sender, Pushover, acknowledgement, cancel, dead-man's switch | **Built and tested, not live.** A real P1 was sent to a phone and acknowledged from it. It needs a deployed hub and your Pushover keys to run for real ([how it works](#alerting-from-a-state-change-to-your-phone)) |
 | An uptime outage raising a P1 | **Done.** Two failed checks in a row open an issue: P1 in production, P2 on staging |
-| Production hardening | **In progress.** Built: the console served by Caddy, security headers and HSTS, secrets as mounted files, reporters that refuse a plain `http://` hub. Planned: encrypted backups, derived secrets, a secret scanner, an audit trail, a leak runbook ([where it stands](#hardening-and-what-is-still-open)) |
+| Production hardening | **In progress.** Built: the console served by Caddy, security headers and HSTS, spoofable-header stripping, secrets as mounted files, reporters that refuse a plain `http://` hub, encrypted backups, a secret scanner. Planned: derived secrets, an audit trail, a leak runbook ([the flow](#data-flow-and-how-security-is-enforced), [where it stands](#hardening-and-what-is-still-open)) |
 | CI for Nightjar itself | **Written, not yet run on GitHub** ([details](#continuous-integration)) |
 | Escalating a P1 nobody acknowledges | **Planned, not started.** [`docs/ESCALATION.md`](docs/ESCALATION.md) |
 | Email intake and the 07:30 digest (chunk 4) | Not started. A P3 has nowhere to go but the console |
@@ -224,6 +225,109 @@ flowchart TD
 A probe counts as silent when no check has arrived for the longer of 5 minutes or three intervals, and a silent
 probe is never `up`. A staging site has no `url` the VPS can reach, so it is watched by its stack reporter
 instead. See [`docs/KEYS.md`](docs/KEYS.md) for who is allowed to send what.
+
+---
+
+## Data flow and how security is enforced
+
+Every byte takes the same route in: **source, then Caddy, then the hub, then Postgres.** Each layer checks something
+different, so a failure in one does not open the door. Green boxes are built; dashed amber boxes are planned and not yet in
+the code. Nothing here has run on a public address yet (see [Hardening](#hardening-and-what-is-still-open)).
+
+```mermaid
+flowchart TB
+    subgraph SRC["1. Sources"]
+        direction LR
+        APP["App server<br/>signs each report"]
+        PAGE["Web page<br/>public key only"]
+        HOMER["Home reporters<br/>signed"]
+        OPER["You, in the console<br/>console token"]
+    end
+
+    subgraph EDGE["2. Caddy: the only way in"]
+        direction LR
+        TLS["TLS plus HSTS"]
+        CAP["64 KB body cap"]
+        STRIP["Fake client-IP<br/>headers stripped"]
+    end
+
+    subgraph HUB["3. Hub: checks every request"]
+        direction LR
+        SIG["Signature check<br/>per-site secret"]
+        ORI["Browser route:<br/>Origin check, rate limit,<br/>never P1"]
+        TOK["Console token<br/>on every /api call"]
+    end
+
+    subgraph STORE["4. Stored"]
+        direction LR
+        DB[("Postgres<br/>port never published")]
+        OUTB[("Alert outbox<br/>same transaction")]
+    end
+
+    subgraph OUT["5. Leaves the server"]
+        direction LR
+        PUSH["Pushover<br/>to your phone"]
+        BAK["Nightly backup<br/>encrypted with age"]
+    end
+
+    SRC -- "https only" --> EDGE
+    EDGE --> HUB
+    HUB -- "accepted reports" --> DB
+    DB --> OUTB
+    OUTB --> PUSH
+    DB --> BAK
+
+    FILES["Secrets mounted as files<br/>never in docker inspect"]
+    FILES -.-> HUB
+    REFUSE["Reporters refuse plain<br/>http:// and log it"]
+    REFUSE -.-> SRC
+
+    SCAN["Secret scan before commit<br/>and in CI"]
+    DERIVE["Planned: per-site secrets<br/>derived from a master key"]
+    AUDIT["Planned: audit trail for<br/>sites and secrets"]
+    DERIVE -.-> SIG
+    AUDIT -.-> DB
+
+    classDef built fill:#d8f3dc,stroke:#2d6a4f,color:#111111
+    classDef planned fill:#fff3cd,stroke:#b8860b,color:#111111,stroke-dasharray:5 3
+    class APP,PAGE,HOMER,OPER,TLS,CAP,STRIP,SIG,ORI,TOK,DB,OUTB,PUSH,BAK,FILES,REFUSE,SCAN built
+    class DERIVE,AUDIT planned
+    style SRC fill:#f4f4f5,stroke:#888888,color:#111111
+    style EDGE fill:#f4f4f5,stroke:#888888,color:#111111
+    style HUB fill:#f4f4f5,stroke:#888888,color:#111111
+    style STORE fill:#f4f4f5,stroke:#888888,color:#111111
+    style OUT fill:#f4f4f5,stroke:#888888,color:#111111
+```
+
+**Who is allowed to send what.** Three different credentials, because a page cannot keep a secret:
+
+| Sender | Proves who it is with | What it can do | Limit |
+|---|---|---|---|
+| App server, CI, home reporters | An HMAC signature using the site's ingest secret | Send crashes, deploys, stack, home and media reports | Signature on every request |
+| A web page | The site's **public** key, checked against its allowed Origins | Send page errors | No HMAC. Rate limited, level clamped (never P1), 10 new issues an hour per site |
+| You | The console token, as an HttpOnly cookie or a bearer token | Read and act on everything under `/api` | Hub refuses to start in production without one |
+
+**The rule that governs the alert path.** Security may *add* a check, never *suppress* an alert. Presence, fingerprint and the
+wall display can add channels; if all of them fail, Pushover still fires.
+
+**Where each control stands**
+
+| Control | State | Where |
+|---|---|---|
+| TLS, HSTS (one day to start), CSP, no framing, no `Server` header | Built | `deploy/Caddyfile` |
+| Spoofable `CF-Connecting-IP` and `True-Client-IP` stripped, 64 KB body cap | Built, `caddy validate` passes | `deploy/Caddyfile` |
+| Signature check, Origin check, rate limits, console token | Built | `hub/` |
+| Reporters refuse a plain `http://` hub, out loud | Built, all five | `client/` |
+| Secrets as mounted files | Built, checked on a production-shaped stack | `deploy/make-secrets.sh` |
+| Backups encrypted with `age` to a public key | Built. A restore of a real `pg_dump` is still to do | `deploy/backup.sh`, `deploy/restore.sh` |
+| Secret scan in a pre-commit hook and in CI | Built. The CI job has not yet run on GitHub | `.gitleaks.toml`, `.githooks/` |
+| Per-site secrets derived from a master key | Planned | [`docs/DATA-PROTECTION.md`](docs/DATA-PROTECTION.md) |
+| Audit trail, leak runbook | Planned | same |
+| Cloudflare in front of client sites, hub left DNS-only | Planned | [`docs/CLOUDFLARE.md`](docs/CLOUDFLARE.md) |
+
+**What this does not protect.** Ingest secrets are still stored readable in Postgres, so a leaked database lets someone forge
+reports for every site until they are derived from a master key. Error text is stored as the app wrote it. The disk is only
+encrypted if the VPS provider does it.
 
 ---
 
@@ -1287,13 +1391,15 @@ The plan, with the reasoning and the care each item needs, is in [`docs/DATA-PRO
 | Secrets as mounted files, none in `docker inspect` | **Built and checked** on a production-shaped stack, including that an empty token file makes the hub refuse to start |
 | The reporters refuse a plain `http://` hub, out loud | **Built** in all five |
 | Build contexts exclude `.env`, `secrets/` and `node_modules` | **Built** (`.dockerignore`) |
-| Encrypted backups | **Planned.** `deploy/backup.sh` writes a gzip, which is compression and not encryption, and its `rclone` copy is not encrypted by the script |
+| Encrypted backups | **Built.** `deploy/backup.sh` encrypts with `age` to a public key and refuses to run without one; `deploy/restore.sh` restores. Tested on a stand-in dump; a real `pg_dump` restore is still to do. Keep the private key off the server |
+| Spoofable client-IP headers stripped, request bodies capped at 64 KB | **Built.** `caddy validate` passes |
+| A secret scanner before every commit and in CI | **Built.** gitleaks, a short commented allowlist, history scans clean. The CI job has not yet run on GitHub. Enable the hook with `git config core.hooksPath .githooks` |
 | Per-site secrets derived from a master key, not stored | **Planned.** Ingest secrets are stored readable in the database, because the hub needs them to verify each signature |
-| A secret scanner before every commit, an audit trail for sites and secrets, a leak runbook | **Planned** |
+| An audit trail for sites and secrets, a leak runbook | **Planned** |
 | Cloudflare in front of client sites, with the hub's own hostname left DNS-only | **Planned.** [`docs/CLOUDFLARE.md`](docs/CLOUDFLARE.md) |
 | **A first real deployment** | **Not done.** Nothing here has run on a public address, so the instant callback, HSTS over real TLS and the dead-man's switch are untested in place |
 
-> **Before you rely on it,** set the Pushover keys, deploy it, run it for a while, and take encrypted backups. The path to your phone has been
+> **Before you rely on it,** set the Pushover keys, deploy it, run it for a while, and take an encrypted backup and restore it once. The path to your phone has been
 > proven once, but not yet against a real outage.
 
 ---
@@ -1323,7 +1429,7 @@ Client apps get their own pipeline on Gitea and the staging host. That is discus
 | - | Console moved to TypeScript, with API types generated from the hub ([`docs/TYPESCRIPT-MIGRATION.md`](docs/TYPESCRIPT-MIGRATION.md)) | Done |
 | - | Onboarding: the Sites tab ([`docs/ONBOARDING-DASHBOARD.md`](docs/ONBOARDING-DASHBOARD.md)) | Done |
 | 2 | Alerting: policy, outbox, sender, Pushover, acknowledgement, cancel, dead-man's switch, an Alerts tab, uptime outages as P1 (decision #56) | **Built and tested, not live.** Proven once against a real phone. The speaker waits for hardware |
-| - | Production hardening ([`docs/DATA-PROTECTION.md`](docs/DATA-PROTECTION.md)) | **In progress.** Built: the console served by Caddy, headers and HSTS, secrets as files, reporters refusing `http://`. Next: encrypted backups, derived secrets, a scanner, an audit trail, a runbook |
+| - | Production hardening ([`docs/DATA-PROTECTION.md`](docs/DATA-PROTECTION.md)) | **In progress.** Built: the console served by Caddy, headers and HSTS, header stripping, secrets as files, reporters refusing `http://`, encrypted backups, a secret scanner. Next: derived secrets, an audit trail, a runbook |
 | - | CI for Nightjar itself ([`docs/CI.md`](docs/CI.md)) | Written, not yet run on GitHub |
 | - | Escalating a P1 nobody acknowledges, and a fallback if Pushover is down ([`docs/ESCALATION.md`](docs/ESCALATION.md)) | Planned |
 | - | A failed production deploy alerting your phone | Not built. It shows in the console today |
