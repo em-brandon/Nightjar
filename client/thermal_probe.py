@@ -15,6 +15,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 import urllib.request
 from urllib.parse import urlsplit
 
@@ -109,8 +110,9 @@ def report(exception_type: str, message: str, level: str, extra: dict) -> None:
         print(f"thermal_probe: {refusal}", file=sys.stderr)
         raise SystemExit(1)
 
+    ts = str(int(time.time()))  # signed with the body, so a captured report cannot be replayed later
     signature = "sha256=" + hmac.new(
-        INGEST_SECRET.encode(), body, hashlib.sha256
+        INGEST_SECRET.encode(), ts.encode() + b"." + body, hashlib.sha256
     ).hexdigest()
 
     request = urllib.request.Request(
@@ -118,6 +120,7 @@ def report(exception_type: str, message: str, level: str, extra: dict) -> None:
         data=body,
         headers={
             "Content-Type": "application/json",
+            "X-Hub-Timestamp": ts,
             "X-Hub-Signature": signature,
         },
     )

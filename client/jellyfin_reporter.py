@@ -169,8 +169,10 @@ def post(base: str, key: str, secret: str | None, payload: dict) -> None:
     body = json.dumps(payload).encode()
     headers = {"Content-Type": "application/json"}
     if secret:
+        ts = str(int(time.time()))  # signed with the body, so a captured report cannot be replayed later
+        headers["X-Hub-Timestamp"] = ts
         headers["X-Hub-Signature"] = (
-            "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+            "sha256=" + hmac.new(secret.encode(), ts.encode() + b"." + body, hashlib.sha256).hexdigest()
         )
     req = urllib.request.Request(f"{base}/ingest/{key}/media", data=body, headers=headers)
     urllib.request.urlopen(req, timeout=TIMEOUT).read()

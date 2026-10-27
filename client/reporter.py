@@ -100,7 +100,7 @@ def install_reporter(
         sent_at.append(now)
         return True
 
-    async def send(body: bytes, signature: str) -> None:
+    async def send(body: bytes, timestamp: str, signature: str) -> None:
         try:
             async with httpx.AsyncClient(timeout=3.0) as client:
                 await client.post(
@@ -108,6 +108,7 @@ def install_reporter(
                     content=body,
                     headers={
                         "Content-Type": "application/json",
+                        "X-Hub-Timestamp": timestamp,
                         "X-Hub-Signature": signature,
                     },
                 )
@@ -130,8 +131,10 @@ def install_reporter(
                 },
             }
         ).encode()
-        signature = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
-        task = asyncio.get_running_loop().create_task(send(body, signature))
+        # The timestamp is signed with the body, so a captured report cannot be replayed later (hub/ingest.py).
+        timestamp = str(int(time.time()))
+        signature = "sha256=" + hmac.new(secret.encode(), timestamp.encode() + b"." + body, hashlib.sha256).hexdigest()
+        task = asyncio.get_running_loop().create_task(send(body, timestamp, signature))
         in_flight.add(task)
         task.add_done_callback(in_flight.discard)
 
