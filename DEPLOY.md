@@ -135,10 +135,28 @@ crontab -e
 15 2 * * * /opt/nightjar/deploy/backup.sh >> /var/log/nightjar-backup.log 2>&1
 ```
 
+Backups are encrypted with [age](https://github.com/FiloSottile/age) to a **public** key, so the VPS can write
+backups but not read them. The dump holds every site's ingest secret, so this matters.
+
+```bash
+# On your laptop, not the VPS:
+age-keygen -o nightjar-backup.key        # prints the public key (age1...)
+```
+
+- Put the **public** key in the VPS's `.env` as `BACKUP_AGE_RECIPIENT=age1...`. Install `age` on the VPS (`apt install age`).
+- Keep `nightjar-backup.key` in a password manager, **not on the VPS**. Lose it and every backup is unreadable, and you
+  only find out on the day you need one.
+- Without `BACKUP_AGE_RECIPIENT` the script exits with an error instead of writing a readable copy.
+
 Set `RCLONE_REMOTE` in `.env` to push to Backblaze B2 or Cloudflare R2. A
 backup that lives only on the machine it protects is not a backup.
 
-Restore-test it once, now, while there is no data you would miss.
+Restore-test it once, now, while there is no data you would miss:
+
+```bash
+deploy/restore.sh nightjar-<stamp>.sql.gz.age nightjar-backup.key                       # proves the file and key work
+deploy/restore.sh nightjar-<stamp>.sql.gz.age nightjar-backup.key postgresql://...      # into a clean database
+```
 
 ---
 

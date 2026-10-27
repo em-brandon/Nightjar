@@ -2,7 +2,7 @@ so# Data protection (planned)
 
 > **Status: in progress.** This records what is and is not encrypted today, and the eight changes planned: two small ones,
 > encrypted backups, derived secrets, a secret scanner, secrets as mounted files, an audit trail and a leak runbook. **Built so far:**
-> 1 (the reporters refuse a plain `http://` hub), 2 (HSTS) and 6 (secrets as mounted files). The rest is not started. The "Considered, not planned" list is not
+> 1 (the reporters refuse a plain `http://` hub), 2 (HSTS), 3 (encrypted backups) and 6 (secrets as mounted files). The rest is not started. The "Considered, not planned" list is not
 > committed to.
 
 ## Where things stand
@@ -14,7 +14,7 @@ so# Data protection (planned)
 | **The reporters and `http://`** | They refuse it, out loud, except for loopback. A mistyped URL used to send readable JSON, though never the secret, which only signs |
 | **The browser** | The page's address is sent without its query string. The key is public and signs nothing |
 | **In the database** | Error messages, frames and request paths are stored as readable text. Ingest secrets are readable too, because the hub needs them to check each signature |
-| **Backups** | `deploy/backup.sh` writes a gzip, which is compression, not encryption. The optional `rclone` copy is not encrypted by the script |
+| **Backups** | `deploy/backup.sh` encrypts the dump with `age` to a public key before it is written, so the server cannot read its own backups. The key that decrypts is kept off the VPS |
 | **The disk** | Nothing in the repository turns encryption on. That depends on the VPS provider |
 
 ## Planned work
@@ -55,7 +55,7 @@ exposes the console login.
 **Done when:** `curl -I` against the hub shows the header, and the change was tried on Caddy in a throwaway container the way
 the other Caddyfile additions in `docs/CLOUDFLARE.md` were.
 
-### 3. Encrypt backups before they leave the machine
+### 3. Encrypt backups before they leave the machine (built, restore tested on a stand-in dump)
 
 **Problem.** `deploy/backup.sh` writes a gzip of the whole database, which holds every site's ingest secret and all the
 error text. The optional `rclone` copy goes to the remote readable unless that remote encrypts. A backup is the likeliest
@@ -72,6 +72,11 @@ place for a copy to escape, so this comes before the other secret-protection wor
   backups are useless, and the failure only shows up on the day you need them.
 - The script already says it: *a backup you have never restored is a hypothesis*. Encrypting adds a way to fail, so the test is
   a real restore from an encrypted file onto a clean database.
+
+**Built with `age`.** `deploy/backup.sh` refuses to run without `BACKUP_AGE_RECIPIENT`, writes through a temp name so a failed
+run leaves no truncated file, and prunes old plain `.sql.gz` files too. `deploy/restore.sh` decrypts and fails loudly on a wrong key.
+Tested in an Alpine container: ciphertext contains no plaintext, the right key restores, a wrong key exits non-zero. **Not yet done:**
+a restore of a real `pg_dump` onto a clean Postgres. Do that once on the VPS before relying on it.
 
 **Done when:** the script writes encrypted files, a restore from one has been done and checked, and `DEPLOY.md` says how
 to hold the key.
