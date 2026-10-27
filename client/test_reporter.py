@@ -3,9 +3,11 @@
     python -m unittest discover -s client
 """
 
+import asyncio
 import logging
 import os
 import sys
+import time
 import unittest
 from unittest.mock import AsyncMock, patch
 
@@ -29,8 +31,19 @@ def app_with(url: str) -> FastAPI:
     return app
 
 
+async def _drain(app: FastAPI) -> None:
+    pending = list(app.state.nightjar_in_flight)
+    if pending:
+        await asyncio.wait(pending, timeout=5)
+
+
 def hit(app: FastAPI):
-    return TestClient(app, raise_server_exceptions=False).get("/boom")
+    """One failing request. Reports are sent in the background, so keep the app's event loop alive until they finish;
+    without that the test client would tear the loop down and cancel them."""
+    with TestClient(app, raise_server_exceptions=False) as client:
+        resp = client.get("/boom")
+        client.portal.call(_drain, app)
+    return resp
 
 
 class HubRefusal(unittest.TestCase):
@@ -92,6 +105,87 @@ class Reporting(unittest.TestCase):
         with patch.object(httpx.AsyncClient, "post", post):
             resp = hit(app_with("https://nightjar.example/ingest/K/event"))
         self.assertEqual((resp.status_code, resp.json()), (500, {"detail": "internal server error"}))
+
+
+class Safety(unittest.TestCase):
+    """Reporting must not make the app slower or heavier, however the hub behaves."""
+
+    def test_a_slow_hub_does_not_slow_the_error_response(self):
+        async def slow(*_a, **_k):
+            await asyncio.sleep(2)  # the hub taking its full time to answer
+
+        app = app_with("https://nightjar.example/ingest/K/event")
+        with patch.object(httpx.AsyncClient, "post", slow):
+            with TestClient(app, raise_server_exceptions=False) as client:
+                started = time.monotonic()
+                resp = client.get("/boom")
+                took = time.monotonic() - started
+                for task in list(app.state.nightjar_in_flight):
+                    task.cancel()  # do not make the test wait the 2 seconds out
+        self.assertEqual(resp.status_code, 500)
+        self.assertLess(took, 1.0, f"the response waited on the hub ({took:.2f}s)")
+
+    def test_an_error_storm_is_capped_by_sends_in_flight(self):
+        calls = []
+
+        async def hang(*a, **k):
+            calls.append(a)
+            await asyncio.sleep(30)
+
+        app = FastAPI()
+
+        @app.get("/boom")
+        def boom():
+            raise RuntimeError("it broke")
+
+        reporter.install_reporter(app, url="https://nightjar.example/ingest/K/event", secret="s3cret", max_in_flight=3)
+        with patch.object(httpx.AsyncClient, "post", hang):
+            with TestClient(app, raise_server_exceptions=False) as client:
+                codes = [client.get("/boom").status_code for _ in range(12)]
+                client.portal.call(asyncio.sleep, 0.05)
+                for task in list(app.state.nightjar_in_flight):
+                    task.cancel()
+        self.assertEqual(codes, [500] * 12, "every request still got its normal answer")
+        self.assertEqual(len(calls), 3, "only max_in_flight sends were ever started; the rest were dropped")
+
+    def test_an_error_storm_is_capped_per_minute_and_recovers(self):
+        now = [1000.0]
+        post = AsyncMock()
+        app = FastAPI()
+
+        @app.get("/boom")
+        def boom():
+            raise RuntimeError("it broke")
+
+        reporter.install_reporter(app, url="https://nightjar.example/ingest/K/event", secret="s3cret", max_per_minute=4)
+        with patch.object(httpx.AsyncClient, "post", post), patch.object(reporter, "_clock", lambda: now[0]):
+            with TestClient(app, raise_server_exceptions=False) as client:
+                for _ in range(10):
+                    client.get("/boom")
+                    client.portal.call(_drain, app)
+                self.assertEqual(post.await_count, 4, "10 errors in a minute, 4 reported")
+                now[0] += 61
+                client.get("/boom")
+                client.portal.call(_drain, app)
+                self.assertEqual(post.await_count, 5, "a minute later reporting resumes")
+
+    def test_an_exception_that_cannot_describe_itself_still_gets_its_500(self):
+        class Unprintable(Exception):
+            def __str__(self):
+                raise RuntimeError("str() is broken")
+
+        app = FastAPI()
+
+        @app.get("/boom")
+        def boom():
+            raise Unprintable()
+
+        post = AsyncMock()
+        reporter.install_reporter(app, url="https://nightjar.example/ingest/K/event", secret="s3cret")
+        with patch.object(httpx.AsyncClient, "post", post):
+            resp = TestClient(app, raise_server_exceptions=False).get("/boom")
+        self.assertEqual((resp.status_code, resp.json()), (500, {"detail": "internal server error"}))
+        post.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -52,7 +52,7 @@ Same idea, as middleware:
 
 ```python
 # nightjar_middleware.py
-import hashlib, hmac, json, os, traceback
+import hashlib, hmac, json, os, time, traceback
 import httpx
 
 # NIGHTJAR_URL is the hub (https://nightjar.example.co.ke), the same meaning as in every other reporter
@@ -81,10 +81,11 @@ class NightjarMiddleware:
             "request": {"method": request.method, "path": request.path},
         }).encode()
 
-        sig = "sha256=" + hmac.new(SECRET, body, hashlib.sha256).hexdigest()
+        ts = str(int(time.time()))  # signed with the body, so a captured report expires
+        sig = "sha256=" + hmac.new(SECRET, ts.encode() + b"." + body, hashlib.sha256).hexdigest()
         try:
             httpx.post(URL, content=body, timeout=3.0, headers={
-                "Content-Type": "application/json", "X-Hub-Signature": sig})
+                "Content-Type": "application/json", "X-Hub-Timestamp": ts, "X-Hub-Signature": sig})
         except Exception:
             pass          # never let reporting break the request
         return None       # let Django's own handler continue

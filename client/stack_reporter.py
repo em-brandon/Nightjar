@@ -40,6 +40,7 @@ import subprocess
 import sys
 import time
 import urllib.request
+from urllib.parse import urlsplit
 from datetime import datetime, timezone
 
 TIMEOUT = 10
@@ -61,6 +62,31 @@ _UNITS = {
     "b": 1, "kb": 1e3, "mb": 1e6, "gb": 1e9, "tb": 1e12,
     "kib": 1024, "mib": 1024**2, "gib": 1024**3, "tib": 1024**4,
 }
+
+
+_LOOPBACK = {"localhost", "127.0.0.1", "::1"}
+
+
+def hub_refusal(url: str) -> str | None:
+    """Why this hub address may not be used, or None when it may. https is always fine. Plain http is fine only for a
+    machine talking to itself, which development needs: anywhere else it would send this host's data, readable, across
+    a network. The message names the host but never the whole address, which could carry a credential. Same rule as
+    client/reporter.py, copied because each of these scripts is deployed on its own."""
+    try:
+        parts = urlsplit(url)
+        scheme, host = parts.scheme.lower(), (parts.hostname or "").lower()
+    except ValueError:
+        scheme, host = "", ""
+    if not scheme or not host:
+        return "Nightjar: the hub address is not a valid URL, so nothing will be reported. Use https://your-hub."
+    if scheme == "https":
+        return None
+    if scheme == "http" and (host in _LOOPBACK or host.endswith(".localhost")):
+        return None
+    return (
+        f"Nightjar: refusing to report to {scheme}://{host}: plain http would send it readable across the network. "
+        "Use an https:// hub address (http:// is only accepted for localhost). Nothing will be reported."
+    )
 
 
 def parse_size(text: str) -> float:
@@ -290,8 +316,10 @@ def post(base: str, key: str, secret: str | None, payload: dict) -> None:
     body = json.dumps(payload).encode()
     headers = {"Content-Type": "application/json"}
     if secret:
+        ts = str(int(time.time()))  # signed with the body, so a captured report cannot be replayed later
+        headers["X-Hub-Timestamp"] = ts
         headers["X-Hub-Signature"] = (
-            "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+            "sha256=" + hmac.new(secret.encode(), ts.encode() + b"." + body, hashlib.sha256).hexdigest()
         )
     req = urllib.request.Request(f"{base}/ingest/{key}/stack", data=body, headers=headers)
     urllib.request.urlopen(req, timeout=TIMEOUT).read()
@@ -299,6 +327,9 @@ def post(base: str, key: str, secret: str | None, payload: dict) -> None:
 
 def run_once() -> None:
     base = os.environ["NIGHTJAR_URL"].rstrip("/")
+    refusal = hub_refusal(base)
+    if refusal:
+        raise ValueError(refusal)  # safe_run prints it: a refused hub must be loud, not look like a quiet host
     with open(os.environ.get("NIGHTJAR_STACKS", "stacks.json")) as fh:
         config = json.load(fh)
     for project, report in collect(list(config)).items():

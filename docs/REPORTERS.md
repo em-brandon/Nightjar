@@ -26,7 +26,7 @@ flowchart TD
     B -- yes --> C{"Under the caps?<br/>reports per minute,<br/>and sends waiting"}
     C -- no --> Z2(["Drop it. Never queue without a limit"])
     C -- yes --> D["Build the JSON<br/>type, message, frames innermost last"]
-    D --> E["Sign it<br/>HMAC-SHA256 of the exact bytes"]
+    D --> E["Sign it<br/>HMAC-SHA256 of the timestamp<br/>and the exact bytes"]
     E --> F["Send with a short timeout<br/>about 3 seconds, no retry"]
     F --> G{"Answer?"}
     G -- yes --> Z3(["Ignore the answer"])
@@ -42,7 +42,12 @@ A Nightjar outage has to be invisible to a client's checkout page. Concretely, e
 
 1. Wraps every path and swallows every failure, including a hostile exception object whose getters throw.
 2. Sends with a timeout of about three seconds and **never retries**.
-3. Has no queue that can grow. A report arriving while too many are waiting is dropped.
+3. Has no queue that can grow. A report arriving while too many are waiting is dropped. Node and Python send at most 60 a
+   minute and 5 at once; PHP holds 5 a request; Java queues a bounded few behind one thread; the browser sends 6 a minute.
+   A storm of errors therefore costs a handful of requests, not one per failure.
+   **A slow hub must not slow the app's reply.** Node, Java and Python send in the background and the browser uses
+   `sendBeacon`. PHP sends after the visitor has been served on PHP-FPM; on Apache `mod_php` or the built-in server the
+   worker stays busy until the sends finish, which is at most five of them and stops at the first failure.
 4. Does not change what a crash does: after reporting, the process or request fails exactly as it would have, or
    the app's own handler runs.
 5. Has **no dependencies** beyond the language's standard library, because it runs with a client's secret.
@@ -50,14 +55,21 @@ A Nightjar outage has to be invisible to a client's checkout page. Concretely, e
    `[::1]` and `*.localhost`, which development needs. Anywhere else it would send error text, readable, across a network. A
    refusal is never silent, because a mistyped address would look exactly like an app with no errors: the reporter writes one
    line to the app's own log (standard error, `error_log`, or the browser console) when it starts, sends nothing, and never
-   throws. The line names the host but never the whole address, which could carry a credential:
+   throws. The line names the host but never the whole address, which could carry a credential. The home-side scripts
+   (`stack_reporter.py`, `home_reporter.py`, `jellyfin_reporter.py`, `thermal_probe.py`) follow the same rule, but as one-shot
+   processes they print the reason to standard error and fail (the thermal probe exits 1) rather than staying quiet:
    `Nightjar: refusing to report errors to http://nightjar.example: plain http would send them readable across the network. ...`
 
 ## The wire contract
 
-`POST {hub}/ingest/{key}/event`, with a JSON body and the header `X-Hub-Signature: sha256=<hex>`, where the hex is
-the HMAC-SHA256 of the **exact bytes sent**, keyed with the ingest secret. The hub finds the site by the key and
-checks the signature. See [`KEYS.md`](KEYS.md).
+`POST {hub}/ingest/{key}/event`, with a JSON body and two headers: `X-Hub-Timestamp: <seconds since 1970>` and
+`X-Hub-Signature: sha256=<hex>`, where the hex is the HMAC-SHA256 of the **timestamp, a dot and the exact bytes sent**,
+keyed with the ingest secret. The hub finds the site by the key, refuses a timestamp more than five minutes from its own
+clock, and checks the signature. The timestamp is inside the signature so a captured report expires. See [`KEYS.md`](KEYS.md).
+
+**Rolling it out: update the hub first.** A hub that has not been updated checks the body alone and would refuse a reporter
+that sends a timestamp. An updated hub still accepts the old body-only form, so reporters can then be updated one at a time;
+once all are, set `REQUIRE_SIGNED_TIMESTAMP=true`.
 
 ```json
 {
@@ -208,6 +220,10 @@ public class NightjarResolver implements HandlerExceptionResolver {
 from reporter import install_reporter
 install_reporter(app, url="https://nightjar.example.co.ke/ingest/<key>/event", secret=os.environ["NIGHTJAR_SECRET"])
 ```
+
+It sends in a background task, so a slow or dead hub never delays the 500, and drops reports beyond 60 a minute or 5 at once
+(`max_per_minute` and `max_in_flight` change those). Before this it waited on the hub, up to three seconds, inside every
+failing request.
 
 This was the first reporter and it takes the **full event URL**, where the others take the hub's address and the key
 separately. Django has no reporter file; `INTEGRATE.md` has a middleware snippet.

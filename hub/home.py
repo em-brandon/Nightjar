@@ -83,11 +83,12 @@ async def record_home(
     ingest_key: str,
     request: Request,
     x_hub_signature: str | None = Header(default=None),
+    x_hub_timestamp: str | None = Header(default=None),
     session: AsyncSession = Depends(get_session),
 ) -> HomeAck:
     raw = await request.body()
     site = await _load_site(session, ingest_key)
-    _verify(site.ingest_secret, raw, x_hub_signature)
+    _verify(site.ingest_secret, raw, x_hub_signature, x_hub_timestamp)
     try:
         payload = HomeReportIn.model_validate_json(raw)
     except ValidationError as exc:

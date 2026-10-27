@@ -339,12 +339,15 @@ final class Reporter
         if ($body === false) {
             $body = '{"exception_type":"Unencodable","message":"the report could not be encoded","level":"error"}';
         }
+        // the HMAC is over the timestamp, a dot and exactly the bytes that are sent, which is what the hub verifies;
+        // the timestamp is inside the signature so a captured report cannot be replayed later
+        $timestamp = (string) time();
         return [
             'url' => $o['hub'] . '/ingest/' . $o['key'] . '/event',
-            // the HMAC is over exactly the bytes that are sent, which is what the hub verifies
             'headers' => [
                 'Content-Type' => 'application/json',
-                'X-Hub-Signature' => 'sha256=' . hash_hmac('sha256', $body, $o['secret']),
+                'X-Hub-Timestamp' => $timestamp,
+                'X-Hub-Signature' => 'sha256=' . hash_hmac('sha256', $timestamp . '.' . $body, $o['secret']),
             ],
             'body' => $body,
         ];

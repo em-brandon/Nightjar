@@ -1277,6 +1277,9 @@ are labelled as such.
 - **The secret is shown once**, so the API never returns it again. That is a policy, not a requirement: it keeps a stolen
   console token or a screenshot from exposing every site. It costs onboarding friction and makes rotation necessary.
 - **No timestamp is signed**, so a captured request can be replayed. The damage is a duplicate row, not access.
+  *Updated October 2026:* reporters now send `X-Hub-Timestamp` and sign `<timestamp>.<body>`; the hub refuses one more than
+  five minutes off, and requires it once `REQUIRE_SIGNED_TIMESTAMP` is on. Found by a security audit. A replay inside the
+  window is still accepted, and so is a request with no timestamp until the setting is on.
 
 **Considered and not chosen:**
 - **A key pair** (a private key in the app, only the public key in the hub, so a database leak cannot forge). Better against

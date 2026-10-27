@@ -460,6 +460,7 @@ signed against a hub with `VERIFY_SIGNATURES` on.
 |---|---|
 | `DATABASE_URL` | `postgresql+asyncpg://...` |
 | `VERIFY_SIGNATURES` | HMAC on ingest. Off in dev, **on in prod** |
+| `REQUIRE_SIGNED_TIMESTAMP` / `SIGNATURE_MAX_AGE_S` | reporters sign `<timestamp>.<body>` and the hub refuses a timestamp over 300 s off. Requiring one is off by default so an un-updated client works; turn it on when all are updated |
 | `SPIKE_THRESHOLD` | events in the window that constitute a spike |
 | `SPIKE_WINDOW_MIN` | the window, in minutes |
 | `PROBE_ENABLED` | run the uptime checker (default true) |

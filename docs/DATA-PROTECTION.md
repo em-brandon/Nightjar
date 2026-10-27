@@ -2,7 +2,7 @@ so# Data protection (planned)
 
 > **Status: in progress.** This records what is and is not encrypted today, and the eight changes planned: two small ones,
 > encrypted backups, derived secrets, a secret scanner, secrets as mounted files, an audit trail and a leak runbook. **Built so far:**
-> 1 (the reporters refuse a plain `http://` hub), 2 (HSTS) and 6 (secrets as mounted files). The rest is not started. The "Considered, not planned" list is not
+> 1 (the reporters refuse a plain `http://` hub), 2 (HSTS), 3 (encrypted backups), 5 (secret scanner) and 6 (secrets as mounted files). The rest is not started. The "Considered, not planned" list is not
 > committed to.
 
 ## Where things stand
@@ -14,7 +14,7 @@ so# Data protection (planned)
 | **The reporters and `http://`** | They refuse it, out loud, except for loopback. A mistyped URL used to send readable JSON, though never the secret, which only signs |
 | **The browser** | The page's address is sent without its query string. The key is public and signs nothing |
 | **In the database** | Error messages, frames and request paths are stored as readable text. Ingest secrets are readable too, because the hub needs them to check each signature |
-| **Backups** | `deploy/backup.sh` writes a gzip, which is compression, not encryption. The optional `rclone` copy is not encrypted by the script |
+| **Backups** | `deploy/backup.sh` encrypts the dump with `age` to a public key before it is written, so the server cannot read its own backups. The key that decrypts is kept off the VPS |
 | **The disk** | Nothing in the repository turns encryption on. That depends on the VPS provider |
 
 ## Planned work
@@ -23,7 +23,8 @@ so# Data protection (planned)
 
 **Problem.** A typo or a copied development URL makes a production reporter send error text unencrypted, with no warning.
 
-**Change.** Each reporter (Python, Node, PHP, Java and browser) treats an `http://` hub as unusable unless the host is
+**Change.** Each reporter (Python, Node, PHP, Java and browser, and the four home-side scripts: stack, home, Jellyfin and
+thermal) treats an `http://` hub as unusable unless the host is
 loopback (`localhost`, `127.0.0.1` or `::1`), which development needs.
 
 **One rule that must not be broken.** Refusing must **not** be silent. A reporter that quietly does nothing is the failure
@@ -55,7 +56,7 @@ exposes the console login.
 **Done when:** `curl -I` against the hub shows the header, and the change was tried on Caddy in a throwaway container the way
 the other Caddyfile additions in `docs/CLOUDFLARE.md` were.
 
-### 3. Encrypt backups before they leave the machine
+### 3. Encrypt backups before they leave the machine (built, restore tested on a stand-in dump)
 
 **Problem.** `deploy/backup.sh` writes a gzip of the whole database, which holds every site's ingest secret and all the
 error text. The optional `rclone` copy goes to the remote readable unless that remote encrypts. A backup is the likeliest
@@ -72,6 +73,11 @@ place for a copy to escape, so this comes before the other secret-protection wor
   backups are useless, and the failure only shows up on the day you need them.
 - The script already says it: *a backup you have never restored is a hypothesis*. Encrypting adds a way to fail, so the test is
   a real restore from an encrypted file onto a clean database.
+
+**Built with `age`.** `deploy/backup.sh` refuses to run without `BACKUP_AGE_RECIPIENT`, writes through a temp name so a failed
+run leaves no truncated file, and prunes old plain `.sql.gz` files too. `deploy/restore.sh` decrypts and fails loudly on a wrong key.
+Tested in an Alpine container: ciphertext contains no plaintext, the right key restores, a wrong key exits non-zero. **Not yet done:**
+a restore of a real `pg_dump` onto a clean Postgres. Do that once on the VPS before relying on it.
 
 **Done when:** the script writes encrypted files, a restore from one has been done and checked, and `DEPLOY.md` says how
 to hold the key.
@@ -105,7 +111,7 @@ with the rotate endpoint.
 derived and legacy sites, and that rotating invalidates the old secret; `docs/KEYS.md` is updated; and a production hub
 refuses to start without the master key.
 
-### 5. A secret scanner before every commit
+### 5. A secret scanner before every commit (built)
 
 **Problem.** Nothing stops a real secret being committed. `.env` and `.site-keys` are git-ignored, and the history was checked
 by hand before the last push, but that depends on remembering. OWASP's secrets guidance asks for detection at the developer's
@@ -118,8 +124,16 @@ and check its current setup before relying on it.
 **Care needed.** The repository has harmless look-alikes: the `hub:hub` password in `.env.example`, test keys such as `s3cret`,
 and long example tokens in the docs. A baseline or allow list is needed or the hook gets switched off, which is worse than none.
 
+**Built with gitleaks.** `.gitleaks.toml` extends the default rules and allowlists three things, each commented: `tests/`, `*.test.mjs`
+and the `.env*.example` files. `.githooks/pre-commit` scans staged changes (local `gitleaks`, else its Docker image) and **fails if
+neither exists** rather than skipping. CI runs the same scan over the full history. Enable the hook once per clone:
+`git config core.hooksPath .githooks`. **Tried:** a staged file holding a fake AWS key and a GitHub-style token was blocked
+(exit 1); the full history of 210 commits scans clean with the allowlist. Without it, the scan flagged five look-alikes.
+
+**Care:** the `tests/` allowlist would also miss a real secret pasted into a test. Keep real values out of tests.
+
 **Done when:** a deliberately fake secret in a throwaway commit is blocked, the existing history scans clean, and the allow list
-is short and commented.
+is short and commented. (Met, except that the CI job has not yet run on GitHub.)
 
 ### 6. Production secrets as mounted files, not environment variables (built)
 
@@ -194,7 +208,7 @@ operator and a lot with many customers (decision #54), where the hub would other
 | A web page | Cannot hold either | Cannot hold either, so browsers do not benefit |
 
 **What it does not fix.** It does not hide the body (TLS does that) and it does not stop a captured request being replayed
-(a timestamp in the signed body does that, with either scheme).
+(a timestamp in the signed body does that, with either scheme; **built** for the shared secret, see `docs/KEYS.md`).
 
 **A middle path** if the hub ever holds many customers' secrets: keep HMAC, but store each secret encrypted with a key held
 outside the database, so a database leak alone is not enough.

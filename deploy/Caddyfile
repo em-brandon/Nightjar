@@ -8,6 +8,11 @@
 {$HUB_DOMAIN} {
 	encode zstd gzip
 
+	# Reports are small. The browser route refuses anything over 16 KB itself; this stops the body being read at all.
+	request_body {
+		max_size 64KB
+	}
+
 	header {
 		# HSTS tells a browser to use HTTPS only, for this hostname. It is hard to undo, so it starts at one day.
 		# Raise it (to a week, then six months) once nothing has broken. No includeSubDomains and no preload until
@@ -25,7 +30,12 @@
 	# Reports from client apps. Authenticated by per-site key plus HMAC (or, for browsers, an origin-checked public key),
 	# so they are safe to expose.
 	handle /ingest/* {
-		reverse_proxy hub:8000
+		reverse_proxy hub:8000 {
+			# This hostname is DNS-only, so nothing in front of Caddy writes these: a caller did. hub/browser.py reads
+			# CF-Connecting-IP for its per-visitor limit, so a faked one would dodge it (docs/CLOUDFLARE.md).
+			header_up -CF-Connecting-IP
+			header_up -True-Client-IP
+		}
 	}
 
 	handle /healthz {

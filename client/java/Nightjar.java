@@ -309,8 +309,11 @@ public final class Nightjar {
 
         Map<String, String> headers = new LinkedHashMap<>();
         headers.put("Content-Type", "application/json");
-        // The HMAC is over exactly the bytes that are sent, which is what the hub verifies.
-        headers.put("X-Hub-Signature", "sha256=" + hmac(o.secret, body.getBytes(StandardCharsets.UTF_8)));
+        // The HMAC is over the timestamp, a dot and exactly the bytes that are sent, which is what the hub verifies. The
+        // timestamp is inside the signature so a captured report cannot be replayed later.
+        String timestamp = Long.toString(System.currentTimeMillis() / 1000);
+        headers.put("X-Hub-Timestamp", timestamp);
+        headers.put("X-Hub-Signature", "sha256=" + hmac(o.secret, (timestamp + "." + body).getBytes(StandardCharsets.UTF_8)));
         return new Prepared(o.hub + "/ingest/" + o.key + "/event", headers, body);
     }
 

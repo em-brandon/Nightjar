@@ -30,7 +30,7 @@ Access Rule** that matches the request first, or keeping the hostname out of Clo
    uptime probe.
 4. **Never cache `/api` or health routes.** Send `Cache-Control: no-store` from the app, and do not use "Cache Everything".
 5. **Turn Always Online off**, or an outage can look like a working page.
-6. **Harden the hub's Caddyfile** with the two small additions below, which are tested but not yet applied.
+6. **Harden the hub's Caddyfile** with the two small additions below, which are tested and applied.
 7. **Prove it with a test report** that contains awkward text, through the real path, before trusting a site.
 
 ## What goes where
@@ -208,7 +208,7 @@ curl -sI https://nightjar.example.co.ke/healthz | grep -iE "^(HTTP|server|cf-ray
 
 ## Hardening the hub's Caddyfile
 
-`deploy/Caddyfile` does not have these yet. **Tested:** `caddy validate` passes on Caddy 2, and in front of an echo server
+**Applied** to `deploy/Caddyfile` (the body limit and the two stripped headers; `caddy validate` passes on Caddy 2). **Tested:** `caddy validate` passes on Caddy 2, and in front of an echo server
 this replaced a faked `X-Forwarded-For` with the real address, set `X-Forwarded-Proto` to the real scheme, removed a faked
 `CF-Connecting-IP` and `True-Client-IP`, and answered a 100 KB body with 413. **Not tested:** certificate issue, and a real
 Cloudflare in front.
