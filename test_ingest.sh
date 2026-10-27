@@ -39,11 +39,13 @@ last=""
 for i in $(seq 1 "$COUNT"); do
   body="{\"exception_type\":\"OperationalError\",\"message\":\"connection to server at \\\"10.0.0.${i}\\\" failed after ${i} retries\",\"frames\":[{\"module\":\"db/session.py\",\"function\":\"connect\",\"lineno\":41},{\"module\":\"routes/orders.py\",\"function\":\"list_orders\",\"lineno\":88}],\"level\":\"error\"}"
 
-  # With signatures on, the hub wants an HMAC of the exact body, like a real reporter sends.
+  # With signatures on, the hub wants an HMAC of the timestamp, a dot and the exact body, like a real reporter sends.
+  # The timestamp is inside the signature so a captured request cannot be replayed later.
   sig=()
   if [ -n "$SECRET" ]; then
-    mac="$(printf '%s' "$body" | openssl dgst -sha256 -hmac "$SECRET" | sed 's/^.* //')"
-    sig=(-H "X-Hub-Signature: sha256=${mac}")
+    ts="$(date +%s)"
+    mac="$(printf '%s.%s' "$ts" "$body" | openssl dgst -sha256 -hmac "$SECRET" | sed 's/^.* //')"
+    sig=(-H "X-Hub-Timestamp: ${ts}" -H "X-Hub-Signature: sha256=${mac}")
   fi
 
   last="$(curl -s -X POST "$URL" -H 'Content-Type: application/json' "${sig[@]}" -d "$body" || true)"
