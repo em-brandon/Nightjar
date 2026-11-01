@@ -2,7 +2,7 @@
 
 > **Status: in progress.** This records what is and is not encrypted today, and the eight changes planned: two small ones,
 > encrypted backups, derived secrets, a secret scanner, secrets as mounted files, an audit trail and a leak runbook. **Built so far:**
-> 1 (the reporters refuse a plain `http://` hub), 2 (HSTS), 3 (encrypted backups), 4 (derived secrets), 5 (secret scanner), 6 (secrets as mounted files) and 7 (audit trail). Only 8 (the leak runbook) is not started. The "Considered, not planned" list is not
+> 1 (the reporters refuse a plain `http://` hub), 2 (HSTS), 3 (encrypted backups), 4 (derived secrets), 5 (secret scanner), 6 (secrets as mounted files), 7 (audit trail) and 8 (the leak runbook, written but not yet drilled for real). The "Considered, not planned" list is not
 > committed to.
 
 ## Where things stand
@@ -182,7 +182,7 @@ backups (it is in the database dump, which is already encrypted), and a database
 **Done when:** each of those actions writes a row, a test proves no row ever contains a secret, and the console can show the
 trail for a site. (Met.)
 
-### 8. A runbook for a leaked secret
+### 8. A runbook for a leaked secret (written, drill not done)
 
 **Problem.** `docs/KEYS.md` says what each leak costs and gives one SQL statement for rotation, but there is no single set of
 steps to follow under stress, and none has been practised.
@@ -190,6 +190,9 @@ steps to follow under stress, and none has been practised.
 **Change.** A short runbook in `KEYS.md`, in the order OWASP gives: **revoke** the exposed secret, **rotate** it and update the app,
 **delete** it from wherever it was exposed (a commit, a log, a chat, a screenshot), then **record** what happened. It is written
 for each credential: ingest secret, browser key, console token, presence token.
+
+**Written** in `docs/KEYS.md`, "Leak runbook": revoke, rotate, delete, record, for the ingest secret, browser key, console token, presence token and
+master key. Every status code it cites was checked against the code. **Not done:** the drill below, which needs a deployed hub and a real app.
 
 **Done when:** the steps are written, and have been tried once for real by rotating one site's secret with the apps updated and the
 old secret refused. Doing this together with the rotate endpoint (items 4 and the onboarding plan) saves a second round of work.
