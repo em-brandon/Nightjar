@@ -25,6 +25,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from .config import settings
+from .derive import MIN_MASTER_LEN
 
 log = logging.getLogger("nightjar.auth")
 
@@ -59,6 +60,19 @@ def check_config() -> None:
             "is not set, so the console API, including every write, would be open to "
             "anyone who can reach it. Set CONSOLE_TOKEN in the environment, or mount it as the file "
             "/run/secrets/console_token."
+        )
+    master = settings.secret_master_key
+    if master and len(master) < MIN_MASTER_LEN:
+        raise RuntimeError(
+            f"SECRET_MASTER_KEY is too short ({len(master)} characters). Use at least "
+            f"{MIN_MASTER_LEN}, e.g. `openssl rand -base64 32`."
+        )
+    if settings.verify_signatures and not master:
+        raise RuntimeError(
+            "Refusing to start: VERIFY_SIGNATURES is on (production) but SECRET_MASTER_KEY is not set, so each "
+            "site's ingest secret would have to sit readable in the database. Set SECRET_MASTER_KEY in the "
+            "environment, or mount it as the file /run/secrets/secret_master_key. Keep a copy somewhere other than "
+            "this server: lose it and every site needs a new secret."
         )
     if not token:
         log.warning("console authentication is OFF (CONSOLE_TOKEN is not set). Fine for local development only.")

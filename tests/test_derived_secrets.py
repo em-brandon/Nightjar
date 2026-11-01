@@ -177,6 +177,21 @@ class DerivedSecrets(unittest.IsolatedAsyncioTestCase):
             self.assertNotEqual(a["ingest_secret"], b["ingest_secret"])
             self.assertEqual(await self.status_with(a, b["ingest_secret"]), 401)
 
+    async def test_the_hub_refuses_to_start_when_derived_sites_exist_and_the_key_is_gone(self):
+        with patch.object(derive, "SessionLocal", self.maker):
+            with self.key(""):
+                await derive.check_database()  # no derived sites yet: fine
+                legacy = (await self.http.post("/api/sites", json=site(name="old", client="Old"))).json()
+                self.assertTrue(legacy["id"])
+                await derive.check_database()  # a legacy site needs no key
+            with self.key():
+                await self.http.post("/api/sites", json=site())
+                await derive.check_database()  # key present: fine
+            with self.key(""):
+                with self.assertRaises(RuntimeError) as ctx:
+                    await derive.check_database()
+        self.assertIn("SECRET_MASTER_KEY", str(ctx.exception))
+
     async def test_the_audit_trail_names_the_version_and_never_the_secret(self):
         with self.key():
             made = (await self.http.post("/api/sites", json=site())).json()

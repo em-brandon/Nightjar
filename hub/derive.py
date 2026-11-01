@@ -3,8 +3,10 @@ import hashlib
 import hmac
 
 from fastapi import HTTPException
+from sqlalchemy import func, select
 
 from .config import settings
+from .db import SessionLocal
 from .models import Site
 
 # A site's ingest secret is worked out from one master key held in the hub's environment, so the database holds
@@ -39,3 +41,18 @@ def site_secret(site: Site) -> str:
         # refuses this state (check_config); this covers a key removed while the hub is running.
         raise HTTPException(503, "this site's secret is derived, but SECRET_MASTER_KEY is not set on the hub")
     return derive(settings.secret_master_key, site.id, site.secret_version)
+
+
+async def check_database() -> None:
+    """Called at startup, after migrations. A hub that has derived sites but no master key cannot verify them and would
+    answer every one of their reports with an error, so it refuses to start and says why instead."""
+    if settings.secret_master_key:
+        return
+    async with SessionLocal() as session:
+        count = await session.scalar(select(func.count()).select_from(Site).where(Site.secret_version > 0))
+    if count:
+        raise RuntimeError(
+            f"Refusing to start: {count} site(s) use a secret derived from SECRET_MASTER_KEY, but it is not set. "
+            "Restore the key you generated (it is not in the database), or rotate those sites' secrets once a new "
+            "key is set and give each app its new one."
+        )

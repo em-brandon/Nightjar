@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager, suppress
 
 from fastapi import Depends, FastAPI
 
-from . import auth
+from . import auth, derive
 from .alerts import router as alerts_router
 from .api import router as api_router
 from .browser import router as browser_router
@@ -41,6 +41,7 @@ async def lifespan(app: FastAPI):
     # thread. A database this cannot migrate raises here, and the hub refuses to
     # start: better than serving requests against the wrong schema.
     await asyncio.to_thread(upgrade)
+    await derive.check_database()
     prober = asyncio.create_task(probe_loop()) if settings.probe_enabled else None
     # The alert sender. Alerts are queued whether or not this runs; it only delivers them.
     sender = asyncio.create_task(sender_loop()) if settings.outbox_enabled else None
