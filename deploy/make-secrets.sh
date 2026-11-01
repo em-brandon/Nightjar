@@ -51,6 +51,9 @@ put() { # put <name> <value>: write only if the file does not exist yet
 # Generated. A hex password is safe to put inside a database URL, where base64's / + = would not be.
 put postgres_password "$(openssl rand -hex 32 | clean)"
 put console_token "$(openssl rand -base64 32 | clean)"
+# Every site's ingest secret is derived from this (hub/derive.py). It is the one file to keep a copy of apart from the
+# database: lose it and every app needs a new secret.
+put secret_master_key "$(openssl rand -base64 32 | clean)"
 put pushover_callback_token "$(openssl rand -hex 24 | clean)"
 
 # Built from the password above, so the hub never needs it in its environment.
@@ -70,4 +73,5 @@ echo "Still to do by hand:"
 echo "  - put your Pushover application token in $DIR/pushover_token and your user key in $DIR/pushover_user"
 echo "  - put your healthchecks.io ping URL in $DIR/deadman_url"
 echo "  - copy the console token out of $DIR/console_token into your password manager: it is what you sign in with"
+echo "  - copy secret_master_key into your password manager too. Every site's ingest secret is worked out from it, and it is not in the database"
 echo "  - back this directory up somewhere other than this server. It is not in git, and losing it loses the keys."

@@ -15,6 +15,7 @@ export type SiteCreated = S["SiteCreated"];
 export type SiteIn = S["SiteIn"];
 export type SitePatch = S["SitePatch"];
 export type TestEventResult = S["TestEventOut"];
+export type AuditEntry = S["AuditOut"];
 export type Issue = S["IssueOut"];
 export type IssueAction = S["ActionIn"];
 export type LogEntry = S["LogEntry"];

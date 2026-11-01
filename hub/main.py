@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager, suppress
 
 from fastapi import Depends, FastAPI
 
-from . import auth
+from . import auth, derive
 from .alerts import router as alerts_router
 from .api import router as api_router
 from .browser import router as browser_router
@@ -25,6 +25,7 @@ from .probe import probe_loop
 from .pushover import router as pushover_router
 from .rates import router as rates_router
 from .sites import router as sites_router
+from .audit import router as audit_router
 from .stacks import ingest_router as stack_ingest_router
 from .stacks import router as stacks_router
 from .tickets import router as tickets_router
@@ -40,6 +41,7 @@ async def lifespan(app: FastAPI):
     # thread. A database this cannot migrate raises here, and the hub refuses to
     # start: better than serving requests against the wrong schema.
     await asyncio.to_thread(upgrade)
+    await derive.check_database()
     prober = asyncio.create_task(probe_loop()) if settings.probe_enabled else None
     # The alert sender. Alerts are queued whether or not this runs; it only delivers them.
     sender = asyncio.create_task(sender_loop()) if settings.outbox_enabled else None
@@ -65,6 +67,7 @@ app.include_router(ingest_router)
 app.include_router(api_router, dependencies=console)
 app.include_router(incidents_router, dependencies=console)
 app.include_router(sites_router, dependencies=console)
+app.include_router(audit_router, dependencies=console)
 app.include_router(alerts_router, dependencies=console)
 app.include_router(tickets_router, dependencies=console)
 app.include_router(deploy_ingest_router)

@@ -77,11 +77,13 @@ docker compose logs -f caddy     # watch the certificate get issued
 ```
 
 **Secrets are files, not environment variables.** `make-secrets.sh` writes one file per secret into `./secrets` (mode 700, never
-committed): `postgres_password`, `database_url`, `console_token` and `pushover_callback_token` are generated, and
+committed): `postgres_password`, `database_url`, `console_token`, `secret_master_key` and `pushover_callback_token` are generated, and
 `pushover_token`, `pushover_user`, `deadman_url` and `presence_token` are created empty for you to fill in. Compose mounts them under
 `/run/secrets`, so `docker inspect`, process listings and crash dumps never show them (checked: no container's environment holds a
 secret). It never overwrites a file that exists, so running it again is safe. **Back the directory up somewhere other than the
-server**: it is not in git, and the console token inside it is what you sign in with.
+server**: it is not in git, and the console token inside it is what you sign in with. Keep `secret_master_key` in your password manager
+too: every new site's ingest secret is worked out from it and none is stored, so a database backup alone cannot restore them (see
+`docs/KEYS.md`). The hub refuses to start in production without it.
 
 The hub migrates its own database on every start, so there is no schema step. It also refuses to start
 if the console token is missing, empty or under 16 characters, because otherwise the console API and every write

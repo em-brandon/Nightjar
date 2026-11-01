@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     # is off (local development only); the hub refuses that when
     # VERIFY_SIGNATURES is on. Generate one with: openssl rand -base64 32
     console_token: str = ""
+    # The master key each site's ingest secret is derived from (hub/derive.py), so the database holds no secret that
+    # can forge a report. It lives here and never in the database; back it up apart from the database, because lose it
+    # and every derived site needs a new secret. Empty means new sites keep a stored secret as before (local
+    # development only; production refuses to start without it). Generate one with: openssl rand -base64 32
+    secret_master_key: str = ""
     # A stack problem resolves itself once it has been gone for this many minutes
     # of reports in a row. Long enough that a flapping stack does not open and
     # close all day, since every relapse after a resolve counts as a regression.

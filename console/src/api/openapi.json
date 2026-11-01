@@ -107,6 +107,40 @@
         "title": "AlertsStatusOut",
         "type": "object"
       },
+      "AuditOut": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "actor": {
+            "title": "Actor",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "action",
+          "detail",
+          "actor",
+          "created_at"
+        ],
+        "title": "AuditOut",
+        "type": "object"
+      },
       "DeployOut": {
         "properties": {
           "created_at": {
@@ -3343,6 +3377,52 @@
         "summary": "Update Site",
         "tags": [
           "sites"
+        ]
+      }
+    },
+    "/api/sites/{site_id}/audit": {
+      "get": {
+        "operationId": "site_audit_api_sites__site_id__audit_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "site_id",
+            "required": true,
+            "schema": {
+              "title": "Site Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AuditOut"
+                  },
+                  "title": "Response Site Audit Api Sites  Site Id  Audit Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Site Audit",
+        "tags": [
+          "audit"
         ]
       }
     },

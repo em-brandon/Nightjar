@@ -251,8 +251,26 @@ class StartupGuard(unittest.TestCase):
                 auth.check_config()
             self.assertIn("CONSOLE_TOKEN", str(cm.exception))
 
-    def test_production_with_a_token_starts(self):
-        with patch.object(settings, "verify_signatures", True), patch.object(settings, "console_token", TOKEN):
+    def test_production_with_a_token_and_a_master_key_starts(self):
+        with patch.object(settings, "verify_signatures", True), patch.object(settings, "console_token", TOKEN),                 patch.object(settings, "secret_master_key", "m" * 40):
+            auth.check_config()
+
+    def test_production_without_a_master_key_refuses_to_start(self):
+        with patch.object(settings, "verify_signatures", True), patch.object(settings, "console_token", TOKEN),                 patch.object(settings, "secret_master_key", ""):
+            with self.assertRaises(RuntimeError) as cm:
+                auth.check_config()
+            self.assertIn("SECRET_MASTER_KEY", str(cm.exception))
+            self.assertIn("/run/secrets/secret_master_key", str(cm.exception))
+
+    def test_a_short_master_key_is_refused_anywhere(self):
+        for verify in (True, False):
+            with self.subTest(verify=verify):
+                with patch.object(settings, "verify_signatures", verify), patch.object(settings, "console_token", TOKEN),                         patch.object(settings, "secret_master_key", "short"):
+                    with self.assertRaises(RuntimeError):
+                        auth.check_config()
+
+    def test_local_development_without_a_master_key_is_allowed(self):
+        with patch.object(settings, "verify_signatures", False), patch.object(settings, "console_token", TOKEN),                 patch.object(settings, "secret_master_key", ""):
             auth.check_config()
 
     def test_a_short_token_is_refused_anywhere(self):

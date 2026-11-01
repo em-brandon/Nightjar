@@ -1,8 +1,8 @@
-so# Data protection (planned)
+# Data protection (planned)
 
 > **Status: in progress.** This records what is and is not encrypted today, and the eight changes planned: two small ones,
 > encrypted backups, derived secrets, a secret scanner, secrets as mounted files, an audit trail and a leak runbook. **Built so far:**
-> 1 (the reporters refuse a plain `http://` hub), 2 (HSTS), 3 (encrypted backups), 5 (secret scanner) and 6 (secrets as mounted files). The rest is not started. The "Considered, not planned" list is not
+> 1 (the reporters refuse a plain `http://` hub), 2 (HSTS), 3 (encrypted backups), 4 (derived secrets), 5 (secret scanner), 6 (secrets as mounted files) and 7 (audit trail). Only 8 (the leak runbook) is not started. The "Considered, not planned" list is not
 > committed to.
 
 ## Where things stand
@@ -13,7 +13,7 @@ so# Data protection (planned)
 | **Who sent it, and was it altered** | Proven by the HMAC signature with the site's ingest secret. This is authenticity, not secrecy |
 | **The reporters and `http://`** | They refuse it, out loud, except for loopback. A mistyped URL used to send readable JSON, though never the secret, which only signs |
 | **The browser** | The page's address is sent without its query string. The key is public and signs nothing |
-| **In the database** | Error messages, frames and request paths are stored as readable text. Ingest secrets are readable too, because the hub needs them to check each signature |
+| **In the database** | Error messages, frames and request paths are stored as readable text. A site made or rotated since item 4 has no secret stored: it is derived from `SECRET_MASTER_KEY`. Older sites keep a readable stored secret until they are rotated |
 | **Backups** | `deploy/backup.sh` encrypts the dump with `age` to a public key before it is written, so the server cannot read its own backups. The key that decrypts is kept off the VPS |
 | **The disk** | Nothing in the repository turns encryption on. That depends on the VPS provider |
 
@@ -82,7 +82,7 @@ a restore of a real `pg_dump` onto a clean Postgres. Do that once on the VPS bef
 **Done when:** the script writes encrypted files, a restore from one has been done and checked, and `DEPLOY.md` says how
 to hold the key.
 
-### 4. Derive each site's secret instead of storing it (before other people's secrets are stored)
+### 4. Derive each site's secret instead of storing it (built)
 
 **Problem.** The hub keeps every ingest secret readable in the database, because verifying a signature needs the secret
 itself (a hash is no use, unlike a password). A leaked database therefore lets an attacker forge reports as every site. See
@@ -106,6 +106,15 @@ exactly as now, so **no reporter changes**. A database leak alone then exposes n
 
 **Not urgent for one operator.** It matters when other people's secrets are held (decision #54, step 3). Do it before then, and
 with the rotate endpoint.
+
+**Built.** `hub/derive.py` (`derive`, `site_secret`, `check_database`), `SECRET_MASTER_KEY` (32+ characters; production refuses to start
+without it, in `auth.check_config`), and `sites.secret_version` (migration 0013; 0 = the stored secret is the secret). Every ingest route
+checks signatures through `site_secret(site)`. Creating a site, and **Rotate secret**, give a derived secret whenever a master key is set;
+rotating a legacy site is how it is moved over, and it blanks the stored value. A hub with derived sites and no key refuses to start, and
+a derived site whose key goes missing at runtime answers 503, never a signature checked against an empty secret. `deploy/make-secrets.sh`
+generates `secrets/secret_master_key` and Compose mounts it. The audit trail records the version and never the secret. Tests:
+`tests/test_derive.py` (no database) and `tests/test_derived_secrets.py` (11 end to end). **Not done:** the existing sites still hold stored
+secrets until each is rotated, and the SQL rotation in `docs/KEYS.md` works only for those. `seed.py` and `seed_demo.py` still make stored-secret sites.
 
 **Done when:** tests show the derivation is stable, differs per site and per version, that verification works for both
 derived and legacy sites, and that rotating invalidates the old secret; `docs/KEYS.md` is updated; and a production hub
@@ -151,7 +160,7 @@ keeps using `.env`.
 **Done when:** a production-shaped Compose file runs with no secret in `.env` and none visible in `docker inspect`, the hub still
 refuses to start without them, and `DEPLOY.md` says how to create the files.
 
-### 7. An audit trail for sites and secrets
+### 7. An audit trail for sites and secrets (built)
 
 **Problem.** Issue actions are logged ("who muted that, and why is it quiet?"). Creating a site, changing its URL or browser origins,
 and above all rotating a secret leave no record, so "who changed that and when?" has no answer.
@@ -162,8 +171,16 @@ token) for site creation, URL and origin changes, secret rotation and revocation
 **Care needed.** OWASP asks that audit logs resist tampering. The hub offers no way to edit or delete rows, and a copy should
 leave the machine with the backups. Trustworthy timestamps come from the server clock, so the VPS must keep time in sync.
 
+**Built.** `hub/audit.py` and an `audit_log` table (migration 0012). A row is added in the same transaction as the change it
+describes, so the trail cannot miss a change or describe one that failed. Actions: `site_created`, `url_changed`,
+`origins_changed`, `browser_key_issued`, `browser_key_revoked`, `secret_rotated`. A URL is stored without userinfo or query string,
+and a key is never stored, only the fact it changed. The only route is `GET /api/sites/{id}/audit`; PUT, PATCH, DELETE and POST
+return 405. The Sites tab has a History button per site. `tests/test_audit.py` covers each action, no-op patches writing nothing,
+no secret in any row, and failed changes leaving no row. **Not done:** the trail is not yet copied off the machine with the
+backups (it is in the database dump, which is already encrypted), and a database user that can run SQL can still edit it.
+
 **Done when:** each of those actions writes a row, a test proves no row ever contains a secret, and the console can show the
-trail for a site.
+trail for a site. (Met.)
 
 ### 8. A runbook for a leaked secret
 

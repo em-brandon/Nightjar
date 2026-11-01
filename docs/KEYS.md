@@ -13,6 +13,7 @@ The diagrams are Mermaid. GitHub, Gitea and most Markdown viewers draw them.
 | **Ingest key** | An address: which site is reporting. It is in the URL, `/ingest/<key>/event` | **No.** It also appears in access logs | The site's server, CI, reporters | Nothing on its own once signatures are on | Environment variable |
 | **Ingest secret** (the private key) | Signs each request body with HMAC-SHA256. It is never sent | **Yes** | The site's server, CI, reporters | Report errors, deploys and stack state **as that one site** | Gitea Actions secret, then the server's `.env` |
 | **Browser public key** | A separate address for web pages. It can only report errors, only from listed origins | **No, by design.** It is in the page source | A web page | Report errors for one site, within strict limits | The page's build config |
+| **Master key** (`SECRET_MASTER_KEY`) | The one key every site's ingest secret is worked out from (below). Not in the database | **Yes, the most important one** | The hub only | Work out any site's ingest secret, so forge reports as every site | The VPS `secrets/secret_master_key` file, and a copy in your password manager |
 | **Console token** (`CONSOLE_TOKEN`) | Signs you in to the console and `/api` | **Yes** | You only | Everything: read, resolve, mute, create sites | The VPS `.env`, your password manager |
 | **Presence token** (`PRESENCE_TOKEN`) | Lets the NFC tap set home or away | **Yes** | Your iPhone Shortcut | Set presence, nothing else | The VPS `.env`, the Shortcut |
 
@@ -224,11 +225,27 @@ flowchart TD
 `POST /api/sites` is the only time the secret is returned. The ingest key and the public key are shown again
 whenever a site is edited, since neither is secret.
 
+## Derived ingest secrets
+
+The hub does not store a new site's ingest secret. It works it out: `HMAC-SHA256(master key, "nightjar-site-secret-v1|<site id>|<version>")`,
+as 43 URL-safe characters. The app still holds an ordinary secret string and signs exactly as before, so no reporter changed. A copy of the
+database alone now holds nothing that can forge a report.
+
+- **Existing sites keep their stored secret** (`secret_version` 0) and keep verifying. The first **Rotate secret** moves a site to a derived
+  one (version 1) and blanks the stored value; each rotation after that adds one to the version.
+- **With no master key** (local development) new sites still get a stored secret. **Production refuses to start without one**, and a hub
+  that has derived sites refuses to start if the key has gone missing.
+- **The master key is now the thing to protect.** Leaked, it exposes every site at once; lost, every derived site needs a new secret
+  (rotate each one with a new key set, and give each app its new value). It lives in `secrets/secret_master_key`, so keep a copy in your
+  password manager apart from the database backups. A backup of the database plus the key is a full restore; either alone is not.
+- It protects the database, not the machine: anyone who can read the hub's secrets directory has the key.
+
 ## If one leaks
 
 | Leaked | What an attacker can do | What to do |
 |---|---|---|
 | **Ingest key only** | Nothing useful once signatures are on. It is an address | Nothing |
+| **Master key** | Forge reports as **every** derived site | Set a new `SECRET_MASTER_KEY`, restart, then rotate every site and give each app its new secret. Until a site is rotated its reports are refused |
 | **Ingest secret** | Post fake errors, fake deploys and fake stack reports **as that one site**. They cannot read anything, mute anything or touch another site | Rotate it (below), update the app's environment, redeploy |
 | **Browser public key** | Post error reports from `curl`, within the rate limits and new-issue cap. Cannot read, cannot reach another route, cannot be P1 | Empty `allowed_origins` to revoke it, then set them again for a new key |
 | **Console token** | Everything, including creating sites and muting issues | Change `CONSOLE_TOKEN` in the VPS `.env` and restart. Every session ends at once |
@@ -236,7 +253,9 @@ whenever a site is edited, since neither is secret.
 
 **Rotating an ingest secret.** Use **Rotate secret** on the site's row in the console's Sites tab (or
 `POST /api/sites/{id}/rotate-secret`). The new secret is shown once, and the old signatures stop working immediately, so have
-the app's settings open before you press it. If the console is not available, it is one SQL statement:
+the app's settings open before you press it. If the console is not available, **and the site still has a stored secret** (its
+`secret_version` is 0), it is one SQL statement. A derived site cannot be rotated this way, because its secret is not
+in the database; use the console or the API:
 
 ```bash
 NEW=$(python -c "import secrets; print(secrets.token_urlsafe(24))")
@@ -254,6 +273,7 @@ Rotating the ingest **key** is the same statement on `ingest_key`, and also chan
 | `.site-keys` (repo root) | Every site's key and secret, written when sites were created | Git-ignored. Move the values into Gitea secrets, then delete the file |
 | **Gitea Actions secrets** | Each site's `NIGHTJAR_KEY` and `NIGHTJAR_SECRET` | The preferred home: rotation is one edit, not a hunt across servers |
 | The server's `.env` (`chmod 600`) | The same, written by CI at deploy | Never committed |
+| The VPS `secrets/` directory | `secret_master_key`, `console_token` and the rest | Never committed. Copy `secret_master_key` to your password manager |
 | The VPS `.env` | `CONSOLE_TOKEN`, `PRESENCE_TOKEN`, `POSTGRES_PASSWORD` | Never committed. `CONSOLE_TOKEN` needs 16 characters or more |
 | A page's build config | The browser public key | Safe to commit. It is public by design |
 | Your password manager | The console token | The only copy outside the VPS |

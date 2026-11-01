@@ -43,7 +43,7 @@ class MakeSecrets(unittest.TestCase):
     def test_it_creates_every_file_the_compose_file_mounts(self):
         result = self.run_script()
         self.assertEqual(result.returncode, 0, result.stderr)
-        expected = {"postgres_password", "database_url", "console_token", "pushover_callback_token", "pushover_token", "pushover_user", "deadman_url", "presence_token"}
+        expected = {"postgres_password", "database_url", "console_token", "secret_master_key", "pushover_callback_token", "pushover_token", "pushover_user", "deadman_url", "presence_token"}
         self.assertEqual({p.name for p in self.dir.iterdir()}, expected)
 
     def test_no_file_has_a_carriage_return_or_a_newline_anywhere(self):
@@ -58,6 +58,7 @@ class MakeSecrets(unittest.TestCase):
         self.run_script()
         self.assertRegex(self.read("postgres_password"), r"^[0-9a-f]{64}$", "hex, so it is safe inside a database URL")
         self.assertGreaterEqual(len(self.read("console_token")), 16, "the hub refuses a shorter token")
+        self.assertGreaterEqual(len(self.read("secret_master_key")), 32, "the hub refuses a shorter master key")
         self.assertRegex(self.read("pushover_callback_token"), r"^[0-9a-f]{48}$")
 
     def test_the_database_url_is_built_from_the_password_and_the_settings(self):

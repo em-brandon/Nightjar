@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from hub import auth, config  # noqa: E402
 
-SECRET_NAMES = ("CONSOLE_TOKEN", "DATABASE_URL", "PUSHOVER_TOKEN", "PUSHOVER_USER", "PUSHOVER_CALLBACK_TOKEN", "DEADMAN_URL", "PRESENCE_TOKEN")
+SECRET_NAMES = ("CONSOLE_TOKEN", "DATABASE_URL", "PUSHOVER_TOKEN", "PUSHOVER_USER", "PUSHOVER_CALLBACK_TOKEN", "DEADMAN_URL", "PRESENCE_TOKEN", "SECRET_MASTER_KEY")
 
 
 class SecretsFromFiles(unittest.TestCase):
@@ -86,8 +86,10 @@ class StartupGuardStillHolds(unittest.TestCase):
     def settings_with(self, token_file_contents: str | None, **kw):
         d = tempfile.TemporaryDirectory()
         self.addCleanup(d.cleanup)
+        self.dirs = getattr(self, "dirs", []) + [d]
         if token_file_contents is not None:
             Path(d.name, "console_token").write_text(token_file_contents, encoding="utf-8")
+        Path(d.name, "secret_master_key").write_text("a-master-key-from-a-file-0123456789abcdef\n", encoding="utf-8")
         env = {k: v for k, v in os.environ.items() if k.upper() not in SECRET_NAMES}
         with patch.dict(os.environ, env, clear=True):
             return config.Settings(_env_file=None, _secrets_dir=d.name, **kw)
@@ -111,6 +113,14 @@ class StartupGuardStillHolds(unittest.TestCase):
     def test_a_token_file_that_is_too_short_is_refused_even_in_development(self):
         with self.assertRaises(RuntimeError):
             self.check(self.settings_with("short"))
+
+    def test_the_master_key_comes_from_a_file_and_production_refuses_without_it(self):
+        s = self.settings_with("a-console-token-from-a-file-0123456789\n", verify_signatures=True)
+        self.assertEqual(s.secret_master_key, "a-master-key-from-a-file-0123456789abcdef")
+        (Path(self.dirs[-1].name) / "secret_master_key").unlink()
+        with self.assertRaises(RuntimeError) as ctx:
+            self.check(config.Settings(_env_file=None, _secrets_dir=self.dirs[-1].name, verify_signatures=True))
+        self.assertIn("/run/secrets/secret_master_key", str(ctx.exception))
 
 
 if __name__ == "__main__":

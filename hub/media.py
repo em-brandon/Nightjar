@@ -10,6 +10,7 @@ from .config import settings
 from .db import get_session
 from .edge import auto_resolve, open_new
 from .ingest import _load_site, _verify
+from .derive import site_secret
 from .models import MediaPlay, MediaReport, Site
 from .schemas import (
     EventIn,
@@ -130,7 +131,7 @@ async def record_media(
 ) -> MediaAck:
     raw = await request.body()
     site = await _load_site(session, ingest_key)
-    _verify(site.ingest_secret, raw, x_hub_signature, x_hub_timestamp)
+    _verify(site_secret(site), raw, x_hub_signature, x_hub_timestamp)
     try:
         payload = MediaReportIn.model_validate_json(raw)
     except ValidationError as exc:

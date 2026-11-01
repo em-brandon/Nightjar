@@ -56,6 +56,10 @@ class Site(Base):
     ingest_key: Mapped[str] = mapped_column(String(64), unique=True, default=_key)
     # signs the request body — proves the sender is really them
     ingest_secret: Mapped[str] = mapped_column(String(64), default=_key)
+    # 0 means ingest_secret above is the secret (every site made before derived secrets). 1 or more means the
+    # secret is worked out from the hub's master key and this number (hub/derive.py), ingest_secret is empty, and a
+    # database leak alone exposes nothing. Rotating a derived site is adding one.
+    secret_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
     # Browser reporting. A page cannot keep a secret, so a browser gets this separate PUBLIC key
     # instead, which can only report errors (never deploys, checks or anything else) and only
@@ -198,6 +202,27 @@ class IssueAction(Base):
     # ack | resolve | mute | snooze | reopen
     action: Mapped[str] = mapped_column(String(20))
     detail: Mapped[str] = mapped_column(String(200), default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class AuditLog(Base):
+    """Append-only record of changes to sites and their secrets: "who rotated that, and when?".
+    It never holds a secret value, only the fact that one changed. The hub has no route that
+    edits or deletes a row. site_name is copied so the trail still reads after a site is gone."""
+
+    __tablename__ = "audit_log"
+    __table_args__ = (Index("ix_audit_site_time", "site_id", "created_at"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    site_id: Mapped[int | None] = mapped_column(ForeignKey("sites.id", ondelete="SET NULL"))
+    site_name: Mapped[str] = mapped_column(String(120), default="")
+    # site_created | url_changed | origins_changed | secret_rotated | browser_key_revoked | browser_key_issued
+    action: Mapped[str] = mapped_column(String(40))
+    detail: Mapped[str] = mapped_column(String(300), default="")
+    # one console token today, so this is "console"; the column is here for when that changes
+    actor: Mapped[str] = mapped_column(String(40), default="console")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
