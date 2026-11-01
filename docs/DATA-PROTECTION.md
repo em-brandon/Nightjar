@@ -2,7 +2,7 @@
 
 > **Status: in progress.** This records what is and is not encrypted today, and the eight changes planned: two small ones,
 > encrypted backups, derived secrets, a secret scanner, secrets as mounted files, an audit trail and a leak runbook. **Built so far:**
-> 1 (the reporters refuse a plain `http://` hub), 2 (HSTS), 3 (encrypted backups), 5 (secret scanner) and 6 (secrets as mounted files). The rest is not started. The "Considered, not planned" list is not
+> 1 (the reporters refuse a plain `http://` hub), 2 (HSTS), 3 (encrypted backups), 5 (secret scanner), 6 (secrets as mounted files) and 7 (audit trail). The rest is not started. The "Considered, not planned" list is not
 > committed to.
 
 ## Where things stand
@@ -151,7 +151,7 @@ keeps using `.env`.
 **Done when:** a production-shaped Compose file runs with no secret in `.env` and none visible in `docker inspect`, the hub still
 refuses to start without them, and `DEPLOY.md` says how to create the files.
 
-### 7. An audit trail for sites and secrets
+### 7. An audit trail for sites and secrets (built)
 
 **Problem.** Issue actions are logged ("who muted that, and why is it quiet?"). Creating a site, changing its URL or browser origins,
 and above all rotating a secret leave no record, so "who changed that and when?" has no answer.
@@ -162,8 +162,16 @@ token) for site creation, URL and origin changes, secret rotation and revocation
 **Care needed.** OWASP asks that audit logs resist tampering. The hub offers no way to edit or delete rows, and a copy should
 leave the machine with the backups. Trustworthy timestamps come from the server clock, so the VPS must keep time in sync.
 
+**Built.** `hub/audit.py` and an `audit_log` table (migration 0012). A row is added in the same transaction as the change it
+describes, so the trail cannot miss a change or describe one that failed. Actions: `site_created`, `url_changed`,
+`origins_changed`, `browser_key_issued`, `browser_key_revoked`, `secret_rotated`. A URL is stored without userinfo or query string,
+and a key is never stored, only the fact it changed. The only route is `GET /api/sites/{id}/audit`; PUT, PATCH, DELETE and POST
+return 405. The Sites tab has a History button per site. `tests/test_audit.py` covers each action, no-op patches writing nothing,
+no secret in any row, and failed changes leaving no row. **Not done:** the trail is not yet copied off the machine with the
+backups (it is in the database dump, which is already encrypted), and a database user that can run SQL can still edit it.
+
 **Done when:** each of those actions writes a row, a test proves no row ever contains a secret, and the console can show the
-trail for a site.
+trail for a site. (Met.)
 
 ### 8. A runbook for a leaked secret
 
