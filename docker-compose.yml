@@ -49,6 +49,7 @@ services:
     secrets:
       - database_url
       - console_token
+      - secret_master_key
       - pushover_token
       - pushover_user
       - pushover_callback_token
@@ -83,6 +84,8 @@ secrets:
     file: ./secrets/database_url
   console_token:
     file: ./secrets/console_token
+  secret_master_key:
+    file: ./secrets/secret_master_key
   pushover_token:
     file: ./secrets/pushover_token
   pushover_user:
