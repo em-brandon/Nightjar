@@ -11,6 +11,7 @@ from . import fingerprint as fp
 from . import outbox
 from .config import settings
 from .db import get_session
+from .derive import site_secret
 from .models import Event, Issue, Site
 from .schemas import EventIn, IngestOut
 
@@ -74,7 +75,7 @@ async def ingest_event(
 ) -> IngestOut:
     raw = await request.body()
     site = await _load_site(session, ingest_key)
-    _verify(site.ingest_secret, raw, x_hub_signature, x_hub_timestamp)
+    _verify(site_secret(site), raw, x_hub_signature, x_hub_timestamp)
 
     payload = EventIn.model_validate_json(raw)
     return await record_event(session, site, payload)

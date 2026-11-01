@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .db import get_session
 from .edge import auto_resolve, open_new
 from .ingest import _load_site, _verify
+from .derive import site_secret
 from .models import HomeReport, Site, SpeedTest
 from .schemas import EventIn, Frame, HomeAck, HomeOut, HomeReportIn, SpeedPoint
 from .stacks import STALE_AFTER
@@ -88,7 +89,7 @@ async def record_home(
 ) -> HomeAck:
     raw = await request.body()
     site = await _load_site(session, ingest_key)
-    _verify(site.ingest_secret, raw, x_hub_signature, x_hub_timestamp)
+    _verify(site_secret(site), raw, x_hub_signature, x_hub_timestamp)
     try:
         payload = HomeReportIn.model_validate_json(raw)
     except ValidationError as exc:
