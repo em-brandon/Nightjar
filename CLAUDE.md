@@ -66,7 +66,7 @@ generated files. A Python test fails when they are stale. The console checks wit
 was considered and not needed, decision #53). The checklist and two small tested additions to the Caddyfile are in
 `docs/CLOUDFLARE.md`. The hub's own hostname stays DNS-only, so a bot rule can never turn an error report into silence.
 
-**Data protection: seven of eight built, the leak runbook not started.** The reporters refuse a plain `http://` hub, HSTS, encrypted backups,
+**Data protection: all eight built; the leak runbook (`docs/KEYS.md`) is written but not yet drilled on a real deployment.** The reporters refuse a plain `http://` hub, HSTS, encrypted backups,
 per-site ingest secrets derived from `SECRET_MASTER_KEY` instead of stored (production refuses to start without it; older sites keep a stored
 secret until rotated), a secret scanner, production secrets as mounted files, and an audit trail for sites and secrets. See
 `docs/DATA-PROTECTION.md`, which also records what is and is not encrypted today.
