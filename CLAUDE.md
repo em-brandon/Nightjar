@@ -66,10 +66,10 @@ generated files. A Python test fails when they are stale. The console checks wit
 was considered and not needed, decision #53). The checklist and two small tested additions to the Caddyfile are in
 `docs/CLOUDFLARE.md`. The hub's own hostname stays DNS-only, so a bot rule can never turn an error report into silence.
 
-**Planned, not started:** eight data-protection changes: the reporters refuse a plain `http://` hub (and say so in the app's log, never silently),
-HSTS on the hub's Caddyfile, encrypted backups, per-site secrets derived from a master key instead of stored, a secret scanner before commits,
-production secrets as mounted files, an audit trail for sites and secrets, and a leak runbook. See `docs/DATA-PROTECTION.md`, which also
-records what is and is not encrypted today.
+**Data protection: seven of eight built, the leak runbook not started.** The reporters refuse a plain `http://` hub, HSTS, encrypted backups,
+per-site ingest secrets derived from `SECRET_MASTER_KEY` instead of stored (production refuses to start without it; older sites keep a stored
+secret until rotated), a secret scanner, production secrets as mounted files, and an audit trail for sites and secrets. See
+`docs/DATA-PROTECTION.md`, which also records what is and is not encrypted today.
 
 **Onboarding screen: built** (the console's Sites tab). Add a site, see its keys once beside a setup snippet for its stack, and watch
 for its first report. Hub: `GET /api/sites`, `POST /api/sites/{id}/rotate-secret`, `POST /api/sites/{id}/test-event`. Snippets are
@@ -467,6 +467,7 @@ signed against a hub with `VERIFY_SIGNATURES` on.
 | `PROBE_INTERVAL_S` | seconds between rounds (default 60) |
 | `PROBE_TIMEOUT_S` | per-request timeout (default 10) |
 | `CONSOLE_TOKEN` | guards the console and `/api`. Empty = open (dev only). Required in production, min 16 chars |
+| `SECRET_MASTER_KEY` | the key each site's ingest secret is derived from (`hub/derive.py`). Required in production, min 32 chars; empty in dev keeps stored secrets. Back it up apart from the database |
 | `STACK_HEALTHY_MIN` | minutes a stack problem must stay gone before it resolves itself (default 10) |
 | `MEDIA_HISTORY_DAYS` | how long the home media viewing history (personal data) is kept (default 365) |
 | `WEATHER_ENABLED` / `WEATHER_LAT` / `WEATHER_LON` / `WEATHER_NAME` / `WEATHER_TTL_MIN` | the wall's weather and altitude, from Open-Meteo (no key). Defaults to Nairobi; set the exact coordinates of the wall, since the elevation shown is the terrain model's value at that point |
