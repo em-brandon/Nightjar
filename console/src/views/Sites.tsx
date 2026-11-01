@@ -1,6 +1,6 @@
 import { AppWindow, Building2, FlaskConical, Globe, Plus } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
-import type { SiteCreated, SiteHealth, SiteListed, SiteOut, TestEventResult } from "../api/types.ts";
+import type { AuditEntry, SiteCreated, SiteHealth, SiteListed, SiteOut, TestEventResult } from "../api/types.ts";
 import type { Feeds } from "../feeds.ts";
 import { ago, plural, send, usePoll } from "../hooks.ts";
 import { groupByClient, worstState } from "../grouping.ts";
@@ -328,8 +328,37 @@ function AddForm({ clients, initial, onCreated }: { clients: string[]; initial?:
   );
 }
 
+const AUDIT_WORDS: Record<string, string> = {
+  site_created: "Site created",
+  url_changed: "Live URL changed",
+  origins_changed: "Browser pages changed",
+  browser_key_issued: "Browser key issued",
+  browser_key_revoked: "Browser key revoked",
+  secret_rotated: "Secret rotated",
+};
+
+// Who changed what, and when. It lists the fact of a change, never a secret: the hub does not store one here.
+function Trail({ siteId }: { siteId: number }) {
+  const trail = usePoll<AuditEntry[]>(`/api/sites/${siteId}/audit`);
+  return (
+    <div className="sx-trail">
+      {trail.error && <p className="form-error" role="alert">Could not load the history: {trail.error}</p>}
+      {trail.data?.length === 0 && <p className="hint">Nothing recorded yet.</p>}
+      <ul>
+        {trail.data?.map((e) => (
+          <li key={e.id}>
+            <span className="k">{new Date(e.created_at).toLocaleString()}</span> <b>{AUDIT_WORDS[e.action] ?? e.action}</b>
+            {e.detail && <span className="mono"> {e.detail}</span>}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function SiteRow({ s, label, h, now, onSaved, onSetup, onRotated }: { s: SiteListed; label?: string; h: SiteHealth | undefined; now: number; onSaved: () => void; onSetup: (s: SiteListed) => void; onRotated: (shown: Shown) => void }) {
   const [editing, setEditing] = useState(false);
+  const [history, setHistory] = useState(false);
   const [url, setUrl] = useState(s.url ?? "");
   const [origins, setOrigins] = useState(s.allowed_origins.join("\n"));
   const [busy, setBusy] = useState(false);
@@ -410,7 +439,11 @@ function SiteRow({ s, label, h, now, onSaved, onSetup, onRotated }: { s: SiteLis
         <button className="btn" disabled={busy} onClick={rotate}>
           Rotate secret
         </button>
+        <button className="btn" disabled={busy} onClick={() => setHistory((v) => !v)} aria-expanded={history}>
+          History
+        </button>
       </div>
+      {history && <Trail siteId={s.id} />}
       {note && <p className="hint sx-note">{note}</p>}
       {editing && (
         <div className="sx-edit form">
