@@ -203,6 +203,27 @@ class IssueAction(Base):
     )
 
 
+class AuditLog(Base):
+    """Append-only record of changes to sites and their secrets: "who rotated that, and when?".
+    It never holds a secret value, only the fact that one changed. The hub has no route that
+    edits or deletes a row. site_name is copied so the trail still reads after a site is gone."""
+
+    __tablename__ = "audit_log"
+    __table_args__ = (Index("ix_audit_site_time", "site_id", "created_at"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    site_id: Mapped[int | None] = mapped_column(ForeignKey("sites.id", ondelete="SET NULL"))
+    site_name: Mapped[str] = mapped_column(String(120), default="")
+    # site_created | url_changed | origins_changed | secret_rotated | browser_key_revoked | browser_key_issued
+    action: Mapped[str] = mapped_column(String(40))
+    detail: Mapped[str] = mapped_column(String(300), default="")
+    # one console token today, so this is "console"; the column is here for when that changes
+    actor: Mapped[str] = mapped_column(String(40), default="console")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class StackReport(Base):
     """One snapshot of a staging stack (a Docker Compose project) from the host
     it runs on. The hub cannot see that machine's Docker, and must not be given
