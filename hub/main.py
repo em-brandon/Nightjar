@@ -25,6 +25,7 @@ from .probe import probe_loop
 from .pushover import router as pushover_router
 from .rates import router as rates_router
 from .sites import router as sites_router
+from .audit import router as audit_router
 from .stacks import ingest_router as stack_ingest_router
 from .stacks import router as stacks_router
 from .tickets import router as tickets_router
@@ -65,6 +66,7 @@ app.include_router(ingest_router)
 app.include_router(api_router, dependencies=console)
 app.include_router(incidents_router, dependencies=console)
 app.include_router(sites_router, dependencies=console)
+app.include_router(audit_router, dependencies=console)
 app.include_router(alerts_router, dependencies=console)
 app.include_router(tickets_router, dependencies=console)
 app.include_router(deploy_ingest_router)

@@ -3,6 +3,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from .audit import _where, record
 from .db import get_session
 from .ingest import record_event
 from .models import Client, Event, Issue, Site, _key
@@ -76,6 +77,8 @@ async def create_site(body: SiteIn, session: AsyncSession = Depends(get_session)
 
     site = Site(client_id=client.id, name=body.name, env=body.env, url=body.url)
     session.add(site)
+    await session.flush()
+    record(session, site, "site_created", f"{site.env}, url {_where(site.url)}")
     await session.commit()
     return SiteCreated(
         id=site.id,
@@ -101,12 +104,19 @@ async def update_site(
     if site is None or site.env not in ("production", "staging"):
         raise HTTPException(404, "unknown site")
     if "url" in body.model_fields_set:
+        if site.url != body.url:
+            record(session, site, "url_changed", f"{_where(site.url)} -> {_where(body.url)}")
         site.url = body.url
     if body.allowed_origins is not None:
+        if body.allowed_origins != (site.allowed_origins or []):
+            record(session, site, "origins_changed", ", ".join(body.allowed_origins) or "none")
         site.allowed_origins = body.allowed_origins
         if body.allowed_origins and site.public_key is None:
             site.public_key = _key()
+            record(session, site, "browser_key_issued")
         elif not body.allowed_origins:
+            if site.public_key is not None:
+                record(session, site, "browser_key_revoked")
             # Turning it off revokes the key. Turning it on again makes a new one, which is the
             # rotation path: a key that leaked stops working the moment its pages are removed.
             site.public_key = None
@@ -129,6 +139,7 @@ async def rotate_secret(site_id: int, session: AsyncSession = Depends(get_sessio
     # verifying at once, so the response is the only place the new one is ever shown.
     site = await _client_site(session, site_id)
     site.ingest_secret = _key()
+    record(session, site, "secret_rotated")
     await session.commit()
     return SiteCreated(**_out(site).model_dump(), ingest_key=site.ingest_key, ingest_secret=site.ingest_secret)
 
