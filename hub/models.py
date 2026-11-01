@@ -56,6 +56,10 @@ class Site(Base):
     ingest_key: Mapped[str] = mapped_column(String(64), unique=True, default=_key)
     # signs the request body — proves the sender is really them
     ingest_secret: Mapped[str] = mapped_column(String(64), default=_key)
+    # 0 means ingest_secret above is the secret (every site made before derived secrets). 1 or more means the
+    # secret is worked out from the hub's master key and this number (hub/derive.py), ingest_secret is empty, and a
+    # database leak alone exposes nothing. Rotating a derived site is adding one.
+    secret_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
     # Browser reporting. A page cannot keep a secret, so a browser gets this separate PUBLIC key
     # instead, which can only report errors (never deploys, checks or anything else) and only
