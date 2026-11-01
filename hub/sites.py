@@ -4,7 +4,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from .audit import _where, record
+from .config import settings
 from .db import get_session
+from .derive import derive
 from .ingest import record_event
 from .models import Client, Event, Issue, Site, _key
 from .schemas import EventIn, SiteCreated, SiteIn, SiteListed, SiteOut, SitePatch, TestEventOut
@@ -78,6 +80,12 @@ async def create_site(body: SiteIn, session: AsyncSession = Depends(get_session)
     site = Site(client_id=client.id, name=body.name, env=body.env, url=body.url)
     session.add(site)
     await session.flush()
+    secret = site.ingest_secret
+    if settings.secret_master_key:
+        # Derived from the master key, so the database never holds it. The id exists only after the flush.
+        site.secret_version = 1
+        site.ingest_secret = ""
+        secret = derive(settings.secret_master_key, site.id, 1)
     record(session, site, "site_created", f"{site.env}, url {_where(site.url)}")
     await session.commit()
     return SiteCreated(
@@ -89,7 +97,7 @@ async def create_site(body: SiteIn, session: AsyncSession = Depends(get_session)
         public_key=site.public_key,
         allowed_origins=site.allowed_origins or [],
         ingest_key=site.ingest_key,
-        ingest_secret=site.ingest_secret,
+        ingest_secret=secret,
     )
 
 
@@ -138,10 +146,17 @@ async def rotate_secret(site_id: int, session: AsyncSession = Depends(get_sessio
     # Replaces the hand-run UPDATE in docs/KEYS.md. Signatures made with the old secret stop
     # verifying at once, so the response is the only place the new one is ever shown.
     site = await _client_site(session, site_id)
-    site.ingest_secret = _key()
-    record(session, site, "secret_rotated")
+    if settings.secret_master_key:
+        # A legacy site (version 0) moves to a derived secret here, which is how the old stored ones are retired.
+        site.secret_version = (site.secret_version or 0) + 1
+        site.ingest_secret = ""
+        secret = derive(settings.secret_master_key, site.id, site.secret_version)
+        record(session, site, "secret_rotated", f"derived, version {site.secret_version}")
+    else:
+        site.ingest_secret = secret = _key()
+        record(session, site, "secret_rotated", "stored")
     await session.commit()
-    return SiteCreated(**_out(site).model_dump(), ingest_key=site.ingest_key, ingest_secret=site.ingest_secret)
+    return SiteCreated(**_out(site).model_dump(), ingest_key=site.ingest_key, ingest_secret=secret)
 
 
 @router.post("/{site_id:int}/test-event", response_model=TestEventOut)
