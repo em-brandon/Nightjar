@@ -3,7 +3,7 @@ import type { Heartbeat } from "./api/types.ts";
 // How the Heartbeats tab reads the hub's feed. The hub decides the state (hub/heartbeats.py `state_of`);
 // this only orders and words it, so the two cannot disagree about what is wrong.
 
-const RANK: Record<Heartbeat["state"], number> = { failed: 0, missed: 1, late: 2, ok: 3 };
+const RANK: Record<Heartbeat["state"], number> = { failed: 0, missed: 1, recovering: 2, late: 3, ok: 4 };
 
 /** "every 5 min", "every 1 d": the schedule a heartbeat promised. */
 export function every(interval_s: number): string {
@@ -13,7 +13,7 @@ export function every(interval_s: number): string {
   return `every ${interval_s} s`;
 }
 
-/** A failed or missed heartbeat has an open issue behind it. `late` is not one yet: nothing has alerted. */
+/** A failed or missed heartbeat is wrong right now. `late` has not alerted yet and `recovering` is already pinging again. */
 export const isProblem = (h: Pick<Heartbeat, "state">): boolean => h.state === "failed" || h.state === "missed";
 
 /** Problems first, then by how worried to be, then by name, so a silent job is never below the fold. */

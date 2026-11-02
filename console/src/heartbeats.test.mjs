@@ -12,10 +12,10 @@ assert.equal(every(86400), "every 1 d");
 assert.equal(every(90), "every 90 s", "not a whole number of minutes: say seconds, never round");
 console.log("  ok   a schedule is worded in its own units");
 
-assert.deepEqual([hb("a", "ok"), hb("b", "late"), hb("c", "missed"), hb("d", "failed")].map(isProblem), [false, false, true, true]);
-console.log("  ok   late is not a problem yet, missed and failed are");
+assert.deepEqual([hb("a", "ok"), hb("b", "late"), hb("c", "missed"), hb("d", "failed"), hb("e", "recovering")].map(isProblem), [false, false, true, true, false]);
+console.log("  ok   late and recovering are not problems, missed and failed are");
 
-assert.deepEqual(ordered([hb("z", "ok"), hb("y", "late"), hb("x", "missed"), hb("w", "failed")]).map((h) => h.name), ["w", "x", "y", "z"]);
+assert.deepEqual(ordered([hb("z", "ok"), hb("y", "late"), hb("v", "recovering"), hb("x", "missed"), hb("w", "failed")]).map((h) => h.name), ["w", "x", "v", "y", "z"]);
 assert.deepEqual(ordered([hb("b", "ok"), hb("a", "ok", { site: "alpha" })]).map((h) => h.name), ["a", "b"], "then by site, then name");
 const input = [hb("b", "ok"), hb("a", "failed")];
 ordered(input);

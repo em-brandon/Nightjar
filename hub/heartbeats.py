@@ -76,12 +76,16 @@ def deadline(hb: Heartbeat) -> datetime:
     return hb.last_ping_at + timedelta(seconds=hb.interval_s + hb.grace_s)
 
 
-def state_of(hb: Heartbeat, now: datetime) -> Literal["ok", "late", "missed", "failed"]:
-    """What the console shows. `late` is past its interval but inside the grace: nothing alerts yet."""
-    if hb.failed_open:
-        return "failed"
-    if hb.missed_open or now > deadline(hb):
+def state_of(hb: Heartbeat, now: datetime) -> Literal["ok", "late", "missed", "failed", "recovering"]:
+    """What the console shows. `late` is past its interval but inside the grace: nothing alerts yet. `recovering` is
+    pinging again but has not yet earned the issue's resolution (`pings_needed`), so a fixed job is not shown as
+    still silent while its good pings count up."""
+    if now > deadline(hb):
         return "missed"
+    if hb.failed_open and hb.last_status == "fail":
+        return "failed"
+    if hb.missed_open or hb.failed_open:
+        return "recovering"
     if now > hb.last_ping_at + timedelta(seconds=hb.interval_s):
         return "late"
     return "ok"

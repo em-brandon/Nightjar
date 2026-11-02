@@ -849,7 +849,7 @@ export interface components {
              * State
              * @enum {string}
              */
-            state: "ok" | "late" | "missed" | "failed";
+            state: "ok" | "late" | "missed" | "failed" | "recovering";
         };
         /** HomeAck */
         HomeAck: {

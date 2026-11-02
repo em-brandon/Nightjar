@@ -5,8 +5,8 @@ import { every, isProblem, ordered } from "../heartbeats.ts";
 import { ago, plural, send } from "../hooks.ts";
 import { Dot, Empty, Pill } from "../ui.tsx";
 
-const TONE: Record<Heartbeat["state"], string> = { ok: "ok", late: "warn", missed: "bad", failed: "bad" };
-const DOT: Record<Heartbeat["state"], string> = { ok: "up", late: "warn", missed: "down", failed: "down" };
+const TONE: Record<Heartbeat["state"], string> = { ok: "ok", late: "warn", recovering: "warn", missed: "bad", failed: "bad" };
+const DOT: Record<Heartbeat["state"], string> = { ok: "up", late: "warn", recovering: "warn", missed: "down", failed: "down" };
 
 // The empty state is the documentation: a heartbeat registers itself with its first ping.
 function HowTo() {
@@ -97,7 +97,7 @@ export default function Heartbeats({ f }: { f: Feeds }) {
           </div>
           {bad === 0 && <Empty>Every heartbeat is on time.</Empty>}
           <p className="hint">
-            <b>late</b> is past its interval but inside its grace: nothing has alerted yet. <b>Retire</b> is for a job that was
+            <b>late</b> is past its interval but inside its grace: nothing has alerted yet. <b>recovering</b> is pinging again; its incident resolves itself after a few good pings. <b>Retire</b> is for a job that was
             stopped on purpose; an incident it already opened stays until you resolve it.
           </p>
         </>

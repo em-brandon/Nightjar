@@ -272,7 +272,8 @@
               "ok",
               "late",
               "missed",
-              "failed"
+              "failed",
+              "recovering"
             ],
             "title": "State",
             "type": "string"

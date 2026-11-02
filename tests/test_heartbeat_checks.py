@@ -34,9 +34,10 @@ KEY = "hb-key"
 
 
 class Rules(unittest.TestCase):
-    def hb(self, last_ping_at=T0, interval_s=300, grace_s=60, **flags):
+    def hb(self, last_ping_at=T0, interval_s=300, grace_s=60, last_status="ok", **flags):
         return Heartbeat(
             name="nightly", kind="job", interval_s=interval_s, grace_s=grace_s, last_ping_at=last_ping_at,
+            last_status=last_status,
             missed_open=flags.get("missed_open", False), failed_open=flags.get("failed_open", False),
         )
 
@@ -58,10 +59,16 @@ class Rules(unittest.TestCase):
         self.assertEqual(heartbeats.state_of(hb, T0 + timedelta(seconds=301)), "late")
         self.assertEqual(heartbeats.state_of(hb, T0 + timedelta(seconds=361)), "missed")
 
-    def test_an_open_problem_wins_over_the_clock(self):
+    def test_pinging_again_with_the_issue_still_open_is_recovering_not_missed(self):
         fresh = T0 + timedelta(seconds=1)
-        self.assertEqual(heartbeats.state_of(self.hb(missed_open=True), fresh), "missed", "still recovering")
-        self.assertEqual(heartbeats.state_of(self.hb(failed_open=True), fresh), "failed")
+        self.assertEqual(heartbeats.state_of(self.hb(missed_open=True), fresh), "recovering", "its pings are arriving")
+        self.assertEqual(heartbeats.state_of(self.hb(failed_open=True), fresh), "recovering", "failed once, ok since")
+        self.assertEqual(heartbeats.state_of(self.hb(failed_open=True, last_status="fail"), fresh), "failed")
+
+    def test_silence_beats_everything_else(self):
+        silent = T0 + timedelta(seconds=361)
+        self.assertEqual(heartbeats.state_of(self.hb(missed_open=True), silent), "missed", "went quiet again mid-recovery")
+        self.assertEqual(heartbeats.state_of(self.hb(failed_open=True, last_status="fail"), silent), "missed")
 
     def test_the_event_is_fatal_only_for_a_production_app(self):
         def level(kind, env):

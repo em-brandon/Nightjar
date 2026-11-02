@@ -602,6 +602,7 @@ class HeartbeatOut(BaseModel):
     last_ping_at: datetime
     last_status: Literal["ok", "fail"]
     last_message: str | None
-    # ok | late | missed | failed. "late" is past its interval but inside the grace: nothing alerts yet.
-    state: Literal["ok", "late", "missed", "failed"]
+    # "late" is past its interval but inside the grace: nothing alerts yet. "recovering" is pinging again with the
+    # issue still open until enough good pings in a row.
+    state: Literal["ok", "late", "missed", "failed", "recovering"]
 
