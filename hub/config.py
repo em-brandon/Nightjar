@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     # A site's outage resolves itself after this many passing checks in a row (hub/uptime.py). At the default
     # interval that is five minutes: long enough that a flapping site does not open and close an issue all day.
     uptime_recover_checks: int = 5
+    # A heartbeat that does not say how often it pings is assumed to ping this often (hub/heartbeats.py).
+    heartbeat_default_interval_s: int = 300
     # Shared secret for the console and everything under /api. Empty means auth
     # is off (local development only); the hub refuses that when
     # VERIFY_SIGNATURES is on. Generate one with: openssl rand -base64 32

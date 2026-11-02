@@ -60,7 +60,7 @@ def _reachable() -> bool:
 
 
 # Tables created by a migration after the baseline. Add to this when a migration adds a table.
-AFTER_BASELINE = {"media_reports", "media_plays", "home_reports", "speed_tests", "presence", "notifications", "daily_stats", "audit_log"}
+AFTER_BASELINE = {"media_reports", "media_plays", "home_reports", "speed_tests", "presence", "notifications", "daily_stats", "audit_log", "heartbeats"}
 # Columns a later migration added to a table that already existed at the baseline. A database made by
 # the old create_all cannot have them either. Add to this when a migration adds a column.
 COLUMNS_AFTER_BASELINE = {"deploys": ["progress"], "sites": ["public_key", "allowed_origins", "secret_version"]}

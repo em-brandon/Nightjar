@@ -8,6 +8,7 @@ from sqlalchemy import delete, select
 
 from .config import settings
 from .db import SessionLocal
+from .heartbeats import reconcile_round as reconcile_heartbeats
 from .rollup import rollup
 from .uptime import reconcile
 from .models import Check, HomeReport, MediaPlay, MediaReport, Presence, Site, SpeedTest, StackReport
@@ -107,6 +108,8 @@ async def probe_loop() -> None:
         while True:
             try:
                 await run_round(client)
+                # Silence is checked every round, whether or not any site has a url to probe.
+                await reconcile_heartbeats()
                 rounds += 1
                 if rounds % PRUNE_EVERY == 0:
                     await _prune()

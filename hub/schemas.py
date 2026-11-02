@@ -577,3 +577,32 @@ class RatesOut(BaseModel):
     pairs: list[RatePair] = []
     updated_unix: int | None = None
     stale: bool = False
+
+
+class HeartbeatIn(BaseModel):
+    """The body of a heartbeat ping. Every field is optional, so a bare POST from a cron line is a valid "ok"."""
+
+    status: Literal["ok", "fail"] = "ok"
+    message: str | None = Field(default=None, max_length=300)
+    # How often it promises to ping, and how late is still on time. The latest ping wins, so changing a
+    # schedule is changing the cron line and nothing in the hub.
+    interval_s: int | None = Field(default=None, ge=30, le=7 * 86400)
+    grace_s: int | None = Field(default=None, ge=0, le=86400)
+    kind: Literal["app", "job"] | None = None
+
+
+class HeartbeatOut(BaseModel):
+    id: int
+    site: str
+    env: str
+    name: str
+    kind: Literal["app", "job"]
+    interval_s: int
+    grace_s: int
+    last_ping_at: datetime
+    last_status: Literal["ok", "fail"]
+    last_message: str | None
+    # "late" is past its interval but inside the grace: nothing alerts yet. "recovering" is pinging again with the
+    # issue still open until enough good pings in a row.
+    state: Literal["ok", "late", "missed", "failed", "recovering"]
+

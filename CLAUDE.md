@@ -29,8 +29,8 @@ The scarce resource is **attention at inconvenient hours**, not compute.
 **Chunk 1: done.** Stack trace in, one deduplicated issue out. Verified: 200
 crashes with varying IPs and retry counts collapse to a single row.
 
-**Chunk 3: done, and grown.** React console with seven tabs (Overview, Incidents,
-Requests, Deploys, Staging, Media, Sites), an uptime probe, incident actions with an audit
+**Chunk 3: done, and grown.** React console with nine tabs (Overview, Incidents, Alerts, Sites, Heartbeats,
+Requests, Deploys, Staging, Media), an uptime probe, incident actions with an audit
 trail, client-request tickets and CI deploy reports. 30-second polling. Runs
 locally against the dev database; needs no paid service.
 
@@ -51,6 +51,10 @@ has the steps. A real P1 has been sent to a phone and acknowledged from it, and 
 incident in the console tells Pushover to stop the repeating push (decision #56). Nothing escalates a P1 nobody answers yet.
 Until the hub is deployed and has run for a while, nothing here should be mistaken for monitoring.
 
+**Heartbeats: built.** A cron job, worker or private app pings `POST /ingest/{key}/heartbeat/{name}`; silence opens one edge-triggered
+issue (P1 for a production `app`, P2 for a `job`) and it resolves itself when the pings return. It has a Heartbeats console tab and `client/nightjar.sh heartbeat|deploy` (curl and openssl, signed, never fails the job it follows). Broken for real against a live hub once; the default interval and grace are still a starting point. See
+`docs/CLIENT-INTEGRATION.md`.
+
 **Planned, not started:** escalating a P1 that nobody acknowledges: a short ladder (a second recipient, then SMS or a call, then
 email) that only ever adds channels and stops the moment the incident is dealt with. Plan, rules and open questions in
 `docs/ESCALATION.md`. Also planned there: a fallback when Pushover itself is down.
@@ -66,7 +70,7 @@ generated files. A Python test fails when they are stale. The console checks wit
 was considered and not needed, decision #53). The checklist and two small tested additions to the Caddyfile are in
 `docs/CLOUDFLARE.md`. The hub's own hostname stays DNS-only, so a bot rule can never turn an error report into silence.
 
-**Data protection: seven of eight built, the leak runbook not started.** The reporters refuse a plain `http://` hub, HSTS, encrypted backups,
+**Data protection: all eight built; the leak runbook (`docs/KEYS.md`) is written but not yet drilled on a real deployment.** The reporters refuse a plain `http://` hub, HSTS, encrypted backups,
 per-site ingest secrets derived from `SECRET_MASTER_KEY` instead of stored (production refuses to start without it; older sites keep a stored
 secret until rotated), a secret scanner, production secrets as mounted files, and an audit trail for sites and secrets. See
 `docs/DATA-PROTECTION.md`, which also records what is and is not encrypted today.
@@ -373,6 +377,7 @@ hub/
   uptime.py        a site that stops answering becomes an issue: P1 in production, P2 on staging, edge-triggered
   rates.py         /api/rates: cached USD to KES rate (decoration only)
   edge.py          edge-triggered issues shared by every pushed source: open once, resolve themselves
+  heartbeats.py    POST /ingest/{key}/heartbeat/{name}: a cron job or private app pings, and silence opens an issue (docs/CLIENT-INTEGRATION.md)
 console/           Vite + React 19 + TypeScript UI: src/views/* is one file per tab; src/api/* is generated from the hub (do not edit)
 client/
   reporter.py      the whole "SDK" — drop into any managed FastAPI app
@@ -381,6 +386,7 @@ client/
   thermal_probe.py host thermals as ordinary tickets
   stack_reporter.py runs on the staging host, pushes Docker stack state to the hub
   jellyfin_reporter.py runs beside Jellyfin, pushes who is streaming what to the hub
+  nightjar.sh      POSIX sh + curl + openssl: `heartbeat` and `deploy` from cron or CI, signed, exits 0 when the hub is down
   home_reporter.py runs on the ThinkCentre, pushes its health and an hourly speed test to the hub
 deploy/            bootstrap.sh, Caddyfile, backup.sh
   staging/         Dockge (Tailscale-only), reporter timer, client stack template
@@ -478,6 +484,7 @@ signed against a hub with `VERIFY_SIGNATURES` on.
 | `DEADMAN_URL` | a healthchecks.io ping URL, pinged only while the alert sender is alive |
 | `QUIET_TZ` / `QUIET_START_HOUR` / `QUIET_END_HOUR` | quiet hours for the policy (default Africa/Nairobi, 22 to 7). Inside them only P1 makes noise |
 | `OUTBOX_ENABLED` / `OUTBOX_POLL_S` / `OUTBOX_MAX_ATTEMPTS` / `OUTBOX_BACKOFF_S` / `OUTBOX_LEASE_S` / `RECEIPT_POLL_S` | the sender loop's working figures (defaults 5s, 6 attempts, 30s then 2m, 10m, 30m, 1h, a 120s claim lease, receipts every 30s) |
+| `HEARTBEAT_DEFAULT_INTERVAL_S` | the interval assumed for a heartbeat that does not say (default 300) |
 | `UPTIME_RECOVER_CHECKS` | passing checks in a row before a site's outage resolves itself (default 5) |
 | `RATES_ENABLED` / `RATES_TTL_MIN` | the USD to KES rate on the wall, from open.er-api.com (no key) |
 | `VITE_STACK_CONTROL_URL` | console build-time: where the Staging tab's *Manage stacks* button points (Dockge over Tailscale). Optional |

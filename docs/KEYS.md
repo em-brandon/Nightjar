@@ -266,6 +266,93 @@ echo "$NEW"   # put this in the Gitea secret, then redeploy
 
 Rotating the ingest **key** is the same statement on `ingest_key`, and also changes the URL the app posts to.
 
+## Leak runbook
+
+Read this before you need it. When something leaks you will be tired and in a hurry, and the order matters more than the speed.
+
+**The order, for every credential: revoke, rotate, delete, record.**
+
+1. **Revoke.** Make the exposed value stop working. Do this first, before you work out how it got out. Assume it was read.
+2. **Rotate.** Make a new one and put it where the app expects it, so the app is not left broken.
+3. **Delete.** Remove the old value from wherever it was exposed (a commit, a log, a chat, a screenshot, a ticket). This is tidying, not
+   protection: a value that was public for a minute is compromised for good, which is why revoking comes first. Rewriting git history does
+   not un-leak anything that was already pushed or cloned.
+4. **Record.** Write down what leaked, when, how you found out, what it could do, and what you did. For a site's secret the hub already
+   records the rotation (the site's **History** button); the rest is yours to write, in whatever notes you keep, within the day.
+
+Rotating **needs the console** (or the API with the console token). If the console token itself leaked, do that one first.
+
+### Ingest secret (one site)
+
+Reach: forge errors, deploys and stack state as that one site. Nothing else.
+
+1. **Revoke and rotate in one step:** Sites tab, that site, **Rotate secret**. The old secret stops working at once. (API:
+   `POST /api/sites/{id}/rotate-secret` with the console token.) The new secret is shown once, so have the next step open before you press it.
+2. Put the new value in the Gitea Actions secret `NIGHTJAR_SECRET`, then redeploy the app (or edit its `.env` and restart it). Until you do,
+   that site's reports are refused with 401, which is the intended failure: it is loud on the hub's side, not silent.
+3. **Check:** send a test event from the Sites tab (**Test**), and send one signed with the *old* secret and confirm it gets `401`.
+   `./test_ingest.sh <ingest_key>` with `NIGHTJAR_SECRET` set to each value does both.
+4. **Delete** the old value from CI, shell history, `.site-keys` and wherever it was seen.
+5. **Record.** The History button shows `secret_rotated, derived, version N`.
+
+If you cannot reach the console, a site that still has a stored secret (`secret_version` 0) can be rotated with the SQL above. A derived
+site cannot, because its secret is not in the database.
+
+### Browser public key (one site)
+
+Reach: post error reports from `curl` within the rate limits and new-issue cap. It cannot be P1 and cannot read anything.
+
+1. **Revoke:** Sites tab, **Edit**, empty the allowed pages, **Save**. The key stops working immediately.
+2. **Rotate:** add the pages back and **Save**. This makes a new key. Put it in the site's build config and redeploy.
+3. **Check:** a report to the old key returns 404.
+4. **Delete / record:** nothing secret was exposed, so there is little to delete. The History button shows `browser_key_revoked` and `browser_key_issued`.
+
+### Console token
+
+Reach: everything, including creating sites, rotating secrets and muting issues. This is the worst one short of the master key.
+
+1. **Revoke and rotate:** on the VPS write a new value into `secrets/console_token` (`openssl rand -base64 32 | tr -d '
+' > secrets/console_token`),
+   then `docker compose restart hub`. Every session ends at once, because the cookie is derived from the token.
+2. Sign in with the new token and put it in your password manager.
+3. **Check:** the old token returns 401 (`curl -H "Authorization: Bearer <old>" https://<hub>/api/sites`).
+4. **Assume the attacker used it.** Open each site's **History** and look for changes you did not make (a new URL, new browser pages, a rotation).
+   If any site's secret was displayed or rotated while the token was exposed, rotate that site again.
+5. **Delete / record** as above. There is no audit line for a token change; write it down.
+
+### Presence token
+
+Reach: set home or away. That changes which channels fire, never whether something alerts.
+
+1. **Revoke and rotate:** write a new value into `secrets/presence_token`, `docker compose restart hub`.
+2. Update the iOS Shortcut that taps the NFC tag, and tap once.
+3. **Check:** the old value returns 401 from `POST /presence`, the new one 200. Confirm a push still arrives with presence away: it must.
+4. **Delete / record** as above.
+
+### Master key (`SECRET_MASTER_KEY`)
+
+Reach: work out the secret of every derived site, so forge reports as all of them. Rare, and the most work.
+
+1. **Revoke:** put a new key in `secrets/secret_master_key` (`openssl rand -base64 32 | tr -d '
+'`) and `docker compose restart hub`. Every derived
+   site's reports are now refused with 401, because their secrets came from the old key. That is the revoke.
+2. **Rotate every site:** Rotate secret on each one in the Sites tab, update each app, redeploy. A site stays refused until you do.
+   A site you have not got to yet is down in the sense of *not reporting*; the Sites tab shows it as never or long since reported.
+3. **Check:** one site at a time, as for an ingest secret.
+4. Put the new key in your password manager and **delete** the old one. **Record** the date, because every backup of the database
+   restores with the key that was current when you restore it, so keep the old key alongside any backup older than this.
+
+### Not covered here
+
+The Pushover keys, the Postgres password and the `age` backup key are not in this runbook yet. The backup key's loss is in `DEPLOY.md`.
+
+### The drill
+
+A runbook nobody has tried is a hypothesis. The steps for an ingest secret are exercised by the tests (`tests/test_derived_secrets.py`: rotating
+refuses the old secret and accepts the new one), but that is not you doing it under stress with a real app. **Not yet done:** once the hub is
+deployed, rotate one real site's secret by following the ingest-secret steps above with a stopwatch, confirm the old secret is refused,
+and write down anything that was unclear or took longer than it should. Change this page to match.
+
 ## Where each one is kept
 
 | Place | Holds | Rules |

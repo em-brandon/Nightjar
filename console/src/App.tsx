@@ -1,5 +1,5 @@
 import { useState, type ReactElement } from "react";
-import type { Alert, Deploy, HomeSnapshot, Issue, MediaPlay, MediaSnapshot, Presence, Rates, Rising, SiteHealth, Stack, Ticket, Weather } from "./api/types.ts";
+import type { Alert, Deploy, Heartbeat, HomeSnapshot, Issue, MediaPlay, MediaSnapshot, Presence, Rates, Rising, SiteHealth, Stack, Ticket, Weather } from "./api/types.ts";
 import type { Feeds, TabId } from "./feeds.ts";
 import { isUnacknowledged } from "./alerts.ts";
 import AlertBanner from "./AlertBanner.tsx";
@@ -9,7 +9,9 @@ import { demoHome } from "./home.ts";
 import { demoMedia } from "./media.ts";
 import WeatherLine from "./WeatherLine.tsx";
 import { ago, settled, tuning, useHashTab, useInactivity, useNow, usePoll } from "./hooks.ts";
+import { badge as heartbeatBadge } from "./heartbeats.ts";
 import Deploys from "./views/Deploys.tsx";
+import Heartbeats from "./views/Heartbeats.tsx";
 import Idle from "./views/Idle.tsx";
 import Alerts from "./views/Alerts.tsx";
 import Incidents from "./views/Incidents.tsx";
@@ -24,6 +26,7 @@ const TABS: [Exclude<TabId, "idle">, string][] = [
   ["incidents", "Incidents"],
   ["alerts", "Alerts"],
   ["sites", "Sites"],
+  ["heartbeats", "Heartbeats"],
   ["requests", "Requests"],
   ["deploys", "Deploys"],
   ["staging", "Staging"],
@@ -43,9 +46,10 @@ const ICONS: Record<string, ReactElement> = {
   staging: <path d="M9 2 16 6 9 10 2 6zM2 9.5 9 13.5 16 9.5M2 12.5 9 16.5 16 12.5" />,
   media: <path d="M3 4h12v10H3zM7.5 6.8v4.4L11.5 9z" />,
   sites: <path d="M3 3h12v12H3zM9 6v6M6 9h6" />,
+  heartbeats: <path d="M1.5 9h3.5l2-5 3 10 2-5h4.5" />,
   alerts: <path d="M9 2.5a4.5 4.5 0 0 0-4.5 4.5v3L3 13h12l-1.5-3V7A4.5 4.5 0 0 0 9 2.5zM7.5 15a1.5 1.5 0 0 0 3 0" />,
 };
-const VIEWS: Record<Exclude<TabId, "idle">, (props: { f: Feeds }) => ReactElement | null> = { overview: Overview, incidents: Incidents, requests: Requests, deploys: Deploys, staging: Staging, media: Media, sites: Sites, alerts: Alerts };
+const VIEWS: Record<Exclude<TabId, "idle">, (props: { f: Feeds }) => ReactElement | null> = { overview: Overview, incidents: Incidents, requests: Requests, deploys: Deploys, staging: Staging, media: Media, sites: Sites, alerts: Alerts, heartbeats: Heartbeats };
 
 export default function App({ onSignOut }: { onSignOut?: () => void }) {
   const health = usePoll<SiteHealth[]>("/api/sites/health");
@@ -55,6 +59,7 @@ export default function App({ onSignOut }: { onSignOut?: () => void }) {
   const deploys = usePoll<Deploy[]>("/api/deploys");
   const attention = usePoll<Alert[]>("/api/notifications?status=attention");
   const stacks = usePoll<Stack[]>("/api/stacks");
+  const heartbeats = usePoll<Heartbeat[]>("/api/heartbeats");
   const media = usePoll<MediaSnapshot[]>("/api/media");
   const mediaHistory = usePoll<MediaPlay[]>("/api/media/history?days=30&limit=1000");
   // Deliberately not one of `feeds`: weather is decoration and must never make the hub look unreachable.
@@ -68,7 +73,7 @@ export default function App({ onSignOut }: { onSignOut?: () => void }) {
   const [idleHold, setIdleHold] = useState(false);
   useInactivity(IDLE_AFTER_MS, () => go("idle"), tab !== "idle" && !idleHold);
 
-  const feeds = [health, issues, rising, tickets, deploys, attention, stacks, media, mediaHistory];
+  const feeds = [health, issues, rising, tickets, deploys, attention, stacks, heartbeats, media, mediaHistory];
   const hubError = feeds.some((x) => x.error);
   const loaded = feeds.every((x) => x.data);
   const stamps = feeds.map((x) => x.at).filter((t): t is number => t != null);
@@ -82,6 +87,7 @@ export default function App({ onSignOut }: { onSignOut?: () => void }) {
     deploys: settled(deploys.data ?? []),
     attention: attention.data ?? [],
     stacks: stacks.data ?? [],
+    heartbeats: heartbeats.data ?? [],
     media: media.data ?? [],
     mediaHistory: mediaHistory.data ?? [],
     weather: weather.data,
@@ -103,6 +109,7 @@ export default function App({ onSignOut }: { onSignOut?: () => void }) {
     reloadTickets: tickets.reload,
     reloadAttention: attention.reload,
     reloadStacks: stacks.reload,
+    reloadHeartbeats: heartbeats.reload,
   };
 
   const openIssues = f.issues.filter((i) => i.status === "open");
@@ -110,6 +117,8 @@ export default function App({ onSignOut }: { onSignOut?: () => void }) {
   const badges: Partial<Record<string, { n: number; hot: boolean }>> = {
     incidents: { n: openIssues.length, hot: openIssues.some((i) => i.severity === "P1") },
     requests: { n: openTickets.length, hot: openTickets.some((t) => t.overdue) },
+    // a silent or failing heartbeat: red only for a production app
+    heartbeats: heartbeatBadge(f.heartbeats),
     // red when an alert gave up or a P1 went unanswered; amber while one is only being retried
     alerts: { n: f.attention.length, hot: f.attention.some((a) => a.status === "failed" || isUnacknowledged(a)) },
   };

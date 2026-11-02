@@ -77,7 +77,7 @@ Named for a bird that only becomes active after dark, which is when this system 
 | Escalating a P1 nobody acknowledges | **Planned, not started.** [`docs/ESCALATION.md`](docs/ESCALATION.md) |
 | Email intake and the 07:30 digest (chunk 4) | Not started. A P3 has nowhere to go but the console |
 | Media ingest and archive on a Raspberry Pi (side project) | **Planned, not built.** Research and design in [`docs/MEDIA-ARCHIVE.md`](docs/MEDIA-ARCHIVE.md) |
-| Client integration kit: push checks, heartbeats, an npm CLI (chunk 4b, extended) | **Planned, not built.** Design in [`docs/CLIENT-INTEGRATION.md`](docs/CLIENT-INTEGRATION.md) |
+| Client integration kit: push checks, heartbeats, an npm CLI (chunk 4b, extended) | **Heartbeats built; the rest planned.** Design in [`docs/CLIENT-INTEGRATION.md`](docs/CLIENT-INTEGRATION.md) |
 | Deploying client apps (Gitea to staging to production) | **Discussed, not written.** The reporting half exists |
 | Wall display route, Pico companion, Gitea integration, client status page (chunks 5 to 8) | Designed, not built. The idle screen is the software precursor to the wall display |
 
