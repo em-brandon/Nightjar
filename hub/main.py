@@ -11,6 +11,8 @@ from .config import settings
 from .db import engine
 from .deploys import ingest_router as deploy_ingest_router
 from .deploys import router as deploys_router
+from .heartbeats import ingest_router as heartbeat_ingest_router
+from .heartbeats import router as heartbeats_router
 from .incidents import router as incidents_router
 from .home import ingest_router as home_ingest_router
 from .home import router as home_router
@@ -74,6 +76,8 @@ app.include_router(deploy_ingest_router)
 app.include_router(deploys_router, dependencies=console)
 app.include_router(stack_ingest_router)
 app.include_router(stacks_router, dependencies=console)
+app.include_router(heartbeat_ingest_router)
+app.include_router(heartbeats_router, dependencies=console)
 app.include_router(media_ingest_router)
 app.include_router(media_router, dependencies=console)
 app.include_router(weather_router, dependencies=console)
