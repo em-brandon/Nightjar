@@ -29,8 +29,8 @@ The scarce resource is **attention at inconvenient hours**, not compute.
 **Chunk 1: done.** Stack trace in, one deduplicated issue out. Verified: 200
 crashes with varying IPs and retry counts collapse to a single row.
 
-**Chunk 3: done, and grown.** React console with seven tabs (Overview, Incidents,
-Requests, Deploys, Staging, Media, Sites), an uptime probe, incident actions with an audit
+**Chunk 3: done, and grown.** React console with nine tabs (Overview, Incidents, Alerts, Sites, Heartbeats,
+Requests, Deploys, Staging, Media), an uptime probe, incident actions with an audit
 trail, client-request tickets and CI deploy reports. 30-second polling. Runs
 locally against the dev database; needs no paid service.
 
@@ -52,7 +52,7 @@ incident in the console tells Pushover to stop the repeating push (decision #56)
 Until the hub is deployed and has run for a while, nothing here should be mistaken for monitoring.
 
 **Heartbeats: built.** A cron job, worker or private app pings `POST /ingest/{key}/heartbeat/{name}`; silence opens one edge-triggered
-issue (P1 for a production `app`, P2 for a `job`) and it resolves itself when the pings return. No console tab yet. See
+issue (P1 for a production `app`, P2 for a `job`) and it resolves itself when the pings return. It has a Heartbeats console tab and `client/nightjar.sh heartbeat|deploy` (curl and openssl, signed, never fails the job it follows). Broken for real against a live hub once; the default interval and grace are still a starting point. See
 `docs/CLIENT-INTEGRATION.md`.
 
 **Planned, not started:** escalating a P1 that nobody acknowledges: a short ladder (a second recipient, then SMS or a call, then
@@ -386,6 +386,7 @@ client/
   thermal_probe.py host thermals as ordinary tickets
   stack_reporter.py runs on the staging host, pushes Docker stack state to the hub
   jellyfin_reporter.py runs beside Jellyfin, pushes who is streaming what to the hub
+  nightjar.sh      POSIX sh + curl + openssl: `heartbeat` and `deploy` from cron or CI, signed, exits 0 when the hub is down
   home_reporter.py runs on the ThinkCentre, pushes its health and an hourly speed test to the hub
 deploy/            bootstrap.sh, Caddyfile, backup.sh
   staging/         Dockge (Tailscale-only), reporter timer, client stack template

@@ -21,14 +21,14 @@ Both get harder as the number of client apps grows, which is the point of chunk 
 | Piece | What it does | Fixes | Built |
 |---|---|---|---|
 | **Push check** | A small job inside the client's network fetches the private URL and pushes the result to the hub | Unreachable apps still get an uptime ring, latency and a 90-day ribbon | No |
-| **Heartbeat** | An app or cron job pings the hub every N minutes. The hub alerts when the pings stop | Detects a dead host or network, which a probe from inside cannot | No |
+| **Heartbeat** | An app or cron job pings the hub every N minutes. The hub alerts when the pings stop | Detects a dead host or network, which a probe from inside cannot | **Yes**, with a console tab (see below) |
 | **Monitoring warning** | A site with no `url` and no pushed checks is flagged on the Overview | "Forgot to set the URL" | No |
 | **Add-site form** | Create a site and set its URL from the console, no SQL | Setup friction | API yes (`POST /api/sites`, `PATCH /api/sites/{id}`); form no |
 | **`nightjar` CLI** (npm) | `deploy`, `heartbeat`, `check` for CI and cron, and `add-site` for the operator | Installing on each client | No |
 | **Node, PHP and Java reporters** | One dependency-free file each: `client/node`, `client/php`, `client/java` | Non-Python apps had no reporter | **Yes**, copied in. See [`REPORTERS.md`](REPORTERS.md) |
 | **Packages on npm and PyPI** | The same files published, so a fix is one `update` | Editing N copies | No: still copying, until the third or fourth app |
 | **Browser reporter** | `client/browser/nightjar.ts`: uncaught page errors, with a public key and no secret | Sites with no backend (Bird Box) and every site's frontend | **Yes**, see [`KEYS.md`](KEYS.md) |
-| **`nightjar.sh`** | The same calls in POSIX shell with `curl` and `openssl`, no runtime needed | Hosts without Node or Python, and anyone who wants to read every line | No |
+| **`nightjar.sh`** | The same calls in POSIX shell with `curl` and `openssl`, no runtime needed | Hosts without Node or Python, and anyone who wants to read every line | **Yes**: `client/nightjar.sh` has `heartbeat` and `deploy`. Not yet `check` (the push check is unbuilt) |
 
 ### Push check versus heartbeat
 
@@ -55,15 +55,21 @@ heartbeat *is*, never chosen by hand: a heartbeat standing in for uptime is P1, 
 pings open an issue **on the edge**, once, and it resolves itself after the pings return and stay, using the
 same rules as staging stacks (#38, #43).
 
-**Heartbeat: built** (`hub/heartbeats.py`, `tests/test_heartbeat_checks.py`). The push check is not. A heartbeat is
+**Heartbeat: built** (`hub/heartbeats.py`, the console's Heartbeats tab, `client/nightjar.sh`). The push check is not. A heartbeat is
 registered by its first ping, which carries its schedule, so the cron line is the one place that says how often it runs:
 
 ```bash
-# at the end of a successful run (unsigned; fine in dev, production needs the signature headers like any ingest)
-curl -fsS -X POST "$NIGHTJAR_URL/ingest/$KEY/heartbeat/nightly-backup"      -H 'content-type: application/json' -d '{"interval_s": 86400, "kind": "job"}'
-# a run that failed, so the job is alive but broken
-... -d '{"status": "fail", "message": "exit 2"}'
+# at the end of a successful run (signed with NIGHTJAR_SECRET; needs only curl and openssl)
+0 3 * * *  /opt/backup.sh && nightjar.sh heartbeat nightly-backup --every 1d
+# a run that failed: the job is alive but broken, which opens its own incident
+0 3 * * *  /opt/backup.sh || nightjar.sh heartbeat nightly-backup --every 1d --fail "backup.sh exited $?"
+# a private app that stands in for uptime: a production app that goes silent is a P1
+* * * * *  nightjar.sh heartbeat kubasu-api --every 1m --kind app
 ```
+
+`nightjar.sh` reads `NIGHTJAR_URL`, `NIGHTJAR_KEY` and `NIGHTJAR_SECRET`, refuses a plain `http://` hub, and like every reporter
+**never breaks the job it follows**: a hub that is down is one stderr line and exit 0 (`NIGHTJAR_STRICT=1` to see failures while
+setting up). The raw call is `POST /ingest/{key}/heartbeat/{name}` with an optional JSON body, signed like any ingest.
 
 | Field | Default | Meaning |
 |---|---|---|
@@ -75,8 +81,28 @@ curl -fsS -X POST "$NIGHTJAR_URL/ingest/$KEY/heartbeat/nightly-backup"      -H '
 It opens **one** issue when pings stop (checked each probe round, edge-triggered), and resolves itself after three good
 pings in a row, or one for a heartbeat slower than hourly (a nightly job cannot flap, and three would leave it open for three
 days). **A heartbeat that has never pinged does not exist yet**, so it cannot be missed: run it once by hand after wiring it.
-`GET /api/heartbeats` lists them (`ok`, `late`, `missed`, `failed`); `DELETE /api/heartbeats/{id}` retires one on purpose.
-Not built: a console tab for them, and the open question of defaults per kind (these are placeholders to tune).
+`GET /api/heartbeats` lists them and `DELETE /api/heartbeats/{id}` retires one on purpose. The console shows `ok`, `late` (past
+its interval, inside its grace, nothing alerted), `missed`, `failed`, and `recovering` (pinging again, incident still open).
+
+**Broken for real on 2 November 2026**: a real hub process, a real database and a derived site secret, pinged through
+`nightjar.sh` with `--every 30s --grace 10s --kind app`, then left silent. `ok` at 20 s, `late` at 35 s, and at 45 s a **P1 was open
+with one event**, which stayed one event for the rest of the silence, with one P1 notification queued. Pinging again, the state
+read `missed` after the first and second good pings (a bug, now `recovering`) and the incident resolved on the third, logged as
+automatic. So the time from the last ping to an alert is the interval, plus the grace, plus up to one probe round (60 s by
+default).
+
+**What that means for the defaults.** They are reasonable, but they come from the arithmetic and that one run, not from a
+client's traffic, so treat them as a starting point to tighten after the first false alarm or the first slow one:
+
+| Heartbeat | Suggested | Alert arrives after silence of about |
+|---|---|---|
+| Live private app, production (`app`) | `--every 1m` | 3 minutes (1 interval, 1 grace, up to 1 probe round) |
+| A worker or queue consumer (`job`) | `--every 5m` | 7 minutes |
+| Hourly job | `--every 1h` | about 1 h 13 min |
+| Nightly job | `--every 1d` | about 1 day 1 h 1 min |
+
+The grace is the figure to widen first for a job whose run time varies (a backup that takes 20 to 50 minutes), since the ping is
+sent when it finishes: `--grace 1h`.
 
 Site creation moves behind the console token: `POST /api/sites`, used by the form and by `add-site`.
 
@@ -142,8 +168,8 @@ enough to plan for.
 
 1. The **monitoring warning** on the Overview.
 2. `POST /api/sites` and the **add-site form**.
-3. The **push check** and **heartbeat** endpoints, with their console display and issues.
-4. **`nightjar.sh`**, which needs no publishing and unlocks private apps immediately.
+3. The **push check** and **heartbeat** endpoints, with their console display and issues. *Heartbeat done; push check not.*
+4. **`nightjar.sh`**, which needs no publishing and unlocks private apps immediately. *Done for heartbeat and deploy.*
 
 **Do at three or four apps, as decision #20 already says:**
 
