@@ -209,6 +209,91 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "HeartbeatOut": {
+        "properties": {
+          "env": {
+            "title": "Env",
+            "type": "string"
+          },
+          "grace_s": {
+            "title": "Grace S",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "interval_s": {
+            "title": "Interval S",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "app",
+              "job"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "last_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Message"
+          },
+          "last_ping_at": {
+            "format": "date-time",
+            "title": "Last Ping At",
+            "type": "string"
+          },
+          "last_status": {
+            "enum": [
+              "ok",
+              "fail"
+            ],
+            "title": "Last Status",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "site": {
+            "title": "Site",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "ok",
+              "late",
+              "missed",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "site",
+          "env",
+          "name",
+          "kind",
+          "interval_s",
+          "grace_s",
+          "last_ping_at",
+          "last_status",
+          "last_message",
+          "state"
+        ],
+        "title": "HeartbeatOut",
+        "type": "object"
+      },
       "HomeAck": {
         "properties": {
           "id": {
@@ -2744,6 +2829,67 @@
         ]
       }
     },
+    "/api/heartbeats": {
+      "get": {
+        "operationId": "list_heartbeats_api_heartbeats_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/HeartbeatOut"
+                  },
+                  "title": "Response List Heartbeats Api Heartbeats Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Heartbeats",
+        "tags": [
+          "heartbeats"
+        ]
+      }
+    },
+    "/api/heartbeats/{heartbeat_id}": {
+      "delete": {
+        "description": "For a job that has been retired on purpose, so its silence stops being a problem. Any issue it already\nopened stays: resolving that is a person's call.",
+        "operationId": "delete_heartbeat_api_heartbeats__heartbeat_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "heartbeat_id",
+            "required": true,
+            "schema": {
+              "title": "Heartbeat Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Heartbeat",
+        "tags": [
+          "heartbeats"
+        ]
+      }
+    },
     "/api/home": {
       "get": {
         "operationId": "list_home_api_home_get",
@@ -3983,6 +4129,90 @@
         "summary": "Ingest Event",
         "tags": [
           "ingest"
+        ]
+      }
+    },
+    "/ingest/{ingest_key}/heartbeat/{name}": {
+      "post": {
+        "operationId": "ping_ingest__ingest_key__heartbeat__name__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ingest_key",
+            "required": true,
+            "schema": {
+              "title": "Ingest Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$",
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-hub-signature",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Hub-Signature"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-hub-timestamp",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Hub-Timestamp"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HeartbeatOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ping",
+        "tags": [
+          "heartbeats"
         ]
       }
     },

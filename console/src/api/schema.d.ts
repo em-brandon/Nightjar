@@ -94,6 +94,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/heartbeats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Heartbeats */
+        get: operations["list_heartbeats_api_heartbeats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/heartbeats/{heartbeat_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Heartbeat
+         * @description For a job that has been retired on purpose, so its silence stops being a problem. Any issue it already
+         *     opened stays: resolving that is a person's call.
+         */
+        delete: operations["delete_heartbeat_api_heartbeats__heartbeat_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/home": {
         parameters: {
             query?: never;
@@ -582,6 +620,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ingest/{ingest_key}/heartbeat/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ping */
+        post: operations["ping_ingest__ingest_key__heartbeat__name__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ingest/{ingest_key}/home": {
         parameters: {
             query?: never;
@@ -758,6 +813,43 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** HeartbeatOut */
+        HeartbeatOut: {
+            /** Env */
+            env: string;
+            /** Grace S */
+            grace_s: number;
+            /** Id */
+            id: number;
+            /** Interval S */
+            interval_s: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "app" | "job";
+            /** Last Message */
+            last_message: string | null;
+            /**
+             * Last Ping At
+             * Format: date-time
+             */
+            last_ping_at: string;
+            /**
+             * Last Status
+             * @enum {string}
+             */
+            last_status: "ok" | "fail";
+            /** Name */
+            name: string;
+            /** Site */
+            site: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "ok" | "late" | "missed" | "failed";
         };
         /** HomeAck */
         HomeAck: {
@@ -1614,6 +1706,55 @@ export interface operations {
             };
         };
     };
+    list_heartbeats_api_heartbeats_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HeartbeatOut"][];
+                };
+            };
+        };
+    };
+    delete_heartbeat_api_heartbeats__heartbeat_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                heartbeat_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_home_api_home_get: {
         parameters: {
             query?: never;
@@ -2466,6 +2607,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IngestOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ping_ingest__ingest_key__heartbeat__name__post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-hub-signature"?: string | null;
+                "x-hub-timestamp"?: string | null;
+            };
+            path: {
+                ingest_key: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HeartbeatOut"];
                 };
             };
             /** @description Validation Error */
