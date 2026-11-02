@@ -362,6 +362,40 @@ class SpeedTest(Base):
     latency_ms: Mapped[float | None] = mapped_column(Float)
 
 
+class Heartbeat(Base):
+    """A thing that promises to say it is alive every `interval_s`: a cron job, a worker, or a private app the
+    probe cannot reach. The alert is on SILENCE (hub/heartbeats.py). Registered by its first ping, which carries
+    its interval, so the reporter is the one place that says how often it runs. A heartbeat that has never pinged
+    does not exist yet and cannot be missed."""
+
+    __tablename__ = "heartbeats"
+    __table_args__ = (UniqueConstraint("site_id", "name", name="uq_heartbeat_site_name"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(80))
+    # app | job. Severity comes from this and the site's env, never from the ping: an app stands in for
+    # uptime (P1 in production), a job is P2.
+    kind: Mapped[str] = mapped_column(String(10), default="job", server_default="job")
+    interval_s: Mapped[int] = mapped_column(Integer)
+    grace_s: Mapped[int] = mapped_column(Integer)
+
+    last_ping_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # ok | fail: what the last ping said about the run itself
+    last_status: Mapped[str] = mapped_column(String(10), default="ok", server_default="ok")
+    last_message: Mapped[str | None] = mapped_column(String(300))
+
+    # Edge state. An issue opens when a problem STARTS and these remember that it has, so a heartbeat that stays
+    # silent is one event, not one a minute.
+    missed_open: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    failed_open: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # good pings in a row since the problem started; it resolves once there are enough (heartbeats.pings_needed)
+    good_streak: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    site: Mapped["Site"] = relationship()
+
+
 class Presence(Base):
     """Who is home, as taps with an expiry. See hub/presence.py: on expiry, or with no record, the
     effective state is away, so a missed tap can never leave the system wrongly believing someone
