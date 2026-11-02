@@ -1,10 +1,10 @@
 // The one object App builds from every poll and hands to each view as `f`. Typed in one place so a
 // view that reads a feed the shell does not provide, or reads it as the wrong shape, fails to compile.
-import type { Alert, Deploy, HomeSnapshot, Issue, MediaPlay, MediaSnapshot, Presence, Rates, Rising, SiteHealth, Stack, Ticket, Weather } from "./api/types.ts";
+import type { Alert, Deploy, Heartbeat, HomeSnapshot, Issue, MediaPlay, MediaSnapshot, Presence, Rates, Rising, SiteHealth, Stack, Ticket, Weather } from "./api/types.ts";
 import type { DemoHome } from "./home.ts";
 import type { DemoMedia } from "./media.ts";
 
-export type TabId = "overview" | "incidents" | "requests" | "deploys" | "staging" | "media" | "sites" | "alerts" | "idle";
+export type TabId = "overview" | "incidents" | "requests" | "deploys" | "staging" | "media" | "sites" | "alerts" | "heartbeats" | "idle";
 
 export type Feeds = {
   sites: SiteHealth[];
@@ -15,6 +15,7 @@ export type Feeds = {
   // alerts that failed, are being retried after failing, or were P1s nobody acknowledged: never "nothing wrong"
   attention: Alert[];
   stacks: Stack[];
+  heartbeats: Heartbeat[];
   media: MediaSnapshot[];
   mediaHistory: MediaPlay[];
   // decoration: absent until the feed answers, and never makes the hub look unreachable
@@ -38,4 +39,5 @@ export type Feeds = {
   reloadTickets: () => Promise<void>;
   reloadAttention: () => Promise<void>;
   reloadStacks: () => Promise<void>;
+  reloadHeartbeats: () => Promise<void>;
 };

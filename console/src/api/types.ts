@@ -22,6 +22,7 @@ export type LogEntry = S["LogEntry"];
 export type Rising = S["RisingOut"];
 export type Ticket = S["TicketOut"];
 export type Deploy = S["DeployOut"];
+export type Heartbeat = S["HeartbeatOut"];
 export type Stack = S["StackOut"];
 export type MediaSnapshot = S["MediaOut"];
 export type MediaPlay = S["MediaPlayOut"];
