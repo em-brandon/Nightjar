@@ -51,6 +51,10 @@ has the steps. A real P1 has been sent to a phone and acknowledged from it, and 
 incident in the console tells Pushover to stop the repeating push (decision #56). Nothing escalates a P1 nobody answers yet.
 Until the hub is deployed and has run for a while, nothing here should be mistaken for monitoring.
 
+**Heartbeats: built.** A cron job, worker or private app pings `POST /ingest/{key}/heartbeat/{name}`; silence opens one edge-triggered
+issue (P1 for a production `app`, P2 for a `job`) and it resolves itself when the pings return. No console tab yet. See
+`docs/CLIENT-INTEGRATION.md`.
+
 **Planned, not started:** escalating a P1 that nobody acknowledges: a short ladder (a second recipient, then SMS or a call, then
 email) that only ever adds channels and stops the moment the incident is dealt with. Plan, rules and open questions in
 `docs/ESCALATION.md`. Also planned there: a fallback when Pushover itself is down.
@@ -373,6 +377,7 @@ hub/
   uptime.py        a site that stops answering becomes an issue: P1 in production, P2 on staging, edge-triggered
   rates.py         /api/rates: cached USD to KES rate (decoration only)
   edge.py          edge-triggered issues shared by every pushed source: open once, resolve themselves
+  heartbeats.py    POST /ingest/{key}/heartbeat/{name}: a cron job or private app pings, and silence opens an issue (docs/CLIENT-INTEGRATION.md)
 console/           Vite + React 19 + TypeScript UI: src/views/* is one file per tab; src/api/* is generated from the hub (do not edit)
 client/
   reporter.py      the whole "SDK" — drop into any managed FastAPI app
@@ -478,6 +483,7 @@ signed against a hub with `VERIFY_SIGNATURES` on.
 | `DEADMAN_URL` | a healthchecks.io ping URL, pinged only while the alert sender is alive |
 | `QUIET_TZ` / `QUIET_START_HOUR` / `QUIET_END_HOUR` | quiet hours for the policy (default Africa/Nairobi, 22 to 7). Inside them only P1 makes noise |
 | `OUTBOX_ENABLED` / `OUTBOX_POLL_S` / `OUTBOX_MAX_ATTEMPTS` / `OUTBOX_BACKOFF_S` / `OUTBOX_LEASE_S` / `RECEIPT_POLL_S` | the sender loop's working figures (defaults 5s, 6 attempts, 30s then 2m, 10m, 30m, 1h, a 120s claim lease, receipts every 30s) |
+| `HEARTBEAT_DEFAULT_INTERVAL_S` | the interval assumed for a heartbeat that does not say (default 300) |
 | `UPTIME_RECOVER_CHECKS` | passing checks in a row before a site's outage resolves itself (default 5) |
 | `RATES_ENABLED` / `RATES_TTL_MIN` | the USD to KES rate on the wall, from open.er-api.com (no key) |
 | `VITE_STACK_CONTROL_URL` | console build-time: where the Staging tab's *Manage stacks* button points (Dockge over Tailscale). Optional |

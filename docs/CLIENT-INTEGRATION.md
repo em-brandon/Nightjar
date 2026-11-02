@@ -55,6 +55,29 @@ heartbeat *is*, never chosen by hand: a heartbeat standing in for uptime is P1, 
 pings open an issue **on the edge**, once, and it resolves itself after the pings return and stay, using the
 same rules as staging stacks (#38, #43).
 
+**Heartbeat: built** (`hub/heartbeats.py`, `tests/test_heartbeat_checks.py`). The push check is not. A heartbeat is
+registered by its first ping, which carries its schedule, so the cron line is the one place that says how often it runs:
+
+```bash
+# at the end of a successful run (unsigned; fine in dev, production needs the signature headers like any ingest)
+curl -fsS -X POST "$NIGHTJAR_URL/ingest/$KEY/heartbeat/nightly-backup"      -H 'content-type: application/json' -d '{"interval_s": 86400, "kind": "job"}'
+# a run that failed, so the job is alive but broken
+... -d '{"status": "fail", "message": "exit 2"}'
+```
+
+| Field | Default | Meaning |
+|---|---|---|
+| `interval_s` | `HEARTBEAT_DEFAULT_INTERVAL_S` (300) | how often it promises to ping, 30 s to 7 days |
+| `grace_s` | a fifth of the interval, between 1 minute and 1 hour | how late is still on time |
+| `kind` | `job` | `app` stands in for uptime (P1 in production); `job` is P2. Staging is never P1 |
+| `status` | `ok` | `fail` opens its own issue even though the job is alive |
+
+It opens **one** issue when pings stop (checked each probe round, edge-triggered), and resolves itself after three good
+pings in a row, or one for a heartbeat slower than hourly (a nightly job cannot flap, and three would leave it open for three
+days). **A heartbeat that has never pinged does not exist yet**, so it cannot be missed: run it once by hand after wiring it.
+`GET /api/heartbeats` lists them (`ok`, `late`, `missed`, `failed`); `DELETE /api/heartbeats/{id}` retires one on purpose.
+Not built: a console tab for them, and the open question of defaults per kind (these are placeholders to tune).
+
 Site creation moves behind the console token: `POST /api/sites`, used by the form and by `add-site`.
 
 ## How each reachability case is handled
