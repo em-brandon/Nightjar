@@ -188,6 +188,31 @@ class Safety(unittest.TestCase):
         post.assert_not_called()
 
 
+class HubReplyTests(unittest.TestCase):
+    def test_wording(self):
+        self.assertIsNone(reporter.status_warning(200))
+        self.assertIsNone(reporter.status_warning(202))
+        self.assertIsNone(reporter.status_warning(None))
+        self.assertIn("key and secret", reporter.status_warning(401))
+        self.assertIn("rate limiting", reporter.status_warning(429))
+        self.assertIn("trouble", reporter.status_warning(503))
+
+    def test_a_refusing_hub_is_said_once_and_the_app_is_unaffected(self):
+        post = AsyncMock(return_value=httpx.Response(401))
+        app = app_with("https://nightjar.example/ingest/K/event")
+        with patch.object(httpx.AsyncClient, "post", post), self.assertLogs("nightjar", level=logging.ERROR) as logs:
+            first, second = hit(app), hit(app)
+        self.assertEqual(len(logs.records), 1)
+        self.assertIn("answered 401", logs.output[0])
+        self.assertNotIn("nightjar.example", logs.output[0])
+        self.assertEqual((first.status_code, second.status_code), (500, 500))
+
+    def test_an_accepting_hub_is_not_warned_about(self):
+        post = AsyncMock(return_value=httpx.Response(200))
+        with patch.object(httpx.AsyncClient, "post", post), self.assertNoLogs("nightjar", level=logging.ERROR):
+            hit(app_with("https://nightjar.example/ingest/K/event"))
+
+
 class ExistingHandlerTests(unittest.TestCase):
     URL = "https://nightjar.example/ingest/K/event"
 

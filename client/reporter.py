@@ -32,6 +32,22 @@ _LOOPBACK = {"localhost", "127.0.0.1", "::1"}
 _clock = time.monotonic
 
 
+def status_warning(status: object) -> str | None:
+    """One line for a hub answer that means the report was not recorded, or None when it was. Reporters never wait on the
+    answer to protect the app, but a wrong secret (401) would otherwise look exactly like an app with no errors."""
+    if not isinstance(status, int) or isinstance(status, bool) or status < 400:
+        return None
+    hint = {
+        401: "Check the site's key and secret.",
+        403: "Check the site's key and secret.",
+        404: "Check the hub address and the site's key.",
+        413: "The report was too large.",
+        422: "The report was malformed; update the reporter.",
+        429: "The hub is rate limiting this site.",
+    }.get(status, "The hub is having trouble, so reports may be lost." if status >= 500 else "")
+    return f"Nightjar: the hub answered {status} to a report, so it was not recorded. {hint}".rstrip()
+
+
 def hub_refusal(url: str) -> str | None:
     """Whether this address may be used, and if not, why. https is always fine. Plain http is fine only for a machine
     talking to itself, which development needs: anywhere else it would send error text, readable, across a network.
@@ -120,6 +136,19 @@ def install_reporter(
         except Exception:
             pass
 
+    status_said = False
+
+    def note_status(status: object) -> None:
+        """Say once, in the app's own log, that the hub did not accept a report. Never raises."""
+        nonlocal status_said
+        try:
+            why = status_warning(status)
+            if why and not status_said:
+                status_said = True
+                log.error(why)
+        except Exception:
+            pass
+
     in_flight: set[asyncio.Task] = set()  # also keeps each task referenced, or it could be collected mid-send
     sent_at: deque[float] = deque()
     app.state.nightjar_in_flight = in_flight  # read-only, so a test or a shutdown hook can wait for sends to finish
@@ -136,7 +165,7 @@ def install_reporter(
     async def send(body: bytes, timestamp: str, signature: str) -> None:
         try:
             async with httpx.AsyncClient(timeout=3.0) as client:
-                await client.post(
+                resp = await client.post(
                     url,
                     content=body,
                     headers={
@@ -145,6 +174,7 @@ def install_reporter(
                         "X-Hub-Signature": signature,
                     },
                 )
+                note_status(getattr(resp, "status_code", None))
         except Exception:
             pass  # a failed report is not the app's problem
 
