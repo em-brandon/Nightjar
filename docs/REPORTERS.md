@@ -75,8 +75,8 @@ keyed with the ingest secret. The hub finds the site by the key, refuses a times
 clock, and checks the signature. The timestamp is inside the signature so a captured report expires. See [`KEYS.md`](KEYS.md).
 
 **Rolling it out: update the hub first.** A hub that has not been updated checks the body alone and would refuse a reporter
-that sends a timestamp. An updated hub still accepts the old body-only form, so reporters can then be updated one at a time;
-once all are, set `REQUIRE_SIGNED_TIMESTAMP=true`.
+that sends a timestamp. The timestamp is required by default (`REQUIRE_SIGNED_TIMESTAMP`), so a reporter that signs the body alone is refused with
+`missing timestamp`. Update such a copy; if you cannot yet, set `REQUIRE_SIGNED_TIMESTAMP=false` on the hub for the time being.
 
 ```json
 {

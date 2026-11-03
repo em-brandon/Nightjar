@@ -91,8 +91,8 @@ sig = "sha256=" + hmac.new(secret.encode(), ts.encode() + b"." + body, hashlib.s
 ```
 
 The hub refuses a timestamp more than five minutes from its own clock (`SIGNATURE_MAX_AGE_S`), in either direction, so a
-machine with a wrong clock is refused with `stale timestamp`: keep NTP on. A request with **no** timestamp is still accepted
-(signed over the body alone, the original scheme) until the hub is told to require one with `REQUIRE_SIGNED_TIMESTAMP=true`.
+machine with a wrong clock is refused with `stale timestamp`: keep NTP on. A request with **no** timestamp is refused (`missing timestamp`),
+because `REQUIRE_SIGNED_TIMESTAMP` is on by default. Set it `false` only for a copy of an old reporter that signs the body alone and cannot be updated yet.
 
 ```bash
 # the same thing in a shell, which is what CI uses
@@ -440,9 +440,8 @@ to the app is visible there instead of looking like an app with no errors.
 
 - **A captured request can still be replayed for five minutes.** Reporters sign a timestamp and the hub refuses one older
   than `SIGNATURE_MAX_AGE_S` (300), so a capture expires, and a fresh timestamp cannot be attached to an old capture. Inside
-  the window a replay is accepted and recorded again; the damage is a duplicate row, not access. Until
-  `REQUIRE_SIGNED_TIMESTAMP=true`, a request sent **without** a timestamp is still accepted, so an old capture of one is
-  replayable for ever: turn it on once every reporter has been updated.
+  the window a replay is accepted and recorded again; the damage is a duplicate row, not access. A request sent with **no**
+  timestamp is refused unless you turn `REQUIRE_SIGNED_TIMESTAMP` off, which would make an old capture of one replayable for ever.
 - **Keys appear in Caddy's access log**, because they are in the URL. That is acceptable for an identifier that is
   not secret, which is why signatures matter. Never put a secret in a URL.
 - **The browser limits are in memory.** A hub restart resets them. They are a brake, not an accounting system.

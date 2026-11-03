@@ -317,7 +317,7 @@ wall display can add channels; if all of them fail, Pushover still fires.
 | TLS, HSTS (one day to start), CSP, no framing, no `Server` header | Built | `deploy/Caddyfile` |
 | Spoofable `CF-Connecting-IP` and `True-Client-IP` stripped, 64 KB body cap | Built, `caddy validate` passes | `deploy/Caddyfile` |
 | Signature check, Origin check, rate limits, console token | Built | `hub/` |
-| Signed timestamp, so a captured report expires after five minutes | Built and sent by every signer. **Not enforced until `REQUIRE_SIGNED_TIMESTAMP=true`**, so a request with no timestamp is still replayable | `hub/ingest.py` |
+| Signed timestamp, so a captured report expires after five minutes | Built and sent by every signer, and **required by default** (`REQUIRE_SIGNED_TIMESTAMP`), so a request with no timestamp is refused | `hub/ingest.py` |
 | Reporters refuse a plain `http://` hub, out loud | Built, all five | `client/` |
 | Secrets as mounted files | Built, checked on a production-shaped stack | `deploy/make-secrets.sh` |
 | Backups encrypted with `age` to a public key | Built. A restore of a real `pg_dump` is still to do | `deploy/backup.sh`, `deploy/restore.sh` |
@@ -1153,7 +1153,7 @@ checked.
 |---|---|---|
 | `DATABASE_URL` | `.env.example` sets `...@localhost:5433/nightjar` | Database connection. The built-in fallback is port 5432 |
 | `VERIFY_SIGNATURES` | `false` | HMAC check on ingest. Off in dev, **on in prod** |
-| `REQUIRE_SIGNED_TIMESTAMP` | `false` | Refuse an ingest request that carries no timestamp, so a captured one cannot be replayed. Turn on once every reporter has been updated; until then a request without one is still accepted |
+| `REQUIRE_SIGNED_TIMESTAMP` | `true` | Refuse an ingest request that carries no timestamp, so a captured one cannot be replayed. Set false only for an old reporter copy that cannot be updated; only applies while `VERIFY_SIGNATURES` is on |
 | `SIGNATURE_MAX_AGE_S` | `300` | How far a request's timestamp may be from the hub's clock, either way |
 | `SPIKE_THRESHOLD` | `50` | Events inside the window that count as a spike |
 | `SPIKE_WINDOW_MIN` | `10` | The window, in minutes |
