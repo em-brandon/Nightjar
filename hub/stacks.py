@@ -11,8 +11,7 @@ from . import fingerprint as fp
 from .acks import dismiss_alerts
 from .config import settings
 from .db import get_session
-from .ingest import _load_site, _verify, record_event
-from .derive import site_secret
+from .ingest import _load_site, record_event, verify_and_note
 from .models import Issue, IssueAction, Site, StackReport
 from .schemas import EventIn, Frame, ServiceIn, StackAck, StackOut, StackReportIn
 
@@ -188,7 +187,7 @@ async def record_stack(
 ) -> StackAck:
     raw = await request.body()
     site = await _load_site(session, ingest_key)
-    _verify(site_secret(site), raw, x_hub_signature, x_hub_timestamp)
+    await verify_and_note(session, request, site, raw, x_hub_signature, x_hub_timestamp)
     try:
         payload = StackReportIn.model_validate_json(raw)
     except ValidationError as exc:
