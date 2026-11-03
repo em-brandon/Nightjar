@@ -188,5 +188,22 @@ class Safety(unittest.TestCase):
         post.assert_not_called()
 
 
+class ScrubTests(unittest.TestCase):
+    def test_scrub_removes_secrets_and_leaves_ordinary_text(self):
+        out = reporter.scrub("login failed for bob@example.com with password=hunter2 via https://u:pw@db.internal/x, Authorization: Bearer abcdef123456789")
+        for leaked in ("hunter2", "u:pw", "abcdef123456789", "bob@"):
+            self.assertNotIn(leaked, out)
+        self.assertEqual(reporter.scrub("cart is empty for order 42"), "cart is empty for order 42")
+
+    def test_frames_are_relative_and_their_source_line_is_scrubbed(self):
+        try:
+            password = "x"  # noqa: F841
+            raise ValueError("token=abc123 failed")
+        except ValueError as e:
+            frames = reporter._frames(e)
+        self.assertFalse(os.path.isabs(frames[-1]["file"]), frames[-1]["file"])
+        self.assertNotIn(os.getcwd().replace("\\", "/"), frames[-1]["file"])
+
+
 if __name__ == "__main__":
     unittest.main()

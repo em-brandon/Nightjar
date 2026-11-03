@@ -10,6 +10,8 @@ import hashlib
 import hmac
 import json
 import logging
+import os
+import re
 import time
 import traceback
 from collections import deque
@@ -50,14 +52,40 @@ def hub_refusal(url: str) -> str | None:
     )
 
 
+_SCRUBBERS = [
+    (re.compile(r"\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}", re.I), r"\1 [redacted]"),
+    (re.compile(r"(?<=://)[^/\s:@]+:[^/\s@]+@"), "[redacted]@"),
+    (
+        re.compile(r"""\b(password|passwd|pwd|secret|token|api[_-]?key|apikey|authorization)(["']?\s*[=:]\s*["']?)[^\s"'&,;]+""", re.I),
+        r"\1\2[redacted]",
+    ),
+    (re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"), "[email]"),
+]
+
+
+def scrub(text: str) -> str:
+    """Take the obvious secrets out of text before it leaves the server: passwords and tokens as key=value, credentials in
+    URLs, bearer tokens and email addresses. Best effort, not a guarantee, so do not put secrets in exception messages."""
+    for pattern, replacement in _SCRUBBERS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
+def _relative(path: str) -> str:
+    """A path without the server's own directory layout (home directories, account names)."""
+    path = path.replace("\\", "/")
+    base = os.getcwd().replace("\\", "/").rstrip("/") + "/"
+    return path[len(base):] if path.startswith(base) else path
+
+
 def _frames(exc: BaseException) -> list[dict]:
     return [
         {
-            "file": f.filename,
-            "module": f.filename.rsplit("/", 1)[-1],
+            "file": _relative(f.filename),
+            "module": f.filename.replace("\\", "/").rsplit("/", 1)[-1],
             "function": f.name,
             "lineno": f.lineno,
-            "context": f.line,
+            "context": scrub(f.line or ""),  # a line of source can hold a literal credential
         }
         for f in traceback.extract_tb(exc.__traceback__)
     ]
@@ -121,7 +149,7 @@ def install_reporter(
         body = json.dumps(
             {
                 "exception_type": type(exc).__name__,
-                "message": str(exc),
+                "message": scrub(str(exc)),
                 "frames": _frames(exc),
                 "level": "error",
                 "environment": environment,
