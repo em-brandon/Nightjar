@@ -28,10 +28,13 @@ def sign(body: bytes = BODY, secret: str = SECRET) -> str:
 
 
 class Verify(unittest.TestCase):
+    """The original body-only scheme, which the hub still accepts when REQUIRE_SIGNED_TIMESTAMP is turned off."""
+
     def setUp(self):
-        p = patch.object(settings, "verify_signatures", True)
-        p.start()
-        self.addCleanup(p.stop)
+        for name, value in (("verify_signatures", True), ("require_signed_timestamp", False)):
+            p = patch.object(settings, name, value)
+            p.start()
+            self.addCleanup(p.stop)
 
     def status(self, signature):
         try:
@@ -63,6 +66,18 @@ NOW = 1_800_000_000
 def sign_at(timestamp: str, body: bytes = BODY, secret: str = SECRET) -> str:
     """What a reporter that sends X-Hub-Timestamp computes."""
     return "sha256=" + hmac.new(secret.encode(), timestamp.encode() + b"." + body, hashlib.sha256).hexdigest()
+
+
+class Defaults(unittest.TestCase):
+    def test_a_timestamp_is_required_unless_the_operator_turns_that_off(self):
+        # the declared default, so an environment variable on this machine cannot hide a change to it
+        self.assertIs(type(settings).model_fields["require_signed_timestamp"].default, True)
+
+    def test_a_request_with_no_timestamp_is_refused_by_default(self):
+        with patch.object(settings, "verify_signatures", True), patch.object(settings, "require_signed_timestamp", True):
+            with self.assertRaises(HTTPException) as caught:
+                ingest._verify(SECRET, BODY, sign())
+        self.assertEqual((caught.exception.status_code, caught.exception.detail), (401, "missing timestamp"))
 
 
 class Replay(unittest.TestCase):

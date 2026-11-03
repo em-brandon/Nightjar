@@ -238,16 +238,18 @@ class Sites(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(new["ingest_secret"], (await self.http.get("/api/sites")).text)
         import hashlib
         import hmac
+        import time
 
         body = b'{"exception_type": "Boom", "message": "x"}'
 
         async def post(secret):
-            sig = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+            ts = str(int(time.time()))
+            sig = "sha256=" + hmac.new(secret.encode(), ts.encode() + b"." + body, hashlib.sha256).hexdigest()
             with patch.object(settings, "verify_signatures", True):
                 return await self.http.post(
                     f"/ingest/{made['ingest_key']}/event",
                     content=body,
-                    headers={"X-Hub-Signature": sig, "Content-Type": "application/json"},
+                    headers={"X-Hub-Signature": sig, "X-Hub-Timestamp": ts, "Content-Type": "application/json"},
                 )
 
         self.assertEqual((await post(made["ingest_secret"])).status_code, 401)
