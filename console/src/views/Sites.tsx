@@ -335,6 +335,8 @@ const AUDIT_WORDS: Record<string, string> = {
   browser_key_issued: "Browser key issued",
   browser_key_revoked: "Browser key revoked",
   secret_rotated: "Secret rotated",
+  new_source: "Report from a new address",
+  refused_request: "Request refused",
 };
 
 // Who changed what, and when. It lists the fact of a change, never a secret: the hub does not store one here.
@@ -424,6 +426,16 @@ function SiteRow({ s, label, h, now, onSaved, onSetup, onRotated }: { s: SiteLis
         <span>
           <span className="k">browser</span> {s.allowed_origins.length ? `${s.allowed_origins.length} page${s.allowed_origins.length === 1 ? "" : "s"}` : "off"}
         </span>
+        {s.bad_signatures_24h > 0 && (
+          <span title="Signed requests the hub refused in the last 24 hours. Either someone has this site's key but not its secret, or an app is still holding a rotated secret. See History.">
+            <span className="k">refused</span> {s.bad_signatures_24h} in 24 h
+          </span>
+        )}
+        {s.new_source_at && (
+          <span title="A report arrived from an address this site had never used. A leaked secret looks like this, and so does moving the app to a new host. See History.">
+            <span className="k">new address</span> {ago(s.new_source_at, now)}
+          </span>
+        )}
         {s.url && <span className="mono sx-url">{s.url}</span>}
       </div>
       <div className="sx-row-actions">
