@@ -228,6 +228,42 @@ class AuditLog(Base):
     )
 
 
+class IngestSource(Base):
+    """An address a site's signed reports have come from. A signature proves someone holds the secret, not who; a
+    report from an address the site has never used before is the cheapest sign that a secret has leaked (or that the
+    app moved). Written at most once a minute per address, so a crash storm does not become a write storm."""
+
+    __tablename__ = "ingest_sources"
+    __table_args__ = (UniqueConstraint("site_id", "ip", name="uq_ingest_source"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    ip: Mapped[str] = mapped_column(String(64))
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    reports: Mapped[int] = mapped_column(Integer, default=1)
+
+
+class IngestFailure(Base):
+    """Signed requests the hub refused for a site it knows, counted per address, reason and hour. A burst of these
+    means someone has the ingest key (it is in every URL) and is guessing at the secret, or an app is still holding a
+    rotated one. It never stores the request: no body, no signature."""
+
+    __tablename__ = "ingest_failures"
+    __table_args__ = (
+        UniqueConstraint("site_id", "ip", "reason", "bucket", name="uq_ingest_failure"),
+        Index("ix_ingest_failures_site_bucket", "site_id", "bucket"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    ip: Mapped[str] = mapped_column(String(64))
+    # missing signature | bad signature | missing timestamp | bad timestamp | stale timestamp
+    reason: Mapped[str] = mapped_column(String(40))
+    bucket: Mapped[datetime] = mapped_column(DateTime(timezone=True))  # the start of the hour
+    count: Mapped[int] = mapped_column(Integer, default=1)
+
+
 class StackReport(Base):
     """One snapshot of a staging stack (a Docker Compose project) from the host
     it runs on. The hub cannot see that machine's Docker, and must not be given
