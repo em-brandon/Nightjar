@@ -107,6 +107,7 @@ public final class Nightjar {
     private static final ArrayDeque<Long> sentAt = new ArrayDeque<>();
     private static final AtomicBoolean handlerInstalled = new AtomicBoolean(false);
     private static final AtomicBoolean warned = new AtomicBoolean(false);
+    private static final AtomicBoolean statusWarned = new AtomicBoolean(false);
     private static volatile Consumer<String> logger = System.err::println;
     private static final Set<String> LOOPBACK = Set.of("localhost", "127.0.0.1", "[::1]", "::1");
 
@@ -509,6 +510,50 @@ public final class Nightjar {
                 .build();
     }
 
+    /**
+     * One line for a hub answer that means the report was not recorded, or null when it was. Reporters never wait on the
+     * answer to protect the app, but a wrong secret (401) would otherwise look exactly like an app with no errors.
+     */
+    public static String statusWarning(int status) {
+        if (status < 400) {
+            return null;
+        }
+        String hint;
+        switch (status) {
+            case 401:
+            case 403:
+                hint = "Check the site's key and secret.";
+                break;
+            case 404:
+                hint = "Check the hub address and the site's key.";
+                break;
+            case 413:
+                hint = "The report was too large.";
+                break;
+            case 422:
+                hint = "The report was malformed; update the reporter.";
+                break;
+            case 429:
+                hint = "The hub is rate limiting this site.";
+                break;
+            default:
+                hint = status >= 500 ? "The hub is having trouble, so reports may be lost." : "";
+        }
+        return ("Nightjar: the hub answered " + status + " to a report, so it was not recorded. " + hint).trim();
+    }
+
+    /** Say, once per process, that the hub did not accept a report. Never throws. */
+    static void noteStatus(int status) {
+        try {
+            String why = statusWarning(status);
+            if (why != null && statusWarned.compareAndSet(false, true)) {
+                logger.accept(why);
+            }
+        } catch (Throwable ignored) {
+            // even the warning must not break the app
+        }
+    }
+
     private static void httpSend(String url, Map<String, String> headers, String body, int timeoutMs) throws Exception {
         HttpRequest.Builder req = HttpRequest.newBuilder(URI.create(url))
                 .timeout(Duration.ofMillis(timeoutMs))
@@ -516,7 +561,8 @@ public final class Nightjar {
         for (Map.Entry<String, String> h : headers.entrySet()) {
             req.header(h.getKey(), h.getValue());
         }
-        ClientHolder.CLIENT.send(req.build(), HttpResponse.BodyHandlers.discarding());
+        HttpResponse<Void> response = ClientHolder.CLIENT.send(req.build(), HttpResponse.BodyHandlers.discarding());
+        noteStatus(response.statusCode());
     }
 
     // ---- for tests ----------------------------------------------------------------------------
@@ -534,6 +580,7 @@ public final class Nightjar {
     /** Forget everything, so a test starts clean. */
     public static void reset() {
         warned.set(false);
+        statusWarned.set(false);
         logger = System.err::println;
         ThreadPoolExecutor p = pool;
         if (p != null) {
