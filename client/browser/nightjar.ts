@@ -131,7 +131,7 @@ const SCRUBBERS: Array<[RegExp, string]> = [
   [/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/gi, "$1 [redacted]"],
   [/(?<=:\/\/)[^/\s:@]+:[^/\s@]+@/g, "[redacted]@"],
   [/\b(password|passwd|pwd|secret|token|api[_-]?key|apikey|authorization)(["']?\s*[=:]\s*["']?)[^\s"'&,;]+/gi, "$1$2[redacted]"],
-  [/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[email]"],
+  [/[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,255}\.[A-Za-z]{2,}/g, "[email]"],
 ];
 
 /**
@@ -213,7 +213,7 @@ export function createReporter(options: Options, env: Env): Reporter {
 
       let body = JSON.stringify({
         exception_type: type,
-        message: scrub(message).slice(0, MAX_MESSAGE),
+        message: scrub(message.slice(0, MAX_MESSAGE)).slice(0, MAX_MESSAGE), // cut first: scanning a huge message costs the visitor
         frames,
         level: level ?? options.level ?? "warning",
         release: options.release,
