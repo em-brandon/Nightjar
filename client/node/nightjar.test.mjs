@@ -6,7 +6,7 @@ import { createHmac } from "node:crypto";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
-import { captureException, createReporter, expressErrorHandler, flush, hubRefusal, init, parseStack, prepare } from "./nightjar.ts";
+import { captureException, createReporter, expressErrorHandler, flush, hubRefusal, init, parseStack, prepare, scrub } from "./nightjar.ts";
 
 const ok = (name) => console.log(`  ok   ${name}`);
 const OPTS = { hub: "https://nightjar.example/", key: "KEY1", secret: "s3cret", release: "v2" };
@@ -300,6 +300,19 @@ async function crash(script, hubUrl) {
   assert.equal(bare.code, 1);
   assert.match(bare.stderr, /no config/);
   ok("without configuration a crash looks exactly as it does without the reporter");
+}
+
+{
+  const out = scrub("login failed for bob@example.com with password=hunter2 via https://u:pw@db.internal/x, Authorization: Bearer abcdef123456789");
+  for (const leaked of ["hunter2", "u:pw", "abcdef123456789", "bob@"]) assert.ok(!out.includes(leaked), `${leaked} leaked: ${out}`);
+  assert.equal(scrub("cart is empty for order 42"), "cart is empty for order 42");
+  ok("scrub removes passwords, URL credentials, bearer tokens and emails, and leaves ordinary text");
+  const p = prepare(OPTS, new Error("token=abc123 failed"));
+  assert.ok(!p.body.includes("abc123"));
+  const frames = JSON.parse(p.body).frames;
+  const cwd = process.cwd().replace(/\\/g, "/");
+  assert.ok(frames.length > 0 && frames.every((f) => !f.file.replace(/\\/g, "/").startsWith(cwd)), JSON.stringify(frames[frames.length - 1]));
+  ok("prepare() scrubs the message and makes frame paths relative to the working directory");
 }
 
 console.log("\nnode reporter passed");

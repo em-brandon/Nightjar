@@ -87,7 +87,7 @@ export function parseStack(stack: string | undefined | null): Frame[] {
     if (!at) continue;
     const file = at[1].replace(/^file:\/\//, "").replace(/^\/([A-Za-z]:)/, "$1").split("?")[0];
     const frame: Frame = {
-      file: file.slice(0, MAX_FIELD),
+      file: relativePath(file).slice(0, MAX_FIELD),
       module: (file.split(/[\\/]/).pop() || file).slice(0, MAX_FIELD),
       lineno: Number(at[2]),
     };
@@ -96,6 +96,34 @@ export function parseStack(stack: string | undefined | null): Frame[] {
     frames.push(frame);
   }
   return frames.reverse().slice(-MAX_FRAMES);
+}
+
+const SCRUBBERS: Array<[RegExp, string]> = [
+  [/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/gi, "$1 [redacted]"],
+  [/(?<=:\/\/)[^/\s:@]+:[^/\s@]+@/g, "[redacted]@"],
+  [/\b(password|passwd|pwd|secret|token|api[_-]?key|apikey|authorization)(["']?\s*[=:]\s*["']?)[^\s"'&,;]+/gi, "$1$2[redacted]"],
+  [/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[email]"],
+];
+
+/**
+ * Take the obvious secrets out of text before it leaves the server: passwords and tokens as key=value, credentials in
+ * URLs, bearer tokens and email addresses. Best effort, not a guarantee, so do not put secrets in error messages.
+ */
+export function scrub(text: string): string {
+  for (const [pattern, replacement] of SCRUBBERS) text = text.replace(pattern, replacement);
+  return text;
+}
+
+/** A path without the server's own directory layout (home directories, account names). */
+function relativePath(file: string): string {
+  if (typeof process === "undefined" || typeof process.cwd !== "function") return file;
+  try {
+    const base = process.cwd().replace(/\\/g, "/").replace(/\/$/, "") + "/";
+    const f = file.replace(/\\/g, "/");
+    return f.startsWith(base) ? f.slice(base.length) : file;
+  } catch {
+    return file;
+  }
 }
 
 function describe(thing: unknown): { type: string; message: string; stack?: string } {
@@ -152,7 +180,7 @@ export function prepare(options: Options, error: unknown, level: Level = "error"
   const { type, message, stack } = describe(error);
   const body = JSON.stringify({
     exception_type: type.slice(0, MAX_FIELD),
-    message: message.slice(0, MAX_MESSAGE),
+    message: scrub(message).slice(0, MAX_MESSAGE),
     frames: parseStack(stack),
     level,
     environment: o.environment,
