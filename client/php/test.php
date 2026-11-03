@@ -281,5 +281,16 @@ Reporter::flush();
 check('with an unwritable breaker directory, the in-memory breaker still stops a second send', $calls === 1, (string) $calls);
 Reporter::reset();
 
+$said = [];
+Reporter::reset();
+Reporter::setLogger(function ($m) use (&$said) { $said[] = $m; });
+Reporter::noteStatus(200);
+Reporter::noteStatus(null);
+check('a 2xx is not warned about', $said === []);
+Reporter::noteStatus(401);
+Reporter::noteStatus(500);
+check('a refusing hub is said once, with the status and a hint, and no address', count($said) === 1 && strpos($said[0], 'answered 401') !== false && strpos($said[0], 'key and secret') !== false, json_encode($said));
+Reporter::reset();
+
 echo $failures === 0 ? "\nphp reporter passed\n" : "\n$failures FAILED\n";
 exit($failures === 0 ? 0 : 1);

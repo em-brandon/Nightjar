@@ -37,6 +37,7 @@ final class Reporter
     private static $uncaught = false;
     private static $installed = false;
     private static $warned = false;
+    private static $statusWarned = false;
     /** @var callable|null for tests: where the one-line warning about an unusable hub goes (default: error_log) */
     private static $logger = null;
     /** @var callable|null for tests: function (string $url, array $headers, string $body, int $timeout): void */
@@ -66,6 +67,46 @@ final class Reporter
         }
         return "Nightjar: refusing to report errors to {$scheme}://{$host}: plain http would send them readable across the network. "
             . 'Use an https:// hub address (http:// is only accepted for localhost). No errors will be reported.';
+    }
+
+    /**
+     * One line for a hub answer that means the report was not recorded, or null when it was. Reporters never wait on the
+     * answer to protect the app, but a wrong secret (401) would otherwise look exactly like an app with no errors.
+     */
+    public static function statusWarning($status): ?string
+    {
+        if (!is_int($status) || $status < 400) {
+            return null;
+        }
+        $hints = [
+            401 => "Check the site's key and secret.",
+            403 => "Check the site's key and secret.",
+            404 => "Check the hub address and the site's key.",
+            413 => 'The report was too large.',
+            422 => 'The report was malformed; update the reporter.',
+            429 => 'The hub is rate limiting this site.',
+        ];
+        $hint = $hints[$status] ?? ($status >= 500 ? 'The hub is having trouble, so reports may be lost.' : '');
+        return rtrim("Nightjar: the hub answered {$status} to a report, so it was not recorded. {$hint}");
+    }
+
+    /** Say, once per process, in the app's own log, that the hub did not accept a report. Never throws. */
+    public static function noteStatus($status): void
+    {
+        try {
+            $why = self::statusWarning($status);
+            if ($why === null || self::$statusWarned) {
+                return;
+            }
+            self::$statusWarned = true;
+            if (self::$logger !== null) {
+                call_user_func(self::$logger, $why);
+            } else {
+                error_log($why);
+            }
+        } catch (\Throwable $e) {
+            // even the warning must not break the app
+        }
     }
 
     /** Configure. Returns false (and does nothing else) if the hub, key or secret is missing, or the hub is not https. */
@@ -264,6 +305,7 @@ final class Reporter
         self::$installed = false;
         self::$transport = null;
         self::$warned = false;
+        self::$statusWarned = false;
         self::$logger = null;
         self::$trippedAt = null;
     }
@@ -447,6 +489,9 @@ final class Reporter
             ]);
             $result = curl_exec($ch);
             $failed = $result === false;
+            if (!$failed) {
+                self::noteStatus((int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE));
+            }
             if (PHP_VERSION_ID < 80000) {
                 curl_close($ch); // a no-op since PHP 8.0, and deprecated in 8.5
             }
@@ -464,6 +509,10 @@ final class Reporter
         ]]);
         if (@file_get_contents($url, false, $context) === false) {
             throw new \RuntimeException('stream failed');
+        }
+        // $http_response_header is set in this scope by file_get_contents
+        if (isset($http_response_header[0]) && preg_match('~^HTTP/\S+\s+(\d{3})~', $http_response_header[0], $m)) {
+            self::noteStatus((int) $m[1]);
         }
     }
 
