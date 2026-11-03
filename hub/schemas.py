@@ -183,6 +183,11 @@ class SiteListed(SiteOut):
     ingest_key: str
     created_at: datetime
     last_event: datetime | None
+    # Evidence, not a verdict (hub/sources.py): signed requests refused in the last 24 hours, and when an address this
+    # site had never reported from last appeared (within a week). Either can be innocent: a rotated secret an app
+    # still holds, or a site that moved host.
+    bad_signatures_24h: int = 0
+    new_source_at: datetime | None = None
 
 
 class TestEventOut(BaseModel):

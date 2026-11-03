@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import fingerprint as fp
-from . import outbox
+from . import outbox, sources
 from .config import settings
 from .db import get_session
 from .derive import site_secret
@@ -48,6 +48,26 @@ def _verify(secret: str, body: bytes, signature: str | None, timestamp: str | No
         raise HTTPException(401, "bad signature")
 
 
+async def verify_and_note(
+    session: AsyncSession,
+    request: Request,
+    site: Site,
+    raw: bytes,
+    signature: str | None,
+    timestamp: str | None = None,
+) -> None:
+    """_verify, plus a record of where the request came from (or why it was refused). Every signed route calls this."""
+    ip = sources.client_ip(request)
+    try:
+        _verify(site_secret(site), raw, signature, timestamp)
+    except HTTPException as exc:
+        if exc.status_code == 401:
+            await sources.note_failure(site, ip, str(exc.detail))
+        raise
+    if settings.verify_signatures:
+        await sources.note_source(session, site, ip)
+
+
 async def _load_site(session: AsyncSession, ingest_key: str) -> Site:
     site = await session.scalar(select(Site).where(Site.ingest_key == ingest_key))
     if site is None:
@@ -75,7 +95,7 @@ async def ingest_event(
 ) -> IngestOut:
     raw = await request.body()
     site = await _load_site(session, ingest_key)
-    _verify(site_secret(site), raw, x_hub_signature, x_hub_timestamp)
+    await verify_and_note(session, request, site, raw, x_hub_signature, x_hub_timestamp)
 
     payload = EventIn.model_validate_json(raw)
     return await record_event(session, site, payload)

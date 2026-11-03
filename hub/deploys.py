@@ -6,8 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .db import get_session
-from .ingest import _load_site, _verify
-from .derive import site_secret
+from .ingest import _load_site, verify_and_note
 from .models import Deploy, Site
 from .schemas import DeployIn, DeployOut
 
@@ -29,7 +28,7 @@ async def record_deploy(
 ) -> DeployOut:
     raw = await request.body()
     site = await _load_site(session, ingest_key)
-    _verify(site_secret(site), raw, x_hub_signature, x_hub_timestamp)
+    await verify_and_note(session, request, site, raw, x_hub_signature, x_hub_timestamp)
     try:
         payload = DeployIn.model_validate_json(raw)
     except ValidationError as exc:

@@ -266,6 +266,37 @@ echo "$NEW"   # put this in the Gitea secret, then redeploy
 
 Rotating the ingest **key** is the same statement on `ingest_key`, and also changes the URL the app posts to.
 
+## Noticing a leak
+
+A valid signature proves that someone holds the secret, not who. The hub therefore cannot tell a report forged with a leaked secret from a
+real one, and it does not pretend to. It keeps two pieces of evidence (`hub/sources.py`) and shows them; it never decides.
+
+| Evidence | Recorded when | Shown as |
+|---|---|---|
+| **Refused requests** | a signed request for a known site gets a 401: missing or wrong signature, missing, malformed or stale timestamp | **refused N in 24 h** on the site's row in the Sites tab, and a *Request refused* line in its History (at most five an hour, so a flood cannot bury the trail; the count keeps going) |
+| **New source address** | a report is accepted from an address that site has never reported from. The first address a site is ever seen from is its baseline and says nothing | **new address, 3 h ago** on the row for a week, and a *Report from a new address* line in History |
+
+What each means:
+
+- **Refused requests** mean either someone has the ingest key (it is in every URL and every access log) and is guessing at the secret, or an
+  app is still holding a secret you just rotated. After a rotation, a few are expected from the app you have not updated yet; the reporters now
+  say so in that app's own log. A steady stream from an address you do not recognise is the thing to act on.
+- **A new address** is the closest thing the hub has to seeing a leaked secret used. It is also what a site that moved host looks like, and a
+  Cloudflare or Caddy change that alters which address the hub sees. Check it against what you did that day before rotating.
+- **Neither sends a notification.** Waking the phone on a guess would break the rule that a notification that did not need to be sent is a bug,
+  and either signal can be innocent. They are for the morning pass. (A decoy credential that no legitimate caller has would be different; it is not built.)
+
+How it works and where it stops:
+
+- The address comes from `CF-Connecting-IP`, then `X-Forwarded-For`, then the socket. Behind Caddy that is the real caller. If the hub were
+  reachable directly, a caller could write anything there, so the address is evidence and not proof. A forger who copies a site's usual address
+  is not seen at all.
+- Unknown ingest keys are not recorded: that is internet noise, and storing it would let anyone fill the table.
+- Sources are written at most once a minute per address, so a crash storm is not a write storm. Refused-request counts are per address,
+  reason and hour and are kept for 30 days. Neither stores a request body, a signature or a secret (`tests/test_sources.py` checks).
+- The addresses are those of servers, not visitors. The browser route is separate and records none of this.
+- Recording can never break ingest: if the database write fails, the report is still accepted and the failure is logged.
+
 ## Leak runbook
 
 Read this before you need it. When something leaks you will be tired and in a hurry, and the order matters more than the speed.

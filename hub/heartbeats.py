@@ -35,8 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .acks import dismiss_alerts
 from .config import settings
 from .db import SessionLocal, get_session
-from .derive import site_secret
-from .ingest import _load_site, _verify, record_event
+from .ingest import _load_site, record_event, verify_and_note
 from .models import Heartbeat, Issue, IssueAction, Site
 from .schemas import EventIn, Frame, HeartbeatIn, HeartbeatOut
 from .stacks import _fingerprint
@@ -252,7 +251,7 @@ async def ping(
 ) -> HeartbeatOut:
     raw = await request.body()
     site = await _load_site(session, ingest_key)
-    _verify(site_secret(site), raw, x_hub_signature, x_hub_timestamp)
+    await verify_and_note(session, request, site, raw, x_hub_signature, x_hub_timestamp)
     try:
         # a bare POST from a cron line has no body, and that is a valid "ok"
         payload = HeartbeatIn.model_validate_json(raw) if raw.strip() else HeartbeatIn()

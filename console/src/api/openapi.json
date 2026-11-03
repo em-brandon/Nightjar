@@ -1781,6 +1781,11 @@
             "title": "Allowed Origins",
             "type": "array"
           },
+          "bad_signatures_24h": {
+            "default": 0,
+            "title": "Bad Signatures 24H",
+            "type": "integer"
+          },
           "client": {
             "title": "Client",
             "type": "string"
@@ -1817,6 +1822,18 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "new_source_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Source At"
           },
           "public_key": {
             "anyOf": [

@@ -377,6 +377,7 @@ hub/
   uptime.py        a site that stops answering becomes an issue: P1 in production, P2 on staging, edge-triggered
   rates.py         /api/rates: cached USD to KES rate (decoration only)
   edge.py          edge-triggered issues shared by every pushed source: open once, resolve themselves
+  sources.py       where signed reports come from and which were refused: evidence of a leaked secret, shown in the console, never a notification (docs/KEYS.md)
   heartbeats.py    POST /ingest/{key}/heartbeat/{name}: a cron job or private app pings, and silence opens an issue (docs/CLIENT-INTEGRATION.md)
 console/           Vite + React 19 + TypeScript UI: src/views/* is one file per tab; src/api/* is generated from the hub (do not edit)
 client/
@@ -449,7 +450,9 @@ python -m unittest discover -s tests        # migrations, auth, stack policy (ne
 python -m unittest discover -s client       # the stack reporter
 ```
 
-Both, and the console build, run on every push through `.github/workflows/ci.yml` (`docs/CI.md`). It has not yet run on GitHub.
+Both, the reporters' own tests (Node, browser, PHP, Java) and the console build run on every push through `.github/workflows/ci.yml` (`docs/CI.md`). It first ran on GitHub on pull request 11.
+
+**Planned, not started:** Dependabot for the GitHub workflow: a `.github/dependabot.yml` that opens pull requests for the pinned actions (`actions/checkout@v4` and so on, and later full commit hashes), the Python requirements, the console's and `tools/typegen`'s npm packages, and the Docker base images, so a vulnerable dependency or a stale action shows up as a PR that CI already checks. Details and the open questions in `docs/CI.md`.
 
 Vite proxies `/api` to the hub on `:8000`, so the hub needs no CORS config. After
 `test_ingest.sh` the console should show one site in `warn` and one open issue,
@@ -505,6 +508,9 @@ signed against a hub with `VERIFY_SIGNATURES` on.
   wanted (decisions #54 and #56).
 - Comments explain *why*, not *what*. The fingerprint exclusions and the
   serialisation choice are where future-you will want the reasoning.
+- **No AI attribution in commits or pull requests.** Do not add `Co-Authored-By: Claude ...` to commit messages or a
+  "Generated with Claude Code" line to PR descriptions, unless the operator asks for it. Commits up to and including
+  `08a9fc0` carry it; that history is not rewritten.
 
 ## Brand
 
