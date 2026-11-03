@@ -449,7 +449,9 @@ python -m unittest discover -s tests        # migrations, auth, stack policy (ne
 python -m unittest discover -s client       # the stack reporter
 ```
 
-Both, and the console build, run on every push through `.github/workflows/ci.yml` (`docs/CI.md`). It has not yet run on GitHub.
+Both, the reporters' own tests (Node, browser, PHP, Java) and the console build run on every push through `.github/workflows/ci.yml` (`docs/CI.md`). It first ran on GitHub on pull request 11.
+
+**Planned, not started:** Dependabot for the GitHub workflow: a `.github/dependabot.yml` that opens pull requests for the pinned actions (`actions/checkout@v4` and so on, and later full commit hashes), the Python requirements, the console's and `tools/typegen`'s npm packages, and the Docker base images, so a vulnerable dependency or a stale action shows up as a PR that CI already checks. Details and the open questions in `docs/CI.md`.
 
 Vite proxies `/api` to the hub on `:8000`, so the hub needs no CORS config. After
 `test_ingest.sh` the console should show one site in `warn` and one open issue,

@@ -48,6 +48,19 @@ apps*, which runs on Gitea and the staging host (planned, see `docs/PIPELINE.md`
   stronger against a compromised action, and is a follow-up along with Dependabot to keep them current.
 - **One Python version (3.13).** The project says 3.11 or newer, and 3.11 is not tested here.
 
+## Planned: Dependabot
+
+Not started. A `.github/dependabot.yml` so dependency and action updates arrive as pull requests that this workflow then checks:
+
+- **`github-actions`**, weekly: keeps `actions/checkout`, `setup-node`, `setup-python`, `setup-java` current, and is the natural moment to pin them
+  to full commit hashes (a tag can be moved; a hash cannot), which is stronger against a compromised action.
+- **`pip`** for `requirements.txt`, **`npm`** for `console/` and `tools/typegen/` (two lock files), and **`docker`** for the `Dockerfile` base image.
+- Open questions: group minor and patch updates into one weekly PR so a solo developer is not buried; whether security updates should open
+  immediately while version updates wait for the week; and that `tools/typegen` must stay on TypeScript 5.9 while the console is on 7, so
+  the TypeScript package needs an ignore rule there.
+- Dependabot only proposes. Nothing merges by itself, and CI plus a read of the diff is still the gate. Alerts and security updates are also a switch in the
+  repository settings (Security, then Code security), separate from the file.
+
 ## Deliberately not here
 
 - **No deploy.** CI only checks. Deploying the hub is a manual step in `DEPLOY.md` for now.
