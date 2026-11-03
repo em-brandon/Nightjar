@@ -315,4 +315,23 @@ async function crash(script, hubUrl) {
   ok("prepare() scrubs the message and makes frame paths relative to the working directory");
 }
 
+{
+  // an app that registers its own handler AFTER installing ours must still get to handle the crash
+  const late = await crash(`import { init, installProcessHandlers } from "file:///__LIB__"; init(); installProcessHandlers(); process.on("uncaughtException", () => { console.log("app handled it"); }); setTimeout(() => { throw new Error("late handler"); }, 10); setTimeout(() => process.exit(0), 400);`, "http://127.0.0.1:9");
+  assert.equal(late.code, 0, "the reporter must not exit a process whose app has a handler of its own");
+  ok("a handler the app adds after installProcessHandlers() is not exited from under");
+  const twice = await crash(`import { init, installProcessHandlers } from "file:///__LIB__"; init(); installProcessHandlers(); installProcessHandlers(); setTimeout(() => { throw new Error("twice"); }, 10);`, "http://127.0.0.1:9");
+  assert.equal(twice.code, 1);
+  assert.equal((twice.stderr.match(/Error: twice/g) || []).length, 1, "installing twice must not print or report a crash twice");
+  ok("installing the process handlers twice reports a crash once");
+}
+
+{
+  const started = Date.now();
+  const p = prepare(OPTS, new Error("a".repeat(5_000_000)));
+  assert.ok(Date.now() - started < 1500, `took ${Date.now() - started} ms`);
+  assert.ok(JSON.parse(p.body).message.length <= 3900);
+  ok("a five-million-character message is cut before it is scanned, so it costs milliseconds");
+}
+
 console.log("\nnode reporter passed");

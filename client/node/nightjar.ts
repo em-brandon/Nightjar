@@ -102,7 +102,7 @@ const SCRUBBERS: Array<[RegExp, string]> = [
   [/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/gi, "$1 [redacted]"],
   [/(?<=:\/\/)[^/\s:@]+:[^/\s@]+@/g, "[redacted]@"],
   [/\b(password|passwd|pwd|secret|token|api[_-]?key|apikey|authorization)(["']?\s*[=:]\s*["']?)[^\s"'&,;]+/gi, "$1$2[redacted]"],
-  [/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[email]"],
+  [/[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,255}\.[A-Za-z]{2,}/g, "[email]"],
 ];
 
 /**
@@ -180,7 +180,7 @@ export function prepare(options: Options, error: unknown, level: Level = "error"
   const { type, message, stack } = describe(error);
   const body = JSON.stringify({
     exception_type: type.slice(0, MAX_FIELD),
-    message: scrub(message).slice(0, MAX_MESSAGE),
+    message: scrub(message.slice(0, MAX_MESSAGE)).slice(0, MAX_MESSAGE), // cut first: scanning a huge message is work done on the request
     frames: parseStack(stack),
     level,
     environment: o.environment,
@@ -272,6 +272,7 @@ const realEnv: Env = {
 };
 
 let active: Reporter | null = null;
+let processHandler: ((err: unknown) => void) | null = null;
 
 /** Configure the reporter. Returns null (and does nothing) if the hub, key or secret is missing. */
 export function init(options: Options = {}): Reporter | null {
@@ -338,8 +339,11 @@ export function expressErrorHandler(): (err: unknown, req: ReqLike, res: unknown
  */
 export function installProcessHandlers(): () => void {
   try {
-    const others = process.listenerCount("uncaughtException");
+    if (processHandler) return () => {}; // already installed: a second one would report every crash twice
     const handler = (err: unknown) => {
+      // Counted when the crash happens, not when this was installed: an app that registers its own handler later
+      // must still get to handle the crash instead of being exited from under it.
+      const others = process.listenerCount("uncaughtException") - 1;
       try {
         console.error(err);
       } catch {
@@ -347,13 +351,15 @@ export function installProcessHandlers(): () => void {
       }
       const level = active?.options.crashLevel ?? "fatal";
       captureException(err, level);
-      if (others === 0) {
+      if (others <= 0) {
         void flush(2000).finally(() => process.exit(1));
       }
     };
+    processHandler = handler;
     process.on("uncaughtException", handler);
     return () => {
       process.off("uncaughtException", handler);
+      processHandler = null;
     };
   } catch {
     return () => {};
