@@ -7,6 +7,7 @@
 import asyncio
 import hashlib
 import hmac
+import time
 import os
 import sys
 import unittest
@@ -92,12 +93,13 @@ class DerivedSecrets(unittest.IsolatedAsyncioTestCase):
 
     async def status_with(self, made, secret):
         body = b'{"exception_type": "Boom", "message": "x"}'
-        sig = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+        ts = str(int(time.time()))
+        sig = "sha256=" + hmac.new(secret.encode(), ts.encode() + b"." + body, hashlib.sha256).hexdigest()
         with patch.object(settings, "verify_signatures", True):
             r = await self.http.post(
                 f"/ingest/{made['ingest_key']}/event",
                 content=body,
-                headers={"X-Hub-Signature": sig, "Content-Type": "application/json"},
+                headers={"X-Hub-Signature": sig, "X-Hub-Timestamp": ts, "Content-Type": "application/json"},
             )
         return r.status_code
 
