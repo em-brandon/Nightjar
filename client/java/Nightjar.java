@@ -275,7 +275,7 @@ public final class Nightjar {
         b.append("{\"exception_type\":");
         str(b, cut(root.getClass().getName(), MAX_FIELD));
         b.append(",\"message\":");
-        str(b, cut(scrub(String.valueOf(root.getMessage() == null ? "" : root.getMessage())), MAX_MESSAGE));
+        str(b, cut(scrub(cut(String.valueOf(root.getMessage() == null ? "" : root.getMessage()), MAX_MESSAGE)), MAX_MESSAGE));
         b.append(",\"frames\":");
         frames(b, root);
         b.append(",\"level\":");
@@ -300,7 +300,7 @@ public final class Nightjar {
                     b.append(',');
                 }
                 Throwable w = chain.get(i);
-                str(b, cut(scrub(w.getClass().getName() + ": " + w.getMessage()), MAX_FIELD));
+                str(b, cut(scrub(cut(w.getClass().getName() + ": " + w.getMessage(), MAX_MESSAGE)), MAX_FIELD));
             }
             b.append("]}");
         }
@@ -420,7 +420,7 @@ public final class Nightjar {
         Pattern.compile("\\b(Bearer|Basic)\\s+[A-Za-z0-9._~+/=-]{8,}", Pattern.CASE_INSENSITIVE),
         Pattern.compile("(?<=://)[^/\\s:@]+:[^/\\s@]+@"),
         Pattern.compile("\\b(password|passwd|pwd|secret|token|api[_-]?key|apikey|authorization)([\"']?\\s*[=:]\\s*[\"']?)[^\\s\"'&,;]+", Pattern.CASE_INSENSITIVE),
-        Pattern.compile("[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"),
+        Pattern.compile("[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,255}\\.[A-Za-z]{2,}"),
     };
     private static final String[] SCRUB_REPLACEMENTS = {"$1 [redacted]", "[redacted]@", "$1$2[redacted]", "[email]"};
 
