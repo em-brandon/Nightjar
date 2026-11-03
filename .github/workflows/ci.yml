@@ -98,6 +98,42 @@ jobs:
       - name: Client reporter tests
         run: python -m unittest discover -s client
 
+  # The reporters' own tests: what they send, that they never break the app, the scrubbing, the https-only rule and the
+  # hub-reply warning. They need no database. (tests/test_server_reporters.py in the hub job is the other half: the same
+  # reporters talking to the real hub.) A missing runtime fails here instead of skipping, because a safeguard that
+  # silently does not run is worse than none.
+  reporters:
+    name: Reporters (Node, browser, PHP, Java)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      # Node 24 strips types, which the .mjs tests rely on to import the .ts reporters directly.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Runtimes
+        run: |
+          node --version
+          java -version
+          command -v php >/dev/null || { echo "php is not installed on this runner"; exit 1; }
+          php --version | head -1
+      - name: Node reporter
+        run: node client/node/nightjar.test.mjs
+      - name: Browser reporter
+        run: node client/browser/nightjar.test.mjs
+      - name: PHP reporter
+        run: php client/php/test.php
+      # Compiled for Java 11, the oldest the reporter promises to support, then run on 17.
+      - name: Java reporter
+        run: |
+          javac --release 11 -d "$RUNNER_TEMP/nj-java" client/java/Nightjar.java client/java/NightjarTest.java
+          java -cp "$RUNNER_TEMP/nj-java" nightjar.NightjarTest
+
   secrets:
     name: Secret scan
     runs-on: ubuntu-latest
