@@ -311,8 +311,7 @@ Reach: post error reports from `curl` within the rate limits and new-issue cap. 
 
 Reach: everything, including creating sites, rotating secrets and muting issues. This is the worst one short of the master key.
 
-1. **Revoke and rotate:** on the VPS write a new value into `secrets/console_token` (`openssl rand -base64 32 | tr -d '
-' > secrets/console_token`),
+1. **Revoke and rotate:** on the VPS write a new value into `secrets/console_token` (`openssl rand -base64 32 | tr -d '\n' > secrets/console_token`),
    then `docker compose restart hub`. Every session ends at once, because the cookie is derived from the token.
 2. Sign in with the new token and put it in your password manager.
 3. **Check:** the old token returns 401 (`curl -H "Authorization: Bearer <old>" https://<hub>/api/sites`).
@@ -333,8 +332,7 @@ Reach: set home or away. That changes which channels fire, never whether somethi
 
 Reach: work out the secret of every derived site, so forge reports as all of them. Rare, and the most work.
 
-1. **Revoke:** put a new key in `secrets/secret_master_key` (`openssl rand -base64 32 | tr -d '
-'`) and `docker compose restart hub`. Every derived
+1. **Revoke:** put a new key in `secrets/secret_master_key` (`openssl rand -base64 32 | tr -d '\n'`) and `docker compose restart hub`. Every derived
    site's reports are now refused with 401, because their secrets came from the old key. That is the revoke.
 2. **Rotate every site:** Rotate secret on each one in the Sites tab, update each app, redeploy. A site stays refused until you do.
    A site you have not got to yet is down in the sense of *not reporting*; the Sites tab shows it as never or long since reported.
@@ -349,9 +347,30 @@ The Pushover keys, the Postgres password and the `age` backup key are not in thi
 ### The drill
 
 A runbook nobody has tried is a hypothesis. The steps for an ingest secret are exercised by the tests (`tests/test_derived_secrets.py`: rotating
-refuses the old secret and accepts the new one), but that is not you doing it under stress with a real app. **Not yet done:** once the hub is
-deployed, rotate one real site's secret by following the ingest-secret steps above with a stopwatch, confirm the old secret is refused,
-and write down anything that was unclear or took longer than it should. Change this page to match.
+refuses the old secret and accepts the new one), but that is not you doing it under stress with a real app.
+
+**Status: not done.** It needs a deployed hub and a real app, and neither exists yet. Reading the runbook through did find one fault,
+now fixed: the two `tr -d '\n'` commands (console token and master key) had lost their backslash, so the command was split over two
+lines and, copied from the rendered page, would have left a newline at the end of the secret file.
+
+**When the hub is deployed**, do this once, with a stopwatch, on one real site that is not a client's production site, and fill in the
+table. Anything in the "unclear" column is a fix to this page, so change the page in the same sitting.
+
+| Step | Command or place | Seconds | Unclear or wrong? |
+|---|---|---|---|
+| 1. Have the app's settings open | Gitea `NIGHTJAR_SECRET`, or the app's `.env` | | |
+| 2. Rotate | Sites tab, that site, **Rotate secret** | | |
+| 3. Put the new value in and redeploy | Gitea secret, then the app's deploy | | |
+| 4. Test event with the new secret | Sites tab, **Test**, expect it accepted | | |
+| 5. Send with the old secret | `NIGHTJAR_SECRET=<old> ./test_ingest.sh <ingest_key>`, expect `401` | | |
+| 6. The app's own reporter says so | While the app still has the old secret, its log should show `the hub answered 401 to a report ... Check the site's key and secret.` | | |
+| 7. Read the History button | expect `secret_rotated, derived, version N` | | |
+
+Then repeat steps 1 to 3 of the **console token** and **presence token** runbooks the same way (rotate, restart, old value returns 401),
+and write the total time at the bottom. Skip the master key unless you are prepared to rotate every site.
+
+Step 6 is new: since the reporters now say so in the app's log when the hub refuses a report, a rotation that was not carried through
+to the app is visible there instead of looking like an app with no errors.
 
 ## Where each one is kept
 
