@@ -260,5 +260,37 @@ foreach (['https://nightjar.example', 'http://127.0.0.1:8000', 'http://localhost
 check('and a good hub is not warned about', $logged === []);
 Reporter::reset();
 
+// caveat fixes: secrets in messages, server paths, an unusable breaker directory
+$m = Reporter::scrub('login failed for bob@example.com with password=hunter2 via https://u:pw@db.internal/x, Authorization: Bearer abcdef123456789');
+check('scrub removes passwords, credentials in URLs, bearer tokens and emails',
+    strpos($m, 'hunter2') === false && strpos($m, 'u:pw') === false && strpos($m, 'abcdef123456789') === false && strpos($m, 'bob@') === false, $m);
+check('scrub leaves an ordinary message alone', Reporter::scrub('cart is empty for order 42') === 'cart is empty for order 42');
+$req = Reporter::prepare(OPTS, new Exception('token=abc123 failed'));
+check('prepare() scrubs the message it sends', strpos($req['body'], 'abc123') === false);
+$f = Reporter::frames(new Exception('x'));
+check('frame paths are relative to the working directory', strpos($f[count($f) - 1]['file'], str_replace('\\', '/', getcwd())) === false, $f[count($f) - 1]['file']);
+
+Reporter::reset();
+$calls = 0;
+Reporter::setTransport(function () use (&$calls) { $calls++; throw new RuntimeException('down'); });
+Reporter::init(['hub' => 'https://nightjar.example', 'key' => 'K', 'secret' => 's', 'breaker_dir' => '/nonexistent/dir/for/nightjar']);
+Reporter::captureException(new Exception('one'));
+Reporter::flush();
+Reporter::captureException(new Exception('two'));
+Reporter::flush();
+check('with an unwritable breaker directory, the in-memory breaker still stops a second send', $calls === 1, (string) $calls);
+Reporter::reset();
+
+$said = [];
+Reporter::reset();
+Reporter::setLogger(function ($m) use (&$said) { $said[] = $m; });
+Reporter::noteStatus(200);
+Reporter::noteStatus(null);
+check('a 2xx is not warned about', $said === []);
+Reporter::noteStatus(401);
+Reporter::noteStatus(500);
+check('a refusing hub is said once, with the status and a hint, and no address', count($said) === 1 && strpos($said[0], 'answered 401') !== false && strpos($said[0], 'key and secret') !== false, json_encode($said));
+Reporter::reset();
+
 echo $failures === 0 ? "\nphp reporter passed\n" : "\n$failures FAILED\n";
 exit($failures === 0 ? 0 : 1);

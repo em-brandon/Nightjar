@@ -54,7 +54,8 @@ export interface RequestInfo {
 
 /** What the reporter needs from the outside world, so it can be tested without a network. */
 export interface Env {
-  send(url: string, headers: Record<string, string>, body: string, timeoutMs: number): Promise<void>;
+  /** Resolve with the hub's HTTP status if it is known, so a refusing hub can be said out loud. */
+  send(url: string, headers: Record<string, string>, body: string, timeoutMs: number): Promise<void | number>;
   now(): number;
   /** Where the one-line warning about an unusable hub goes. Default: standard error. */
   warn?(message: string): void;
@@ -87,7 +88,7 @@ export function parseStack(stack: string | undefined | null): Frame[] {
     if (!at) continue;
     const file = at[1].replace(/^file:\/\//, "").replace(/^\/([A-Za-z]:)/, "$1").split("?")[0];
     const frame: Frame = {
-      file: file.slice(0, MAX_FIELD),
+      file: relativePath(file).slice(0, MAX_FIELD),
       module: (file.split(/[\\/]/).pop() || file).slice(0, MAX_FIELD),
       lineno: Number(at[2]),
     };
@@ -96,6 +97,34 @@ export function parseStack(stack: string | undefined | null): Frame[] {
     frames.push(frame);
   }
   return frames.reverse().slice(-MAX_FRAMES);
+}
+
+const SCRUBBERS: Array<[RegExp, string]> = [
+  [/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/gi, "$1 [redacted]"],
+  [/(?<=:\/\/)[^/\s:@]+:[^/\s@]+@/g, "[redacted]@"],
+  [/\b(password|passwd|pwd|secret|token|api[_-]?key|apikey|authorization)(["']?\s*[=:]\s*["']?)[^\s"'&,;]+/gi, "$1$2[redacted]"],
+  [/[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,255}\.[A-Za-z]{2,}/g, "[email]"],
+];
+
+/**
+ * Take the obvious secrets out of text before it leaves the server: passwords and tokens as key=value, credentials in
+ * URLs, bearer tokens and email addresses. Best effort, not a guarantee, so do not put secrets in error messages.
+ */
+export function scrub(text: string): string {
+  for (const [pattern, replacement] of SCRUBBERS) text = text.replace(pattern, replacement);
+  return text;
+}
+
+/** A path without the server's own directory layout (home directories, account names). */
+function relativePath(file: string): string {
+  if (typeof process === "undefined" || typeof process.cwd !== "function") return file;
+  try {
+    const base = process.cwd().replace(/\\/g, "/").replace(/\/$/, "") + "/";
+    const f = file.replace(/\\/g, "/");
+    return f.startsWith(base) ? f.slice(base.length) : file;
+  } catch {
+    return file;
+  }
 }
 
 function describe(thing: unknown): { type: string; message: string; stack?: string } {
@@ -119,6 +148,24 @@ const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
  * Returns null when the address is fine, or one line saying what is wrong. It never includes the whole address, which
  * could carry a credential.
  */
+/**
+ * One line for a hub answer that means the report was not recorded, or null when it was. Reporters never wait on the
+ * answer to protect the app, but a wrong secret (401) would otherwise look exactly like an app with no errors.
+ */
+export function statusWarning(status: unknown): string | null {
+  if (typeof status !== "number" || !Number.isInteger(status) || status < 400) return null;
+  const hints: Record<number, string> = {
+    401: "Check the site's key and secret.",
+    403: "Check the site's key and secret.",
+    404: "Check the hub address and the site's key.",
+    413: "The report was too large.",
+    422: "The report was malformed; update the reporter.",
+    429: "The hub is rate limiting this site.",
+  };
+  const hint = hints[status] ?? (status >= 500 ? "The hub is having trouble, so reports may be lost." : "");
+  return `Nightjar: the hub answered ${status} to a report, so it was not recorded. ${hint}`.trimEnd();
+}
+
 export function hubRefusal(hub: string): string | null {
   let url: URL;
   try {
@@ -152,7 +199,7 @@ export function prepare(options: Options, error: unknown, level: Level = "error"
   const { type, message, stack } = describe(error);
   const body = JSON.stringify({
     exception_type: type.slice(0, MAX_FIELD),
-    message: message.slice(0, MAX_MESSAGE),
+    message: scrub(message.slice(0, MAX_MESSAGE)).slice(0, MAX_MESSAGE), // cut first: scanning a huge message is work done on the request
     frames: parseStack(stack),
     level,
     environment: o.environment,
@@ -198,6 +245,19 @@ export function createReporter(options: Options, env: Env): Reporter {
     }
   }
 
+  let statusSaid = false;
+  function noteStatus(status: unknown): void {
+    try {
+      const why = statusWarning(status);
+      if (why && !statusSaid) {
+        statusSaid = true;
+        (env.warn ?? ((m: string) => console.error(m)))(why);
+      }
+    } catch {
+      // even the warning must not break the app
+    }
+  }
+
   function capture(error: unknown, level: Level = "error", request?: RequestInfo): void {
     try {
       if (!o.hub || !o.key || !o.secret) return; // not configured: report nothing, break nothing
@@ -210,6 +270,7 @@ export function createReporter(options: Options, env: Env): Reporter {
       const { url, headers, body } = prepare(o, error, level, request);
       const p: Promise<void> = Promise.resolve()
         .then(() => env.send(url, headers, body, timeoutMs))
+        .then(noteStatus)
         .catch(() => {}) // a failed report is not the app's problem
         .finally(() => inflight.delete(p));
       inflight.add(p);
@@ -239,11 +300,13 @@ const realEnv: Env = {
   now: () => Date.now(),
   async send(url, headers, body, timeoutMs) {
     const res = await fetch(url, { method: "POST", headers, body, signal: AbortSignal.timeout(timeoutMs) });
-    await res.body?.cancel(); // free the connection; the answer is not needed
+    await res.body?.cancel(); // free the connection; the answer's body is not needed
+    return res.status;
   },
 };
 
 let active: Reporter | null = null;
+let processHandler: ((err: unknown) => void) | null = null;
 
 /** Configure the reporter. Returns null (and does nothing) if the hub, key or secret is missing. */
 export function init(options: Options = {}): Reporter | null {
@@ -310,8 +373,11 @@ export function expressErrorHandler(): (err: unknown, req: ReqLike, res: unknown
  */
 export function installProcessHandlers(): () => void {
   try {
-    const others = process.listenerCount("uncaughtException");
+    if (processHandler) return () => {}; // already installed: a second one would report every crash twice
     const handler = (err: unknown) => {
+      // Counted when the crash happens, not when this was installed: an app that registers its own handler later
+      // must still get to handle the crash instead of being exited from under it.
+      const others = process.listenerCount("uncaughtException") - 1;
       try {
         console.error(err);
       } catch {
@@ -319,13 +385,15 @@ export function installProcessHandlers(): () => void {
       }
       const level = active?.options.crashLevel ?? "fatal";
       captureException(err, level);
-      if (others === 0) {
+      if (others <= 0) {
         void flush(2000).finally(() => process.exit(1));
       }
     };
+    processHandler = handler;
     process.on("uncaughtException", handler);
     return () => {
       process.off("uncaughtException", handler);
+      processHandler = null;
     };
   } catch {
     return () => {};

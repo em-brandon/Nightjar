@@ -6,7 +6,7 @@ import { createHmac } from "node:crypto";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
-import { captureException, createReporter, expressErrorHandler, flush, hubRefusal, init, parseStack, prepare } from "./nightjar.ts";
+import { captureException, createReporter, expressErrorHandler, flush, hubRefusal, init, parseStack, prepare, scrub, statusWarning } from "./nightjar.ts";
 
 const ok = (name) => console.log(`  ok   ${name}`);
 const OPTS = { hub: "https://nightjar.example/", key: "KEY1", secret: "s3cret", release: "v2" };
@@ -300,6 +300,57 @@ async function crash(script, hubUrl) {
   assert.equal(bare.code, 1);
   assert.match(bare.stderr, /no config/);
   ok("without configuration a crash looks exactly as it does without the reporter");
+}
+
+{
+  const out = scrub("login failed for bob@example.com with password=hunter2 via https://u:pw@db.internal/x, Authorization: Bearer abcdef123456789");
+  for (const leaked of ["hunter2", "u:pw", "abcdef123456789", "bob@"]) assert.ok(!out.includes(leaked), `${leaked} leaked: ${out}`);
+  assert.equal(scrub("cart is empty for order 42"), "cart is empty for order 42");
+  ok("scrub removes passwords, URL credentials, bearer tokens and emails, and leaves ordinary text");
+  const p = prepare(OPTS, new Error("token=abc123 failed"));
+  assert.ok(!p.body.includes("abc123"));
+  const frames = JSON.parse(p.body).frames;
+  const cwd = process.cwd().replace(/\\/g, "/");
+  assert.ok(frames.length > 0 && frames.every((f) => !f.file.replace(/\\/g, "/").startsWith(cwd)), JSON.stringify(frames[frames.length - 1]));
+  ok("prepare() scrubs the message and makes frame paths relative to the working directory");
+}
+
+{
+  // an app that registers its own handler AFTER installing ours must still get to handle the crash
+  const late = await crash(`import { init, installProcessHandlers } from "file:///__LIB__"; init(); installProcessHandlers(); process.on("uncaughtException", () => { console.log("app handled it"); }); setTimeout(() => { throw new Error("late handler"); }, 10); setTimeout(() => process.exit(0), 400);`, "http://127.0.0.1:9");
+  assert.equal(late.code, 0, "the reporter must not exit a process whose app has a handler of its own");
+  ok("a handler the app adds after installProcessHandlers() is not exited from under");
+  const twice = await crash(`import { init, installProcessHandlers } from "file:///__LIB__"; init(); installProcessHandlers(); installProcessHandlers(); setTimeout(() => { throw new Error("twice"); }, 10);`, "http://127.0.0.1:9");
+  assert.equal(twice.code, 1);
+  assert.equal((twice.stderr.match(/Error: twice/g) || []).length, 1, "installing twice must not print or report a crash twice");
+  ok("installing the process handlers twice reports a crash once");
+}
+
+{
+  const started = Date.now();
+  const p = prepare(OPTS, new Error("a".repeat(5_000_000)));
+  assert.ok(Date.now() - started < 1500, `took ${Date.now() - started} ms`);
+  assert.ok(JSON.parse(p.body).message.length <= 3900);
+  ok("a five-million-character message is cut before it is scanned, so it costs milliseconds");
+}
+
+{
+  assert.equal(statusWarning(200), null);
+  assert.equal(statusWarning(undefined), null);
+  assert.match(statusWarning(401), /answered 401.*key and secret/);
+  const said = [];
+  const { reporter } = harness({}, { send: async () => 401, warn: (m) => said.push(m) });
+  reporter.capture(new Error("a"));
+  reporter.capture(new Error("b"));
+  await reporter.flush();
+  assert.equal(said.length, 1, "said once, not on every report");
+  assert.ok(!said[0].includes("nightjar.example") && !said[0].includes("KEY1"), said[0]);
+  const quiet = [];
+  const ok200 = harness({}, { send: async () => 200, warn: (m) => quiet.push(m) });
+  ok200.reporter.capture(new Error("c"));
+  await ok200.reporter.flush();
+  assert.deepEqual(quiet, []);
+  ok("a hub that refuses reports is said out loud once, and one that accepts them is not");
 }
 
 console.log("\nnode reporter passed");

@@ -304,6 +304,42 @@ public final class NightjarTest {
             check(hub + " is not warned about", quiet.isEmpty());
         }
 
+        String scrubbed = Nightjar.scrub("login failed for bob@example.com with password=hunter2 via https://u:pw@db.internal/x, Authorization: Bearer abcdef123456789");
+        check("scrub removes passwords, URL credentials, bearer tokens and emails",
+            !scrubbed.contains("hunter2") && !scrubbed.contains("u:pw") && !scrubbed.contains("abcdef123456789") && !scrubbed.contains("bob@"), scrubbed);
+        check("scrub leaves ordinary text alone", Nightjar.scrub("cart is empty for order 42").equals("cart is empty for order 42"));
+        Nightjar.Prepared scrubbedReq = Nightjar.prepare(opts(), new RuntimeException("token=abc123 failed"), Nightjar.Level.ERROR, "GET", "/x");
+        check("prepare() scrubs the message it sends", !scrubbedReq.body.contains("abc123"));
+
+        Nightjar.reset();
+        java.util.List<String> said = new java.util.ArrayList<>();
+        Nightjar.setLogger(said::add);
+        Nightjar.noteStatus(200);
+        check("a 2xx is not warned about", said.isEmpty());
+        Nightjar.noteStatus(401);
+        Nightjar.noteStatus(500);
+        check("a refusing hub is said once, with the status and a hint",
+            said.size() == 1 && said.get(0).contains("answered 401") && said.get(0).contains("key and secret"), said.toString());
+
+        // and over a real connection, so the real transport is the one that reports it
+        Nightjar.reset();
+        said.clear();
+        com.sun.net.httpserver.HttpServer hub = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        hub.createContext("/", ex -> {
+            ex.sendResponseHeaders(401, -1);
+            ex.close();
+        });
+        hub.start();
+        try {
+            Nightjar.setLogger(said::add);
+            Nightjar.init(opts().hub("http://127.0.0.1:" + hub.getAddress().getPort()));
+            Nightjar.captureException(new RuntimeException("boom"));
+            Nightjar.flush(3000);
+            check("the real transport says so when the hub answers 401", said.size() == 1 && said.get(0).contains("answered 401"), said.toString());
+        } finally {
+            hub.stop(0);
+        }
+
         Nightjar.reset();
         System.out.println(failures == 0 ? "\njava reporter passed" : "\n" + failures + " FAILED");
         System.exit(failures == 0 ? 0 : 1);

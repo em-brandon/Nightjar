@@ -8,8 +8,11 @@
 import asyncio
 import hashlib
 import hmac
+import inspect
 import json
 import logging
+import os
+import re
 import time
 import traceback
 from collections import deque
@@ -18,6 +21,7 @@ from urllib.parse import urlsplit
 import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 
 log = logging.getLogger("nightjar")
@@ -26,6 +30,22 @@ _LOOPBACK = {"localhost", "127.0.0.1", "::1"}
 
 # A function, not time.monotonic directly, so a test can move the clock without touching everyone else's.
 _clock = time.monotonic
+
+
+def status_warning(status: object) -> str | None:
+    """One line for a hub answer that means the report was not recorded, or None when it was. Reporters never wait on the
+    answer to protect the app, but a wrong secret (401) would otherwise look exactly like an app with no errors."""
+    if not isinstance(status, int) or isinstance(status, bool) or status < 400:
+        return None
+    hint = {
+        401: "Check the site's key and secret.",
+        403: "Check the site's key and secret.",
+        404: "Check the hub address and the site's key.",
+        413: "The report was too large.",
+        422: "The report was malformed; update the reporter.",
+        429: "The hub is rate limiting this site.",
+    }.get(status, "The hub is having trouble, so reports may be lost." if status >= 500 else "")
+    return f"Nightjar: the hub answered {status} to a report, so it was not recorded. {hint}".rstrip()
 
 
 def hub_refusal(url: str) -> str | None:
@@ -50,16 +70,45 @@ def hub_refusal(url: str) -> str | None:
     )
 
 
+MAX_MESSAGE = 3900  # the hub allows 4000
+MAX_FRAMES = 100  # the hub allows 200
+
+_SCRUBBERS = [
+    (re.compile(r"\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}", re.I), r"\1 [redacted]"),
+    (re.compile(r"(?<=://)[^/\s:@]+:[^/\s@]+@"), "[redacted]@"),
+    (
+        re.compile(r"""\b(password|passwd|pwd|secret|token|api[_-]?key|apikey|authorization)(["']?\s*[=:]\s*["']?)[^\s"'&,;]+""", re.I),
+        r"\1\2[redacted]",
+    ),
+    (re.compile(r"[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,255}\.[A-Za-z]{2,}"), "[email]"),
+]
+
+
+def scrub(text: str) -> str:
+    """Take the obvious secrets out of text before it leaves the server: passwords and tokens as key=value, credentials in
+    URLs, bearer tokens and email addresses. Best effort, not a guarantee, so do not put secrets in exception messages."""
+    for pattern, replacement in _SCRUBBERS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
+def _relative(path: str) -> str:
+    """A path without the server's own directory layout (home directories, account names)."""
+    path = path.replace("\\", "/")
+    base = os.getcwd().replace("\\", "/").rstrip("/") + "/"
+    return path[len(base):] if path.startswith(base) else path
+
+
 def _frames(exc: BaseException) -> list[dict]:
     return [
         {
-            "file": f.filename,
-            "module": f.filename.rsplit("/", 1)[-1],
+            "file": _relative(f.filename),
+            "module": f.filename.replace("\\", "/").rsplit("/", 1)[-1],
             "function": f.name,
             "lineno": f.lineno,
-            "context": f.line,
+            "context": scrub(f.line or ""),  # a line of source can hold a literal credential
         }
-        for f in traceback.extract_tb(exc.__traceback__)
+        for f in traceback.extract_tb(exc.__traceback__, limit=-MAX_FRAMES)  # the innermost ones identify the bug
     ]
 
 
@@ -87,6 +136,19 @@ def install_reporter(
         except Exception:
             pass
 
+    status_said = False
+
+    def note_status(status: object) -> None:
+        """Say once, in the app's own log, that the hub did not accept a report. Never raises."""
+        nonlocal status_said
+        try:
+            why = status_warning(status)
+            if why and not status_said:
+                status_said = True
+                log.error(why)
+        except Exception:
+            pass
+
     in_flight: set[asyncio.Task] = set()  # also keeps each task referenced, or it could be collected mid-send
     sent_at: deque[float] = deque()
     app.state.nightjar_in_flight = in_flight  # read-only, so a test or a shutdown hook can wait for sends to finish
@@ -103,7 +165,7 @@ def install_reporter(
     async def send(body: bytes, timestamp: str, signature: str) -> None:
         try:
             async with httpx.AsyncClient(timeout=3.0) as client:
-                await client.post(
+                resp = await client.post(
                     url,
                     content=body,
                     headers={
@@ -112,6 +174,7 @@ def install_reporter(
                         "X-Hub-Signature": signature,
                     },
                 )
+                note_status(getattr(resp, "status_code", None))
         except Exception:
             pass  # a failed report is not the app's problem
 
@@ -121,7 +184,7 @@ def install_reporter(
         body = json.dumps(
             {
                 "exception_type": type(exc).__name__,
-                "message": str(exc),
+                "message": scrub(str(exc)[:MAX_MESSAGE])[:MAX_MESSAGE],  # cut first: scanning a huge message is work done before the 500
                 "frames": _frames(exc),
                 "level": "error",
                 "environment": environment,
@@ -138,12 +201,30 @@ def install_reporter(
         in_flight.add(task)
         task.add_done_callback(in_flight.discard)
 
-    @app.exception_handler(Exception)
-    async def _report(request: Request, exc: Exception) -> JSONResponse:
+    # The app may already have a catch-all handler of its own (registered for Exception or for 500, which Starlette treats
+    # alike; when both exist the later one wins). Replacing it would change the error body the app's clients get, so
+    # keep it and call it after reporting. Only an app with none gets our generic answer.
+    previous = None
+    for key, handler in app.exception_handlers.items():
+        if key in (Exception, 500):
+            previous = handler
+    if getattr(previous, "_nightjar", False):
+        return  # installed twice: a second wrapper would report every error twice
+
+    async def _report(request: Request, exc: Exception):
         # Never let reporting break the app it is reporting on, even if building the report fails (an exception whose
         # str() raises, say).
         try:
             report(request, exc)
         except Exception:
             pass
-        return JSONResponse({"detail": "internal server error"}, status_code=500)
+        if previous is None:
+            return JSONResponse({"detail": "internal server error"}, status_code=500)
+        # Exactly what Starlette does with it: await an async handler, run a sync one in a thread. If the app's own
+        # handler raises, that is the app's behaviour and is left alone.
+        if inspect.iscoroutinefunction(previous):
+            return await previous(request, exc)
+        return await run_in_threadpool(previous, request, exc)
+
+    _report._nightjar = True  # type: ignore[attr-defined]
+    app.add_exception_handler(Exception, _report)

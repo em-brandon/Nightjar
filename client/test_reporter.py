@@ -188,5 +188,112 @@ class Safety(unittest.TestCase):
         post.assert_not_called()
 
 
+class HubReplyTests(unittest.TestCase):
+    def test_wording(self):
+        self.assertIsNone(reporter.status_warning(200))
+        self.assertIsNone(reporter.status_warning(202))
+        self.assertIsNone(reporter.status_warning(None))
+        self.assertIn("key and secret", reporter.status_warning(401))
+        self.assertIn("rate limiting", reporter.status_warning(429))
+        self.assertIn("trouble", reporter.status_warning(503))
+
+    def test_a_refusing_hub_is_said_once_and_the_app_is_unaffected(self):
+        post = AsyncMock(return_value=httpx.Response(401))
+        app = app_with("https://nightjar.example/ingest/K/event")
+        with patch.object(httpx.AsyncClient, "post", post), self.assertLogs("nightjar", level=logging.ERROR) as logs:
+            first, second = hit(app), hit(app)
+        self.assertEqual(len(logs.records), 1)
+        self.assertIn("answered 401", logs.output[0])
+        self.assertNotIn("nightjar.example", logs.output[0])
+        self.assertEqual((first.status_code, second.status_code), (500, 500))
+
+    def test_an_accepting_hub_is_not_warned_about(self):
+        post = AsyncMock(return_value=httpx.Response(200))
+        with patch.object(httpx.AsyncClient, "post", post), self.assertNoLogs("nightjar", level=logging.ERROR):
+            hit(app_with("https://nightjar.example/ingest/K/event"))
+
+
+class ExistingHandlerTests(unittest.TestCase):
+    URL = "https://nightjar.example/ingest/K/event"
+
+    def hit(self, app: FastAPI):
+        @app.get("/boom")
+        def boom():
+            raise RuntimeError("kaboom")
+
+        post = AsyncMock()
+        with patch.object(httpx.AsyncClient, "post", post):
+            resp = TestClient(app, raise_server_exceptions=False).get("/boom")
+        return resp, post
+
+    def test_the_apps_own_catch_all_handler_still_answers_and_the_error_is_still_reported(self):
+        app = FastAPI()
+
+        @app.exception_handler(Exception)
+        async def mine(request, exc):
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"error": {"code": "E500"}}, status_code=500)
+
+        reporter.install_reporter(app, url=self.URL, secret="s3cret")
+        resp, post = self.hit(app)
+        self.assertEqual(resp.json(), {"error": {"code": "E500"}})
+        post.assert_called_once()
+
+    def test_a_sync_handler_registered_for_500_is_kept_too(self):
+        app = FastAPI()
+
+        def mine(request, exc):
+            from fastapi.responses import PlainTextResponse
+            return PlainTextResponse("custom", status_code=503)
+
+        app.add_exception_handler(500, mine)
+        reporter.install_reporter(app, url=self.URL, secret="s3cret")
+        resp, post = self.hit(app)
+        self.assertEqual((resp.status_code, resp.text), (503, "custom"))
+        post.assert_called_once()
+
+    def test_installing_twice_reports_once(self):
+        app = FastAPI()
+        reporter.install_reporter(app, url=self.URL, secret="s3cret")
+        reporter.install_reporter(app, url=self.URL, secret="s3cret")
+        resp, post = self.hit(app)
+        self.assertEqual(resp.status_code, 500)
+        post.assert_called_once()
+
+
+class ScrubTests(unittest.TestCase):
+    def test_scrub_removes_secrets_and_leaves_ordinary_text(self):
+        out = reporter.scrub("login failed for bob@example.com with password=hunter2 via https://u:pw@db.internal/x, Authorization: Bearer abcdef123456789")
+        for leaked in ("hunter2", "u:pw", "abcdef123456789", "bob@"):
+            self.assertNotIn(leaked, out)
+        self.assertEqual(reporter.scrub("cart is empty for order 42"), "cart is empty for order 42")
+
+    def test_a_huge_message_and_a_deep_stack_are_capped_before_they_cost_anything(self):
+        def recurse(n):
+            if n == 0:
+                raise ValueError("a" * 2_000_000)
+            recurse(n - 1)
+
+        try:
+            recurse(300)
+        except ValueError as e:
+            exc = e
+        started = time.monotonic()
+        frames = reporter._frames(exc)
+        message = reporter.scrub(str(exc)[: reporter.MAX_MESSAGE])[: reporter.MAX_MESSAGE]
+        self.assertLess(time.monotonic() - started, 1.5)
+        self.assertEqual(len(frames), reporter.MAX_FRAMES)
+        self.assertLessEqual(len(message), reporter.MAX_MESSAGE)
+
+    def test_frames_are_relative_and_their_source_line_is_scrubbed(self):
+        try:
+            password = "x"  # noqa: F841
+            raise ValueError("token=abc123 failed")
+        except ValueError as e:
+            frames = reporter._frames(e)
+        self.assertFalse(os.path.isabs(frames[-1]["file"]), frames[-1]["file"])
+        self.assertNotIn(os.getcwd().replace("\\", "/"), frames[-1]["file"])
+
+
 if __name__ == "__main__":
     unittest.main()
