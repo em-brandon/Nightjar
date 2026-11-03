@@ -90,7 +90,7 @@ once all are, set `REQUIRE_SIGNED_TIMESTAMP=true`.
 | Field | Rule |
 |---|---|
 | `exception_type` | The class or error name. The hub allows 200 characters |
-| `message` | Up to 4,000 characters; the reporters cut at 3,900. The hub normalises numbers, ids and quoted text before hashing, so `user 41 not found` and `user 97 not found` are one issue |
+| `message` | Scrubbed first by every reporter (`scrub()`): passwords and tokens as `key=value`, credentials in URLs, bearer tokens and emails are replaced. Best effort, so keep secrets out of messages. Up to 4,000 characters; the reporters cut at 3,900. The hub normalises numbers, ids and quoted text before hashing, so `user 41 not found` and `user 97 not found` are one issue |
 | `frames` | **Innermost frame last.** Only `module` and `function` are hashed, from the last three frames. Line numbers are sent but deliberately not hashed, so editing a file above a bug does not make it a new issue |
 | `level` | `warning` (P3, digest), `error` (P2), `fatal` (P1, wakes the phone) |
 | `request` | Method and **path only**. Never the query string, which can carry a token |
