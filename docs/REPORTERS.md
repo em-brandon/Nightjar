@@ -59,6 +59,13 @@ A Nightjar outage has to be invisible to a client's checkout page. Concretely, e
    (`stack_reporter.py`, `home_reporter.py`, `jellyfin_reporter.py`, `thermal_probe.py`) follow the same rule, but as one-shot
    processes they print the reason to standard error and fail (the thermal probe exits 1) rather than staying quiet:
    `Nightjar: refusing to report errors to http://nightjar.example: plain http would send them readable across the network. ...`
+7. **Says so, once, when the hub refuses a report.** The reporter never waits on the answer to protect the app, but a wrong
+   secret (401) or key (404) would otherwise look exactly like an app with no errors. The Python, Node, PHP and Java
+   reporters read the HTTP status they get back and, on the first one of 400 or more, write one line to the app's log:
+   `Nightjar: the hub answered 401 to a report, so it was not recorded. Check the site's key and secret.` Then nothing more
+   until the process restarts. The line has the status and a hint, never the address or the key, and the app is unaffected.
+   The browser reporter cannot do this: `sendBeacon` never reports a status, so a wrong public key shows up as an Origin
+   or key problem in the hub's own logs, not on the page.
 
 ## The wire contract
 
@@ -241,8 +248,7 @@ failing request.
 
 **Your own catch-all handler is kept.** If the app already has a handler for `Exception` (or for `500`), the reporter
 reports and then calls it, so clients still get the app's own error body. Only an app with none gets
-`{"detail": "internal server error"}`. Installing twice reports once. It still does not check the hub's reply, so a hub that
-answers 500 looks the same as one that accepted the report; that is deliberate failure isolation.
+`{"detail": "internal server error"}`. Installing twice reports once. It does not retry or wait on the hub's reply, but it says once in the log if the hub refuses a report (see rule 7).
 
 This was the first reporter and it takes the **full event URL**, where the others take the hub's address and the key
 separately. Django has no reporter file; `INTEGRATE.md` has a middleware snippet.
