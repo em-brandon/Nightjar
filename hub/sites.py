@@ -10,6 +10,7 @@ from .derive import derive
 from .ingest import record_event
 from .models import Client, Event, Issue, Site, _key
 from .schemas import EventIn, SiteCreated, SiteIn, SiteListed, SiteOut, SitePatch, TestEventOut
+from .sources import failures_24h, new_source_times
 
 # Creating a site used to be seed.py plus a hand-run UPDATE for the url, and forgetting the
 # url left a site silently unmonitored. This is the console-side replacement for both.
@@ -49,8 +50,17 @@ async def list_sites(session: AsyncSession = Depends(get_session)) -> list[SiteL
         .where(Site.env.in_(("production", "staging")))
         .order_by(Site.created_at.desc(), Site.id.desc())
     )
+    refused = await failures_24h(session)
+    moved = await new_source_times(session)
     return [
-        SiteListed(**_out(site).model_dump(), ingest_key=site.ingest_key, created_at=site.created_at, last_event=at)
+        SiteListed(
+            **_out(site).model_dump(),
+            ingest_key=site.ingest_key,
+            created_at=site.created_at,
+            last_event=at,
+            bad_signatures_24h=refused.get(site.id, 0),
+            new_source_at=moved.get(site.id),
+        )
         for site, at in rows.all()
     ]
 

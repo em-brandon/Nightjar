@@ -1309,6 +1309,11 @@ export interface components {
              * @default []
              */
             allowed_origins: string[];
+            /**
+             * Bad Signatures 24H
+             * @default 0
+             */
+            bad_signatures_24h: number;
             /** Client */
             client: string;
             /**
@@ -1326,6 +1331,8 @@ export interface components {
             last_event: string | null;
             /** Name */
             name: string;
+            /** New Source At */
+            new_source_at?: string | null;
             /** Public Key */
             public_key?: string | null;
             /** Url */
