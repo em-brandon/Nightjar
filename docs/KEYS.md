@@ -349,9 +349,30 @@ The Pushover keys, the Postgres password and the `age` backup key are not in thi
 A runbook nobody has tried is a hypothesis. The steps for an ingest secret are exercised by the tests (`tests/test_derived_secrets.py`: rotating
 refuses the old secret and accepts the new one), but that is not you doing it under stress with a real app.
 
-**Status: not done.** It needs a deployed hub and a real app, and neither exists yet. Reading the runbook through did find one fault,
+**Status: rehearsed, not drilled.** The real drill needs a deployed hub and a real app, and neither exists yet. Reading the runbook through did find one fault,
 now fixed: the two `tr -d '\n'` commands (console token and master key) had lost their backslash, so the command was split over two
 lines and, copied from the rendered page, would have left a newline at the end of the secret file.
+
+**Rehearsal, 3 November 2026.** Run by Claude on a development machine, against a throwaway hub and database (signatures and the
+console token on, a master key set), not a deployment and not a person under stress. It proves the commands and the failure modes, not the
+timing. Everything below behaved as this page says:
+
+| Step | Result |
+|---|---|
+| Signed event with the current secret | accepted |
+| Rotate secret (`POST /api/sites/{id}/rotate-secret`) | 0.3 s; the new secret differs from the old |
+| Sites tab **Test** (`test-event`) | 200 |
+| Event signed with the new secret | accepted |
+| Event signed with the **old** secret | `401`, `{"detail":"bad signature"}` |
+| An app still holding the old secret | its reporter logged `the hub answered 401 to a report ... Check the site's key and secret.`; with the new secret it logged nothing |
+| History | `secret_rotated, derived, version 2` |
+| Console token changed, hub restarted (4 s) | old bearer token `401`, new `200`, and a session cookie made with the old token `401` |
+| Presence token changed, hub restarted | old `401`, new `200` |
+| A rotated secret across that restart | still accepted (derived from the master key, not lost) |
+
+Two things it showed: `./test_ingest.sh` prints `bad signature` for a refused secret but not the status, and its hint ("re-run with
+`NIGHTJAR_SECRET` set") is wrong when you are deliberately using the old secret, so read that line as the refusal you wanted. And it was
+not run for the master key, the Pushover keys, the Postgres password or the backup key.
 
 **When the hub is deployed**, do this once, with a stopwatch, on one real site that is not a client's production site, and fill in the
 table. Anything in the "unclear" column is a fix to this page, so change the page in the same sitting.
@@ -362,7 +383,7 @@ table. Anything in the "unclear" column is a fix to this page, so change the pag
 | 2. Rotate | Sites tab, that site, **Rotate secret** | | |
 | 3. Put the new value in and redeploy | Gitea secret, then the app's deploy | | |
 | 4. Test event with the new secret | Sites tab, **Test**, expect it accepted | | |
-| 5. Send with the old secret | `NIGHTJAR_SECRET=<old> ./test_ingest.sh <ingest_key>`, expect `401` | | |
+| 5. Send with the old secret | `NIGHTJAR_SECRET=<old> ./test_ingest.sh <ingest_key>`, expect `bad signature` (a 401) | | |
 | 6. The app's own reporter says so | While the app still has the old secret, its log should show `the hub answered 401 to a report ... Check the site's key and secret.` | | |
 | 7. Read the History button | expect `secret_rotated, derived, version N` | | |
 
