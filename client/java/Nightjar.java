@@ -275,7 +275,7 @@ public final class Nightjar {
         b.append("{\"exception_type\":");
         str(b, cut(root.getClass().getName(), MAX_FIELD));
         b.append(",\"message\":");
-        str(b, cut(String.valueOf(root.getMessage() == null ? "" : root.getMessage()), MAX_MESSAGE));
+        str(b, cut(scrub(String.valueOf(root.getMessage() == null ? "" : root.getMessage())), MAX_MESSAGE));
         b.append(",\"frames\":");
         frames(b, root);
         b.append(",\"level\":");
@@ -300,7 +300,7 @@ public final class Nightjar {
                     b.append(',');
                 }
                 Throwable w = chain.get(i);
-                str(b, cut(w.getClass().getName() + ": " + w.getMessage(), MAX_FIELD));
+                str(b, cut(scrub(w.getClass().getName() + ": " + w.getMessage()), MAX_FIELD));
             }
             b.append("]}");
         }
@@ -414,6 +414,29 @@ public final class Nightjar {
             sentAt.addLast(now);
             return true;
         }
+    }
+
+    private static final Pattern[] SCRUB_PATTERNS = {
+        Pattern.compile("\\b(Bearer|Basic)\\s+[A-Za-z0-9._~+/=-]{8,}", Pattern.CASE_INSENSITIVE),
+        Pattern.compile("(?<=://)[^/\\s:@]+:[^/\\s@]+@"),
+        Pattern.compile("\\b(password|passwd|pwd|secret|token|api[_-]?key|apikey|authorization)([\"']?\\s*[=:]\\s*[\"']?)[^\\s\"'&,;]+", Pattern.CASE_INSENSITIVE),
+        Pattern.compile("[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"),
+    };
+    private static final String[] SCRUB_REPLACEMENTS = {"$1 [redacted]", "[redacted]@", "$1$2[redacted]", "[email]"};
+
+    /**
+     * Take the obvious secrets out of text before it leaves the server: passwords and tokens as key=value, credentials in
+     * URLs, bearer tokens and email addresses. Best effort, not a guarantee, so do not put secrets in exception messages.
+     * (Stack frames carry only a file's base name, so there is no server path to strip.)
+     */
+    public static String scrub(String text) {
+        if (text == null) {
+            return "";
+        }
+        for (int i = 0; i < SCRUB_PATTERNS.length; i++) {
+            text = SCRUB_PATTERNS[i].matcher(text).replaceAll(SCRUB_REPLACEMENTS[i]);
+        }
+        return text;
     }
 
     private static String cut(String s, int max) {

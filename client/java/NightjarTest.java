@@ -304,6 +304,13 @@ public final class NightjarTest {
             check(hub + " is not warned about", quiet.isEmpty());
         }
 
+        String scrubbed = Nightjar.scrub("login failed for bob@example.com with password=hunter2 via https://u:pw@db.internal/x, Authorization: Bearer abcdef123456789");
+        check("scrub removes passwords, URL credentials, bearer tokens and emails",
+            !scrubbed.contains("hunter2") && !scrubbed.contains("u:pw") && !scrubbed.contains("abcdef123456789") && !scrubbed.contains("bob@"), scrubbed);
+        check("scrub leaves ordinary text alone", Nightjar.scrub("cart is empty for order 42").equals("cart is empty for order 42"));
+        Nightjar.Prepared scrubbedReq = Nightjar.prepare(opts(), new RuntimeException("token=abc123 failed"), Nightjar.Level.ERROR, "GET", "/x");
+        check("prepare() scrubs the message it sends", !scrubbedReq.body.contains("abc123"));
+
         Nightjar.reset();
         System.out.println(failures == 0 ? "\njava reporter passed" : "\n" + failures + " FAILED");
         System.exit(failures == 0 ? 0 : 1);
