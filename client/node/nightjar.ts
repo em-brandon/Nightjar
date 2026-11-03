@@ -54,7 +54,8 @@ export interface RequestInfo {
 
 /** What the reporter needs from the outside world, so it can be tested without a network. */
 export interface Env {
-  send(url: string, headers: Record<string, string>, body: string, timeoutMs: number): Promise<void>;
+  /** Resolve with the hub's HTTP status if it is known, so a refusing hub can be said out loud. */
+  send(url: string, headers: Record<string, string>, body: string, timeoutMs: number): Promise<void | number>;
   now(): number;
   /** Where the one-line warning about an unusable hub goes. Default: standard error. */
   warn?(message: string): void;
@@ -147,6 +148,24 @@ const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
  * Returns null when the address is fine, or one line saying what is wrong. It never includes the whole address, which
  * could carry a credential.
  */
+/**
+ * One line for a hub answer that means the report was not recorded, or null when it was. Reporters never wait on the
+ * answer to protect the app, but a wrong secret (401) would otherwise look exactly like an app with no errors.
+ */
+export function statusWarning(status: unknown): string | null {
+  if (typeof status !== "number" || !Number.isInteger(status) || status < 400) return null;
+  const hints: Record<number, string> = {
+    401: "Check the site's key and secret.",
+    403: "Check the site's key and secret.",
+    404: "Check the hub address and the site's key.",
+    413: "The report was too large.",
+    422: "The report was malformed; update the reporter.",
+    429: "The hub is rate limiting this site.",
+  };
+  const hint = hints[status] ?? (status >= 500 ? "The hub is having trouble, so reports may be lost." : "");
+  return `Nightjar: the hub answered ${status} to a report, so it was not recorded. ${hint}`.trimEnd();
+}
+
 export function hubRefusal(hub: string): string | null {
   let url: URL;
   try {
@@ -226,6 +245,19 @@ export function createReporter(options: Options, env: Env): Reporter {
     }
   }
 
+  let statusSaid = false;
+  function noteStatus(status: unknown): void {
+    try {
+      const why = statusWarning(status);
+      if (why && !statusSaid) {
+        statusSaid = true;
+        (env.warn ?? ((m: string) => console.error(m)))(why);
+      }
+    } catch {
+      // even the warning must not break the app
+    }
+  }
+
   function capture(error: unknown, level: Level = "error", request?: RequestInfo): void {
     try {
       if (!o.hub || !o.key || !o.secret) return; // not configured: report nothing, break nothing
@@ -238,6 +270,7 @@ export function createReporter(options: Options, env: Env): Reporter {
       const { url, headers, body } = prepare(o, error, level, request);
       const p: Promise<void> = Promise.resolve()
         .then(() => env.send(url, headers, body, timeoutMs))
+        .then(noteStatus)
         .catch(() => {}) // a failed report is not the app's problem
         .finally(() => inflight.delete(p));
       inflight.add(p);
@@ -267,7 +300,8 @@ const realEnv: Env = {
   now: () => Date.now(),
   async send(url, headers, body, timeoutMs) {
     const res = await fetch(url, { method: "POST", headers, body, signal: AbortSignal.timeout(timeoutMs) });
-    await res.body?.cancel(); // free the connection; the answer is not needed
+    await res.body?.cancel(); // free the connection; the answer's body is not needed
+    return res.status;
   },
 };
 

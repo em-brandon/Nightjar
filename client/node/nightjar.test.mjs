@@ -6,7 +6,7 @@ import { createHmac } from "node:crypto";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
-import { captureException, createReporter, expressErrorHandler, flush, hubRefusal, init, parseStack, prepare, scrub } from "./nightjar.ts";
+import { captureException, createReporter, expressErrorHandler, flush, hubRefusal, init, parseStack, prepare, scrub, statusWarning } from "./nightjar.ts";
 
 const ok = (name) => console.log(`  ok   ${name}`);
 const OPTS = { hub: "https://nightjar.example/", key: "KEY1", secret: "s3cret", release: "v2" };
@@ -332,6 +332,25 @@ async function crash(script, hubUrl) {
   assert.ok(Date.now() - started < 1500, `took ${Date.now() - started} ms`);
   assert.ok(JSON.parse(p.body).message.length <= 3900);
   ok("a five-million-character message is cut before it is scanned, so it costs milliseconds");
+}
+
+{
+  assert.equal(statusWarning(200), null);
+  assert.equal(statusWarning(undefined), null);
+  assert.match(statusWarning(401), /answered 401.*key and secret/);
+  const said = [];
+  const { reporter } = harness({}, { send: async () => 401, warn: (m) => said.push(m) });
+  reporter.capture(new Error("a"));
+  reporter.capture(new Error("b"));
+  await reporter.flush();
+  assert.equal(said.length, 1, "said once, not on every report");
+  assert.ok(!said[0].includes("nightjar.example") && !said[0].includes("KEY1"), said[0]);
+  const quiet = [];
+  const ok200 = harness({}, { send: async () => 200, warn: (m) => quiet.push(m) });
+  ok200.reporter.capture(new Error("c"));
+  await ok200.reporter.flush();
+  assert.deepEqual(quiet, []);
+  ok("a hub that refuses reports is said out loud once, and one that accepts them is not");
 }
 
 console.log("\nnode reporter passed");
