@@ -239,6 +239,11 @@ It sends in a background task, so a slow or dead hub never delays the 500, and d
 (`max_per_minute` and `max_in_flight` change those). Before this it waited on the hub, up to three seconds, inside every
 failing request.
 
+**Your own catch-all handler is kept.** If the app already has a handler for `Exception` (or for `500`), the reporter
+reports and then calls it, so clients still get the app's own error body. Only an app with none gets
+`{"detail": "internal server error"}`. Installing twice reports once. It still does not check the hub's reply, so a hub that
+answers 500 looks the same as one that accepted the report; that is deliberate failure isolation.
+
 This was the first reporter and it takes the **full event URL**, where the others take the hub's address and the key
 separately. Django has no reporter file; `INTEGRATE.md` has a middleware snippet.
 
