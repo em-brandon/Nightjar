@@ -142,7 +142,7 @@ final class Reporter
         $type = explode("\0", $type)[0]; // an anonymous class's name has a NUL and a file path in it
         $payload = [
             'exception_type' => self::cut($type, self::MAX_FIELD),
-            'message' => self::cut(self::scrub((string) $e->getMessage()), self::MAX_MESSAGE),
+            'message' => self::cut(self::scrub(self::cut((string) $e->getMessage(), self::MAX_MESSAGE)), self::MAX_MESSAGE),
             'frames' => self::frames($e),
             'level' => in_array($level, self::LEVELS, true) ? $level : 'error',
             'environment' => $o['environment'],
@@ -229,7 +229,7 @@ final class Reporter
                 if (self::configured($o) && count(self::$queue) < self::MAX_PER_REQUEST) {
                     self::$queue[] = self::sign($o, [
                         'exception_type' => 'FatalError',
-                        'message' => self::cut(self::scrub((string) $last['message']), self::MAX_MESSAGE),
+                        'message' => self::cut(self::scrub(self::cut((string) $last['message'], self::MAX_MESSAGE)), self::MAX_MESSAGE),
                         'frames' => [self::frame((string) $last['file'], $last['line'], null)],
                         'level' => 'error',
                         'environment' => $o['environment'],
@@ -398,7 +398,7 @@ final class Reporter
         $m = preg_replace('#\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}#i', '$1 [redacted]', $m) ?? $m;
         $m = preg_replace('~(?<=://)[^/\s:@]+:[^/\s@]+@~', '[redacted]@', $m) ?? $m;
         $m = preg_replace('~\b(password|passwd|pwd|secret|token|api[_-]?key|apikey|authorization)(["\']?\s*[=:]\s*["\']?)[^\s"\'&,;]+~i', '$1$2[redacted]', $m) ?? $m;
-        $m = preg_replace('~[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}~', '[email]', $m) ?? $m;
+        $m = preg_replace('~[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,255}\.[A-Za-z]{2,}~', '[email]', $m) ?? $m;
         return $m;
     }
 
