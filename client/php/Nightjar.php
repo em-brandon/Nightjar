@@ -41,6 +41,8 @@ final class Reporter
     private static $logger = null;
     /** @var callable|null for tests: function (string $url, array $headers, string $body, int $timeout): void */
     private static $transport = null;
+    /** @var int|null when the hub last failed in this process: the breaker's fallback if the temp directory is unusable */
+    private static $trippedAt = null;
 
     /**
      * Whether this hub address may be used, and if not, why. https is always fine. Plain http is fine only for a machine
@@ -50,7 +52,7 @@ final class Reporter
      */
     public static function hubRefusal(string $hub): ?string
     {
-        $p = parse_url($hub);
+            $p = parse_url($hub);
         if ($p === false || !isset($p['scheme'], $p['host'])) {
             return 'Nightjar: the hub address is not a valid URL, so no errors will be reported. Use https://your-hub.';
         }
@@ -140,7 +142,7 @@ final class Reporter
         $type = explode("\0", $type)[0]; // an anonymous class's name has a NUL and a file path in it
         $payload = [
             'exception_type' => self::cut($type, self::MAX_FIELD),
-            'message' => self::cut((string) $e->getMessage(), self::MAX_MESSAGE),
+            'message' => self::cut(self::scrub((string) $e->getMessage()), self::MAX_MESSAGE),
             'frames' => self::frames($e),
             'level' => in_array($level, self::LEVELS, true) ? $level : 'error',
             'environment' => $o['environment'],
@@ -186,8 +188,15 @@ final class Reporter
             $jobs = self::$queue;
             self::$queue = [];
             // PHP-FPM: let the visitor go first, so a slow hub costs them nothing
-            if (function_exists('fastcgi_finish_request')) {
+            $fpm = function_exists('fastcgi_finish_request');
+            if ($fpm) {
                 @fastcgi_finish_request();
+            } else {
+                // No way to close the connection here (mod_php, the built-in server): at least push the page out
+                // before the sends, so the visitor sees it even while the worker is still busy.
+                while (PHP_SAPI !== 'cli' && ob_get_level() > 0 && @ob_end_flush()) {
+                }
+                @flush();
             }
             $o = self::options();
             if (self::breakerOpen($o)) {
@@ -195,7 +204,8 @@ final class Reporter
             }
             foreach ($jobs as $job) {
                 try {
-                    self::post($job['url'], $job['headers'], $job['body'], $o['timeout'], $o['transport']);
+                    // without FPM the worker is held for the whole send, so it gets one second, not three
+                    self::post($job['url'], $job['headers'], $job['body'], $fpm ? $o['timeout'] : min(1, $o['timeout']), $o['transport']);
                     self::breakerClear($o);
                 } catch (\Throwable $failed) {
                     self::breakerTrip($o);
@@ -219,7 +229,7 @@ final class Reporter
                 if (self::configured($o) && count(self::$queue) < self::MAX_PER_REQUEST) {
                     self::$queue[] = self::sign($o, [
                         'exception_type' => 'FatalError',
-                        'message' => self::cut((string) $last['message'], self::MAX_MESSAGE),
+                        'message' => self::cut(self::scrub((string) $last['message']), self::MAX_MESSAGE),
                         'frames' => [self::frame((string) $last['file'], $last['line'], null)],
                         'level' => 'error',
                         'environment' => $o['environment'],
@@ -255,6 +265,7 @@ final class Reporter
         self::$transport = null;
         self::$warned = false;
         self::$logger = null;
+        self::$trippedAt = null;
     }
 
     /** For tests: what is waiting to be sent. */
@@ -322,6 +333,7 @@ final class Reporter
             'release' => isset($o['release']) ? (string) $o['release'] : $env('NIGHTJAR_RELEASE'),
             'timeout' => (int) ($o['timeout'] ?? 3),
             'transport' => (string) ($o['transport'] ?? 'auto'), // auto | curl | stream
+            'breaker_dir' => (string) ($o['breaker_dir'] ?? $env('NIGHTJAR_BREAKER_DIR') ?? ''), // default: the system temp directory
         ];
     }
 
@@ -355,7 +367,7 @@ final class Reporter
 
     private static function frame(string $file, $line, ?string $function): array
     {
-        $file = str_replace('\\', '/', $file);
+        $file = self::relativePath(str_replace('\\', '/', $file));
         $frame = ['file' => self::cut($file, self::MAX_FIELD), 'module' => self::cut(basename($file), self::MAX_FIELD)];
         if ($line !== null) {
             $frame['lineno'] = (int) $line;
@@ -374,6 +386,37 @@ final class Reporter
         }
         $path = parse_url((string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH);
         return ['method' => (string) $_SERVER['REQUEST_METHOD'], 'path' => is_string($path) ? $path : null];
+    }
+
+    /**
+     * Take the obvious secrets out of an exception message before it leaves the server. Best effort, not a guarantee:
+     * a message can hold anything, so do not put secrets in exception messages. The hub also normalises quoted
+     * strings and numbers for fingerprinting, so this does not change how errors group.
+     */
+    public static function scrub(string $m): string
+    {
+        $m = preg_replace('#\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}#i', '$1 [redacted]', $m) ?? $m;
+        $m = preg_replace('~(?<=://)[^/\s:@]+:[^/\s@]+@~', '[redacted]@', $m) ?? $m;
+        $m = preg_replace('~\b(password|passwd|pwd|secret|token|api[_-]?key|apikey|authorization)(["\']?\s*[=:]\s*["\']?)[^\s"\'&,;]+~i', '$1$2[redacted]', $m) ?? $m;
+        $m = preg_replace('~[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}~', '[email]', $m) ?? $m;
+        return $m;
+    }
+
+    /** A path without the server's own directory layout (home directories, account names): relative to the document root or working directory. */
+    private static function relativePath(string $file): string
+    {
+        $bases = [];
+        foreach ([$_SERVER['DOCUMENT_ROOT'] ?? '', @getcwd()] as $b) {
+            if (is_string($b) && $b !== '') {
+                $bases[] = rtrim(str_replace('\\', '/', $b), '/') . '/';
+            }
+        }
+        foreach ($bases as $b) {
+            if (strncmp($file, $b, strlen($b)) === 0) {
+                return substr($file, strlen($b));
+            }
+        }
+        return $file;
     }
 
     private static function cut(string $s, int $max): string
@@ -428,23 +471,29 @@ final class Reporter
 
     private static function breakerPath(array $o): string
     {
-        return sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'nightjar-down-' . md5($o['hub'] . $o['key']);
+        $dir = $o['breaker_dir'] !== '' ? rtrim($o['breaker_dir'], '/\\') : sys_get_temp_dir();
+        return $dir . DIRECTORY_SEPARATOR . 'nightjar-down-' . md5($o['hub'] . $o['key']);
     }
 
     private static function breakerOpen(array $o): bool
     {
         $path = self::breakerPath($o);
         $age = @filemtime($path);
-        return $age !== false && (time() - $age) < self::BREAKER_SECONDS;
+        if ($age === false) {
+            $age = self::$trippedAt; // no file: either the hub is fine, or the directory is not writable
+        }
+        return $age !== null && $age !== false && (time() - $age) < self::BREAKER_SECONDS;
     }
 
     private static function breakerTrip(array $o): void
     {
+        self::$trippedAt = time(); // kept in memory too, for a long-running worker whose temp directory cannot be written
         @touch(self::breakerPath($o));
     }
 
     private static function breakerClear(array $o): void
     {
+        self::$trippedAt = null;
         $path = self::breakerPath($o);
         if (file_exists($path)) {
             @unlink($path);
