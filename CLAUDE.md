@@ -377,6 +377,7 @@ hub/
   uptime.py        a site that stops answering becomes an issue: P1 in production, P2 on staging, edge-triggered
   rates.py         /api/rates: cached USD to KES rate (decoration only)
   edge.py          edge-triggered issues shared by every pushed source: open once, resolve themselves
+  sources.py       where signed reports come from and which were refused: evidence of a leaked secret, shown in the console, never a notification (docs/KEYS.md)
   heartbeats.py    POST /ingest/{key}/heartbeat/{name}: a cron job or private app pings, and silence opens an issue (docs/CLIENT-INTEGRATION.md)
 console/           Vite + React 19 + TypeScript UI: src/views/* is one file per tab; src/api/* is generated from the hub (do not edit)
 client/
