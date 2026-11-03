@@ -151,6 +151,20 @@ require __DIR__ . '/Nightjar.php';
   slow hub never delays anyone. At most five are held per request. After a failed send, nothing is sent for 30
   seconds (a small file in the temp directory acts as a circuit breaker).
 - It uses `curl` if the extension is there and plain streams if not. Set `'transport' => 'stream'` to force it.
+- **Where the breaker file lives.** The system temp directory by default; set `'breaker_dir'` (or `NIGHTJAR_BREAKER_DIR`) on shared
+  hosting where that is odd or unwritable. If the file cannot be written the reporter still remembers the failure in memory, so
+  at worst each worker tries the hub once rather than every request.
+- **Without PHP-FPM** (Apache `mod_php`, the built-in server) there is no way to release the visitor early. The reporter flushes
+  the page first and gives each send one second instead of three, so the worker is held for at most about five seconds
+  and normally none.
+- **What leaves the server.** Method and path (never the query string), the exception class, a message and file paths.
+  `Reporter::scrub()` removes passwords and tokens in `key=value` form, credentials in URLs, bearer tokens and email
+  addresses from the message, and file paths are made relative to the document root or working directory. This is best
+  effort: do not put secrets in exception messages.
+- **What cannot be fixed here.** The reporter holds the ingest secret, so anyone who reads the server's config can send
+  reports for that site (rotate it from the Sites tab if it leaks). A fatal engine error is reported best effort, because
+  PHP is already shutting down. Another plugin that installs its own exception handler after ours wins; `install()` chains
+  to the previous handler but cannot control what comes later.
 
 **Laravel.** Report from the framework's own hook, so Laravel's handling is untouched. Laravel 11 and newer, in
 `bootstrap/app.php`:
