@@ -8,6 +8,7 @@
 import asyncio
 import hashlib
 import hmac
+import inspect
 import json
 import logging
 import os
@@ -20,6 +21,7 @@ from urllib.parse import urlsplit
 import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 
 log = logging.getLogger("nightjar")
@@ -166,12 +168,30 @@ def install_reporter(
         in_flight.add(task)
         task.add_done_callback(in_flight.discard)
 
-    @app.exception_handler(Exception)
-    async def _report(request: Request, exc: Exception) -> JSONResponse:
+    # The app may already have a catch-all handler of its own (registered for Exception or for 500, which Starlette treats
+    # alike; when both exist the later one wins). Replacing it would change the error body the app's clients get, so
+    # keep it and call it after reporting. Only an app with none gets our generic answer.
+    previous = None
+    for key, handler in app.exception_handlers.items():
+        if key in (Exception, 500):
+            previous = handler
+    if getattr(previous, "_nightjar", False):
+        return  # installed twice: a second wrapper would report every error twice
+
+    async def _report(request: Request, exc: Exception):
         # Never let reporting break the app it is reporting on, even if building the report fails (an exception whose
         # str() raises, say).
         try:
             report(request, exc)
         except Exception:
             pass
-        return JSONResponse({"detail": "internal server error"}, status_code=500)
+        if previous is None:
+            return JSONResponse({"detail": "internal server error"}, status_code=500)
+        # Exactly what Starlette does with it: await an async handler, run a sync one in a thread. If the app's own
+        # handler raises, that is the app's behaviour and is left alone.
+        if inspect.iscoroutinefunction(previous):
+            return await previous(request, exc)
+        return await run_in_threadpool(previous, request, exc)
+
+    _report._nightjar = True  # type: ignore[attr-defined]
+    app.add_exception_handler(Exception, _report)

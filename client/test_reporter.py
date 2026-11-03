@@ -188,6 +188,54 @@ class Safety(unittest.TestCase):
         post.assert_not_called()
 
 
+class ExistingHandlerTests(unittest.TestCase):
+    URL = "https://nightjar.example/ingest/K/event"
+
+    def hit(self, app: FastAPI):
+        @app.get("/boom")
+        def boom():
+            raise RuntimeError("kaboom")
+
+        post = AsyncMock()
+        with patch.object(httpx.AsyncClient, "post", post):
+            resp = TestClient(app, raise_server_exceptions=False).get("/boom")
+        return resp, post
+
+    def test_the_apps_own_catch_all_handler_still_answers_and_the_error_is_still_reported(self):
+        app = FastAPI()
+
+        @app.exception_handler(Exception)
+        async def mine(request, exc):
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"error": {"code": "E500"}}, status_code=500)
+
+        reporter.install_reporter(app, url=self.URL, secret="s3cret")
+        resp, post = self.hit(app)
+        self.assertEqual(resp.json(), {"error": {"code": "E500"}})
+        post.assert_called_once()
+
+    def test_a_sync_handler_registered_for_500_is_kept_too(self):
+        app = FastAPI()
+
+        def mine(request, exc):
+            from fastapi.responses import PlainTextResponse
+            return PlainTextResponse("custom", status_code=503)
+
+        app.add_exception_handler(500, mine)
+        reporter.install_reporter(app, url=self.URL, secret="s3cret")
+        resp, post = self.hit(app)
+        self.assertEqual((resp.status_code, resp.text), (503, "custom"))
+        post.assert_called_once()
+
+    def test_installing_twice_reports_once(self):
+        app = FastAPI()
+        reporter.install_reporter(app, url=self.URL, secret="s3cret")
+        reporter.install_reporter(app, url=self.URL, secret="s3cret")
+        resp, post = self.hit(app)
+        self.assertEqual(resp.status_code, 500)
+        post.assert_called_once()
+
+
 class ScrubTests(unittest.TestCase):
     def test_scrub_removes_secrets_and_leaves_ordinary_text(self):
         out = reporter.scrub("login failed for bob@example.com with password=hunter2 via https://u:pw@db.internal/x, Authorization: Bearer abcdef123456789")
