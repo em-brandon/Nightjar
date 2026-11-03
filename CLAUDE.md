@@ -508,6 +508,9 @@ signed against a hub with `VERIFY_SIGNATURES` on.
   wanted (decisions #54 and #56).
 - Comments explain *why*, not *what*. The fingerprint exclusions and the
   serialisation choice are where future-you will want the reasoning.
+- **No AI attribution in commits or pull requests.** Do not add `Co-Authored-By: Claude ...` to commit messages or a
+  "Generated with Claude Code" line to PR descriptions, unless the operator asks for it. Commits up to and including
+  `08a9fc0` carry it; that history is not rewritten.
 
 ## Brand
 
