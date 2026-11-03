@@ -243,6 +243,23 @@ class ScrubTests(unittest.TestCase):
             self.assertNotIn(leaked, out)
         self.assertEqual(reporter.scrub("cart is empty for order 42"), "cart is empty for order 42")
 
+    def test_a_huge_message_and_a_deep_stack_are_capped_before_they_cost_anything(self):
+        def recurse(n):
+            if n == 0:
+                raise ValueError("a" * 2_000_000)
+            recurse(n - 1)
+
+        try:
+            recurse(300)
+        except ValueError as e:
+            exc = e
+        started = time.monotonic()
+        frames = reporter._frames(exc)
+        message = reporter.scrub(str(exc)[: reporter.MAX_MESSAGE])[: reporter.MAX_MESSAGE]
+        self.assertLess(time.monotonic() - started, 1.5)
+        self.assertEqual(len(frames), reporter.MAX_FRAMES)
+        self.assertLessEqual(len(message), reporter.MAX_MESSAGE)
+
     def test_frames_are_relative_and_their_source_line_is_scrubbed(self):
         try:
             password = "x"  # noqa: F841

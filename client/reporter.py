@@ -54,6 +54,9 @@ def hub_refusal(url: str) -> str | None:
     )
 
 
+MAX_MESSAGE = 3900  # the hub allows 4000
+MAX_FRAMES = 100  # the hub allows 200
+
 _SCRUBBERS = [
     (re.compile(r"\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}", re.I), r"\1 [redacted]"),
     (re.compile(r"(?<=://)[^/\s:@]+:[^/\s@]+@"), "[redacted]@"),
@@ -61,7 +64,7 @@ _SCRUBBERS = [
         re.compile(r"""\b(password|passwd|pwd|secret|token|api[_-]?key|apikey|authorization)(["']?\s*[=:]\s*["']?)[^\s"'&,;]+""", re.I),
         r"\1\2[redacted]",
     ),
-    (re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"), "[email]"),
+    (re.compile(r"[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,255}\.[A-Za-z]{2,}"), "[email]"),
 ]
 
 
@@ -89,7 +92,7 @@ def _frames(exc: BaseException) -> list[dict]:
             "lineno": f.lineno,
             "context": scrub(f.line or ""),  # a line of source can hold a literal credential
         }
-        for f in traceback.extract_tb(exc.__traceback__)
+        for f in traceback.extract_tb(exc.__traceback__, limit=-MAX_FRAMES)  # the innermost ones identify the bug
     ]
 
 
@@ -151,7 +154,7 @@ def install_reporter(
         body = json.dumps(
             {
                 "exception_type": type(exc).__name__,
-                "message": scrub(str(exc)),
+                "message": scrub(str(exc)[:MAX_MESSAGE])[:MAX_MESSAGE],  # cut first: scanning a huge message is work done before the 500
                 "frames": _frames(exc),
                 "level": "error",
                 "environment": environment,
