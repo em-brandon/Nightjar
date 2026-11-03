@@ -44,7 +44,7 @@ apps*, which runs on Gitea and the staging host (planned, see `docs/PIPELINE.md`
 - **It has not run on GitHub.** The workflow passes `actionlint` (`pip install actionlint-py`, then `actionlint .github/workflows/ci.yml`)
   and each command passes locally, but the Linux runner, the Postgres service container and the preinstalled PHP have not been
   exercised. The first run is the real test.
-- **The actions are pinned to major versions** (`actions/checkout@v4` and so on), not to commit hashes. Pinning to full hashes is
+- **The actions are pinned to major versions** (`actions/checkout@v5` and so on), not to commit hashes. Pinning to full hashes is
   stronger against a compromised action, and is a follow-up along with Dependabot to keep them current.
 - **One Python version (3.13).** The project says 3.11 or newer, and 3.11 is not tested here.
 
