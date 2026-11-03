@@ -127,6 +127,23 @@ export function parseStack(stack: string | undefined | null): Frame[] {
   return frames.reverse().slice(-MAX_FRAMES);
 }
 
+const SCRUBBERS: Array<[RegExp, string]> = [
+  [/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/gi, "$1 [redacted]"],
+  [/(?<=:\/\/)[^/\s:@]+:[^/\s@]+@/g, "[redacted]@"],
+  [/\b(password|passwd|pwd|secret|token|api[_-]?key|apikey|authorization)(["']?\s*[=:]\s*["']?)[^\s"'&,;]+/gi, "$1$2[redacted]"],
+  [/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[email]"],
+];
+
+/**
+ * Take the obvious secrets out of text before it leaves the visitor's browser: passwords and tokens as key=value,
+ * credentials in URLs, bearer tokens and email addresses (a visitor's address often ends up in a validation error).
+ * Best effort, not a guarantee, so do not put secrets in error messages.
+ */
+export function scrub(text: string): string {
+  for (const [pattern, replacement] of SCRUBBERS) text = text.replace(pattern, replacement);
+  return text;
+}
+
 function toError(thing: unknown): { type: string; message: string; stack?: string } {
   if (thing instanceof Error) {
     return { type: thing.name || "Error", message: String(thing.message ?? ""), stack: thing.stack };
@@ -196,12 +213,12 @@ export function createReporter(options: Options, env: Env): Reporter {
 
       let body = JSON.stringify({
         exception_type: type,
-        message: message.slice(0, MAX_MESSAGE),
+        message: scrub(message).slice(0, MAX_MESSAGE),
         frames,
         level: level ?? options.level ?? "warning",
         release: options.release,
         environment: options.environment ?? "production",
-        page: env.page(),
+        page: env.page().split(/[?#]/)[0], // never a query string or fragment; the hub drops them too
       });
       // keep the innermost frames if the report is too big, since those identify the bug
       let keep = frames.length;

@@ -2,7 +2,7 @@
 // (Node 22.18 or newer runs the .ts file directly.)
 
 import assert from "node:assert/strict";
-import { createReporter, hubRefusal, parseStack } from "./nightjar.ts";
+import { createReporter, hubRefusal, parseStack, scrub } from "./nightjar.ts";
 
 const ok = (name) => console.log(`  ok   ${name}`);
 const ORIGIN = "https://birdbox.example";
@@ -206,6 +206,19 @@ const errorAt = (message, file = `${ORIGIN}/assets/index-3fa9c1B2.js`, line = 10
     assert.deepEqual(warned, [], `${hub} is not warned about`);
   }
   ok("https and loopback http still work");
+}
+
+{
+  const out = scrub("login failed for bob@example.com with password=hunter2 via https://u:pw@db.internal/x, Authorization: Bearer abcdef123456789");
+  for (const leaked of ["hunter2", "u:pw", "abcdef123456789", "bob@"]) assert.ok(!out.includes(leaked), `${leaked} leaked: ${out}`);
+  assert.equal(scrub("cart is empty for order 42"), "cart is empty for order 42");
+  ok("scrub removes passwords, URL credentials, bearer tokens and emails, and leaves ordinary text");
+  const { reporter, sent } = harness();
+  reporter.capture(errorAt("invalid email bob@example.com, token=abc123"));
+  assert.equal(sent.length, 1);
+  assert.ok(!sent[0].raw.includes("bob@") && !sent[0].raw.includes("abc123"), sent[0].raw);
+  assert.ok(!sent[0].raw.includes("SECRET") && sent[0].body.page === `${ORIGIN}/cart`, sent[0].body.page);
+  ok("a report carries a scrubbed message and a page address with no query string");
 }
 
 console.log("\nbrowser reporter passed");
