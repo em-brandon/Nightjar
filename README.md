@@ -337,6 +337,8 @@ encrypted if the VPS provider does it.
 This is the point of the project, and the part with the most rules. Everything below is built and tested. A real P1 has been sent
 to a phone and acknowledged from it ([what that proves](#what-has-been-proven-and-what-has-not)).
 
+<p align="center"><img src="assets/nightjar-ios-alerts.png" alt="Nightjar alerts on an iPhone" width="320"></p>
+
 ```mermaid
 flowchart TD
     CH["state_change<br/>new, regression, spike"] --> POL["Policy: severity, presence, quiet hours<br/>hub/policy.py, a pure function"]
@@ -586,6 +588,8 @@ may add a channel. It must never be the reason a push does not fire.
 A React app in [`console/`](console/), polling the hub every 30 seconds. No websockets. Dark only, in
 neutral near-black.
 
+![The Nightjar console](assets/nightjar-dashboard.png)
+
 The left sidebar has eight tabs, with live count badges:
 
 | Tab | What it does |
@@ -665,6 +669,8 @@ waiting to be sent, so a hub with Pushover configured will never push a demo ale
 A dedicated monitor on the wall, driven by the ThinkCentre, showing the state of every site across the
 room. It is a display, never a decision-maker: it may add detail, but it can never be the reason a push
 does not fire.
+
+![The idle screen, which doubles as the wall display](assets/nightjar-idle-screen.png)
 
 ### What the monitor shows
 
