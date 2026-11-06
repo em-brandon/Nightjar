@@ -3,6 +3,7 @@ import type { Alert, Deploy, Heartbeat, HomeSnapshot, Issue, MediaPlay, MediaSna
 import type { Feeds, TabId } from "./feeds.ts";
 import { isUnacknowledged } from "./alerts.ts";
 import AlertBanner from "./AlertBanner.tsx";
+import Passkeys from "./Passkeys.tsx";
 import Sessions from "./Sessions.tsx";
 import Splash from "./Splash.tsx";
 import { Dot } from "./ui.tsx";
@@ -57,6 +58,7 @@ const VIEWS: Record<Exclude<TabId, "idle">, (props: { f: Feeds }) => ReactElemen
 
 export default function App({ onSignOut, hasAccount = false }: { onSignOut?: () => void; hasAccount?: boolean }) {
   const [showSessions, setShowSessions] = useState(false);
+  const [showPasskeys, setShowPasskeys] = useState(false);
   const health = usePoll<SiteHealth[]>("/api/sites/health");
   const issues = usePoll<Issue[]>("/api/issues?status=all");
   const rising = usePoll<Rising[]>("/api/errors/rising");
@@ -76,7 +78,7 @@ export default function App({ onSignOut, hasAccount = false }: { onSignOut?: () 
   const now = useNow();
   const [tab, go] = useHashTab(TAB_IDS, "overview");
   const [idleHold, setIdleHold] = useState(false);
-  useInactivity(IDLE_AFTER_MS, () => go("idle"), tab !== "idle" && !idleHold && !showSessions);
+  useInactivity(IDLE_AFTER_MS, () => go("idle"), tab !== "idle" && !idleHold && !showSessions && !showPasskeys);
 
   const feeds = [health, issues, rising, tickets, deploys, attention, stacks, heartbeats, media, mediaHistory];
   const hubError = feeds.some((x) => x.error);
@@ -179,6 +181,11 @@ export default function App({ onSignOut, hasAccount = false }: { onSignOut?: () 
               Signed-in devices
             </button>
           )}
+          {hasAccount && (
+            <button className="side-link" onClick={() => setShowPasskeys(true)}>
+              Passkeys
+            </button>
+          )}
           {onSignOut && (
             <button className="side-link" onClick={onSignOut}>
               Sign out
@@ -188,6 +195,7 @@ export default function App({ onSignOut, hasAccount = false }: { onSignOut?: () 
       </aside>
 
       {showSessions && <Sessions onClose={() => setShowSessions(false)} />}
+      {showPasskeys && <Passkeys onClose={() => setShowPasskeys(false)} />}
 
       <div className="main">
         {hubError && tab !== "overview" && (

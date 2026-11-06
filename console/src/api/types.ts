@@ -6,6 +6,7 @@ import type { components } from "./schema.d.ts";
 type S = components["schemas"];
 
 export type ConsoleSession = S["SessionOut"];
+export type Passkey = S["PasskeyOut"];
 export type AvailabilityReport = S["AvailabilityOut"];
 export type Alert = S["NotificationOut"];
 export type AlertsStatus = S["AlertsStatusOut"];
