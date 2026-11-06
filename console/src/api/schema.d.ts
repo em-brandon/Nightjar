@@ -416,6 +416,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/reports/availability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Availability */
+        get: operations["availability_api_reports_availability_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sites": {
         parameters: {
             query?: never;
@@ -837,6 +854,58 @@ export interface components {
             /** Id */
             id: number;
         };
+        /** AvailabilityOut */
+        AvailabilityOut: {
+            /** Clients */
+            clients: components["schemas"]["ClientReport"][];
+            /** Month */
+            month: string;
+            /** Overall Uptime Pct */
+            overall_uptime_pct: number | null;
+            /** Partial */
+            partial: boolean;
+            /**
+             * Period End
+             * Format: date-time
+             */
+            period_end: string;
+            /**
+             * Period Start
+             * Format: date-time
+             */
+            period_start: string;
+            /** Probe Interval S */
+            probe_interval_s: number;
+            /** Target Pct */
+            target_pct: number;
+            /**
+             * Through
+             * Format: date-time
+             */
+            through: string;
+        };
+        /** ClientReport */
+        ClientReport: {
+            /** Client Id */
+            client_id: number;
+            /** Contact Email */
+            contact_email: string | null;
+            /** Headline */
+            headline: string;
+            /** Name */
+            name: string;
+            /** Not Monitored */
+            not_monitored: string[];
+            /** Sites */
+            sites: components["schemas"]["SiteReport"][];
+            /** Uptime Pct */
+            uptime_pct: number | null;
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "no_data" | "perfect" | "met" | "below";
+        };
         /** DeployOut */
         DeployOut: {
             /**
@@ -951,6 +1020,20 @@ export interface components {
             tx_bps: number | null;
             /** Uptime S */
             uptime_s: number | null;
+        };
+        /** IncidentOut */
+        IncidentOut: {
+            /** Ended At */
+            ended_at: string | null;
+            /** Minutes */
+            minutes: number;
+            /** Ongoing */
+            ongoing: boolean;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
         };
         /** IngestOut */
         IngestOut: {
@@ -1459,6 +1542,39 @@ export interface components {
             allowed_origins?: string[] | null;
             /** Url */
             url?: string | null;
+        };
+        /** SiteReport */
+        SiteReport: {
+            /** Checks Ok */
+            checks_ok: number;
+            /** Checks Total */
+            checks_total: number;
+            /** Coverage Pct */
+            coverage_pct: number | null;
+            /** Deploys */
+            deploys: number;
+            /** Downtime Minutes */
+            downtime_minutes: number;
+            /** Failed Deploys */
+            failed_deploys: number;
+            /** Host */
+            host: string;
+            /** Incident Detail */
+            incident_detail: boolean;
+            /** Incidents */
+            incidents: components["schemas"]["IncidentOut"][];
+            /** Latency Avg Ms */
+            latency_avg_ms: number | null;
+            /** Latency Peak P95 Ms */
+            latency_peak_p95_ms: number | null;
+            /** Met Target */
+            met_target: boolean | null;
+            /** Name */
+            name: string;
+            /** Site Id */
+            site_id: number;
+            /** Uptime Pct */
+            uptime_pct: number | null;
         };
         /** SpeedPoint */
         SpeedPoint: {
@@ -2283,6 +2399,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RatesOut"];
+                };
+            };
+        };
+    };
+    availability_api_reports_availability_get: {
+        parameters: {
+            query?: {
+                /** @description YYYY-MM, UTC. Default: this month so far */
+                month?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvailabilityOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -26,6 +26,7 @@ from .presence import router as presence_router
 from .probe import probe_loop
 from .pushover import router as pushover_router
 from .rates import router as rates_router
+from .reports import router as reports_router
 from .sites import router as sites_router
 from .audit import router as audit_router
 from .stacks import ingest_router as stack_ingest_router
@@ -89,6 +90,7 @@ app.include_router(presence_public_router)
 app.include_router(pushover_router)
 app.include_router(presence_router, dependencies=console)
 app.include_router(rates_router, dependencies=console)
+app.include_router(reports_router, dependencies=console)
 
 
 @app.get("/healthz")

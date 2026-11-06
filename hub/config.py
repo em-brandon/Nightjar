@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     probe_enabled: bool = True
     probe_interval_s: int = 60
     probe_timeout_s: float = 10.0
+    # The availability a client report measures against (hub/reports.py). 99.9% is about 43 minutes of downtime in a month.
+    report_uptime_target: float = 99.9
     # A site's outage resolves itself after this many passing checks in a row (hub/uptime.py). At the default
     # interval that is five minutes: long enough that a flapping site does not open and close an issue all day.
     uptime_recover_checks: int = 5
