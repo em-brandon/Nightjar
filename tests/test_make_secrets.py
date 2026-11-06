@@ -43,7 +43,7 @@ class MakeSecrets(unittest.TestCase):
     def test_it_creates_every_file_the_compose_file_mounts(self):
         result = self.run_script()
         self.assertEqual(result.returncode, 0, result.stderr)
-        expected = {"postgres_password", "database_url", "console_token", "secret_master_key", "pushover_callback_token", "pushover_token", "pushover_user", "deadman_url", "presence_token"}
+        expected = {"postgres_password", "database_url", "secret_master_key", "pushover_callback_token", "pushover_token", "pushover_user", "deadman_url", "presence_token"}
         self.assertEqual({p.name for p in self.dir.iterdir()}, expected)
 
     def test_no_file_has_a_carriage_return_or_a_newline_anywhere(self):
@@ -57,7 +57,6 @@ class MakeSecrets(unittest.TestCase):
     def test_the_generated_values_have_the_shape_the_hub_needs(self):
         self.run_script()
         self.assertRegex(self.read("postgres_password"), r"^[0-9a-f]{64}$", "hex, so it is safe inside a database URL")
-        self.assertGreaterEqual(len(self.read("console_token")), 16, "the hub refuses a shorter token")
         self.assertGreaterEqual(len(self.read("secret_master_key")), 32, "the hub refuses a shorter master key")
         self.assertRegex(self.read("pushover_callback_token"), r"^[0-9a-f]{48}$")
 
@@ -83,11 +82,11 @@ class MakeSecrets(unittest.TestCase):
 
     def test_it_fills_in_only_what_is_missing(self):
         self.run_script()
-        (self.dir / "console_token").unlink()
+        (self.dir / "pushover_callback_token").unlink()
         before_password = self.read("postgres_password")
         self.run_script()
         self.assertEqual(self.read("postgres_password"), before_password, "the existing database password is kept")
-        self.assertGreaterEqual(len(self.read("console_token")), 16, "the missing token is made")
+        self.assertRegex(self.read("pushover_callback_token"), r"^[0-9a-f]{48}$", "the missing secret is made")
 
     @unittest.skipIf(os.name == "nt", "file modes are not meaningful on Windows")
     def test_the_directory_is_private_to_its_owner(self):
@@ -105,9 +104,9 @@ class MakeSecrets(unittest.TestCase):
     def test_check_fails_on_a_file_others_can_read_and_passes_once_it_is_private(self):
         self.run_script()
         loose = self.run_script("--check")
-        if (self.dir / "console_token").stat().st_mode & 0o044:
+        if (self.dir / "postgres_password").stat().st_mode & 0o044:
             self.assertNotEqual(loose.returncode, 0, "644 files must fail the check")
-            self.assertIn("console_token", loose.stderr)
+            self.assertIn("postgres_password", loose.stderr)
         for path in self.dir.iterdir():
             path.chmod(0o400)
         tight = self.run_script("--check")

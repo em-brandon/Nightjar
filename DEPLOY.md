@@ -77,7 +77,7 @@ docker compose logs -f caddy     # watch the certificate get issued
 ```
 
 **Secrets are files, not environment variables.** `make-secrets.sh` writes one file per secret into `./secrets` (mode 700, never
-committed): `postgres_password`, `database_url`, `console_token`, `secret_master_key` and `pushover_callback_token` are generated, and
+committed): `postgres_password`, `database_url`, `secret_master_key` and `pushover_callback_token` are generated, and
 `pushover_token`, `pushover_user`, `deadman_url` and `presence_token` are created empty for you to fill in. Compose mounts them under
 `/run/secrets`, so `docker inspect`, process listings and crash dumps never show them (checked: no container's environment holds a
 secret). It never overwrites a file that exists, so running it again is safe.
@@ -94,8 +94,9 @@ too: every new site's ingest secret is worked out from it and none is stored, so
 `docs/KEYS.md`). The hub refuses to start in production without it.
 
 The hub migrates its own database on every start, so there is no schema step. It also refuses to start
-if the console token is missing, empty or under 16 characters, because otherwise the console API and every write
-would be open to the internet (checked: an empty `secrets/console_token` makes the hub exit with an error). The session cookie is marked
+if `SECRET_MASTER_KEY` is missing (the authenticator codes are derived from it). There is no shared console token in
+production: you sign in with an account made by `python -m hub.operator_cli create`, and machines (the wall display, CI, scripts) use
+device tokens an owner creates in the console (decision #59). The session cookie is marked
 `Secure` behind Caddy's TLS, so never use the console over plain http.
 
 **Create your console account** once the stack is up. There is no sign-up page; the account is made on the server:
