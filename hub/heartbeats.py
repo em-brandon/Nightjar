@@ -28,7 +28,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Path, Request
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -56,6 +56,8 @@ MESSAGES = {
 
 # Nothing is a heartbeat's name unless it can sit in a URL path without being escaped.
 NAME_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
+# A site has a handful of jobs. A cap stops a loop, or a stolen key, minting names without end (each one is a row that is watched).
+MAX_PER_SITE = 100
 
 
 def default_grace(interval_s: int) -> int:
@@ -258,6 +260,11 @@ async def ping(
     except ValidationError as exc:
         # 422 like any other bad input, not a 500 that a cron job would retry
         raise HTTPException(422, exc.errors(include_url=False, include_context=False)) from exc
+    known = await session.scalar(select(Heartbeat.id).where(Heartbeat.site_id == site.id, Heartbeat.name == name))
+    if known is None:
+        count = await session.scalar(select(func.count()).select_from(Heartbeat).where(Heartbeat.site_id == site.id))
+        if (count or 0) >= MAX_PER_SITE:
+            raise HTTPException(409, f"a site can have {MAX_PER_SITE} heartbeats: delete the ones you no longer use")
     hb = await record_ping(session, site, name, payload)
     return _out(hb, site, datetime.now(UTC))
 

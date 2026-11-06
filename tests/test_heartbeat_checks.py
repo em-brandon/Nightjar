@@ -327,6 +327,15 @@ class Behaviour(unittest.IsolatedAsyncioTestCase):
 
     # --- the routes ----------------------------------------------------------------------------------------
 
+    async def test_a_site_cannot_mint_heartbeats_without_end(self):
+        for i in range(heartbeats.MAX_PER_SITE):
+            res = await self.http.post(f"/ingest/{KEY}/heartbeat/job-{i}")
+            self.assertEqual(res.status_code, 200, res.text)
+        res = await self.http.post(f"/ingest/{KEY}/heartbeat/one-too-many")
+        self.assertEqual(res.status_code, 409, res.text)
+        # one that exists is still pinged at the cap: a working job must never be turned away
+        self.assertEqual((await self.http.post(f"/ingest/{KEY}/heartbeat/job-0")).status_code, 200)
+
     async def test_the_route_takes_a_bare_post_and_lists_it_for_the_console(self):
         res = await self.http.post(f"/ingest/{KEY}/heartbeat/nightly")
         self.assertEqual(res.status_code, 200, res.text)

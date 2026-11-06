@@ -115,6 +115,11 @@ class HomeIngest(unittest.IsolatedAsyncioTestCase):
 
     # ---- live view ----
 
+    async def test_a_client_sites_credentials_cannot_post_home_reports(self):
+        r = await self.http.post("/ingest/other/home", json={"cpu_temp_c": 40})
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(await self.sql("SELECT count(*) FROM home_reports"), [(0,)])
+
     async def test_a_report_shows_the_host_and_the_backup_age(self):
         self.assertEqual((await self.report()).status_code, 201)
         r = await self.http.get("/api/home")
