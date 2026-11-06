@@ -16,6 +16,9 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 CLIENT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "client")
 sys.path.insert(0, CLIENT)
+# thermal_probe reads its settings when it is imported (the same two lines as tests/test_signing_contract.py)
+os.environ.setdefault("NIGHTJAR_INGEST_URL", "https://nightjar.example/ingest/K/event")
+os.environ.setdefault("NIGHTJAR_INGEST_SECRET", "s3cret")
 
 import home_reporter  # noqa: E402
 import jellyfin_reporter  # noqa: E402
