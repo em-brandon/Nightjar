@@ -97,7 +97,9 @@ machine with a wrong clock is refused with `stale timestamp`: keep NTP on. A req
 because `REQUIRE_SIGNED_TIMESTAMP` is on by default. Set it `false` only for a copy of an old reporter that signs the body alone and cannot be updated yet.
 
 ```bash
-# the same thing in a shell, which is what CI uses
+# the same thing in a shell. For trying it by hand only: `openssl -hmac KEY` and curl's -H put the secret and the signature on
+# a command line, which every user on the machine can read with `ps`. Use client/nightjar.sh for CI and cron; it signs
+# without either appearing in any process's arguments.
 TS="$(date +%s)"
 SIG="sha256=$(printf '%s.%s' "$TS" "$BODY" | openssl dgst -sha256 -hmac "$NIGHTJAR_SECRET" -hex | sed 's/^.* //')"
 curl -sS -X POST "$NIGHTJAR_URL/ingest/$NIGHTJAR_KEY/deploy" \
@@ -485,6 +487,10 @@ to the app is visible there instead of looking like an app with no errors.
   that cannot be hidden this way for long, and the silence is still found at the next missed interval. There is no nonce on purpose:
   remembering every signature seen would be state that must survive restarts, for a window this short. A request sent with **no**
   timestamp is refused unless you turn `REQUIRE_SIGNED_TIMESTAMP` off, which would make an old capture of one replayable for ever.
+- **`client/nightjar.sh` keeps the secret and signatures off command lines.** It builds the HMAC from plain hashes with the key held
+  only in shell variables and pipes (`printf` is a builtin, so it is never a process argument), and hands curl its signature headers on
+  standard input. A test runs it behind logging shims and fails if the secret or a valid signature appears in any argument list.
+  The job's name or `--fail` message is still on curl's command line; keep secrets out of those.
 - **Keys appear in Caddy's access log**, because they are in the URL. That is acceptable for an identifier that is
   not secret, which is why signatures matter. Never put a secret in a URL. The one exception is Pushover's acknowledgement callback
   (`/pushover/ack/<token>`), which cannot sign anything: its path is redacted in Caddy's log and in uvicorn's access log
