@@ -22,6 +22,8 @@ from .media import ingest_router as media_ingest_router
 from .media import router as media_router
 from .migrate import upgrade
 from .outbox import sender_loop
+from .passkeys import public_router as passkey_login_router
+from .passkeys import router as passkeys_router
 from .presence import public_router as presence_public_router
 from .presence import router as presence_router
 from .probe import probe_loop
@@ -73,6 +75,9 @@ app.include_router(auth.router)
 app.include_router(setup_router)
 app.include_router(users_router, dependencies=console)
 app.include_router(devices_router, dependencies=console)
+# Passkeys: managing them needs a person's session (checked inside), signing in with one needs none yet
+app.include_router(passkeys_router)
+app.include_router(passkey_login_router)
 app.include_router(browser_router)
 app.include_router(ingest_router)
 app.include_router(api_router, dependencies=console)

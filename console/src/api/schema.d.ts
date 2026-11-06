@@ -59,6 +59,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/passkey/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Login */
+        post: operations["login_api_auth_passkey_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/passkey/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Login Options */
+        post: operations["login_options_api_auth_passkey_options_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/sessions": {
         parameters: {
             query?: never;
@@ -463,6 +497,74 @@ export interface paths {
          */
         post: operations["retry_api_notifications__notification_id__retry_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/passkeys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Passkeys */
+        get: operations["list_passkeys_api_passkeys_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/passkeys/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register */
+        post: operations["register_api_passkeys_register_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/passkeys/register/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register Options */
+        post: operations["register_options_api_passkeys_register_options_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/passkeys/{passkey_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove */
+        delete: operations["remove_api_passkeys__passkey_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1030,6 +1132,15 @@ export interface components {
              */
             through: string;
         };
+        /** ChallengeOut */
+        ChallengeOut: {
+            /** Challenge Id */
+            challenge_id: string;
+            /** Options */
+            options: {
+                [key: string]: unknown;
+            };
+        };
         /** ClientReport */
         ClientReport: {
             /** Client Id */
@@ -1468,6 +1579,29 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** PasskeyLoginIn */
+        PasskeyLoginIn: {
+            /** Challenge Id */
+            challenge_id: string;
+            /** Credential */
+            credential: {
+                [key: string]: unknown;
+            };
+        };
+        /** PasskeyOut */
+        PasskeyOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: number;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Name */
+            name: string;
+        };
         /** PresenceIn */
         PresenceIn: {
             /**
@@ -1540,6 +1674,19 @@ export interface components {
             stale: boolean;
             /** Updated Unix */
             updated_unix?: number | null;
+        };
+        /** RegisterIn */
+        RegisterIn: {
+            /** Challenge Id */
+            challenge_id: string;
+            /** Credential */
+            credential: {
+                [key: string]: unknown;
+            };
+            /** Name */
+            name: string;
+            /** Password */
+            password: string;
         };
         /** RisingOut */
         RisingOut: {
@@ -2176,6 +2323,61 @@ export interface operations {
             };
         };
     };
+    login_api_auth_passkey_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasskeyLoginIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    login_options_api_auth_passkey_options_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChallengeOut"];
+                };
+            };
+        };
+    };
     list_sessions_api_auth_sessions_get: {
         parameters: {
             query?: never;
@@ -2343,6 +2545,7 @@ export interface operations {
         parameters: {
             query?: {
                 env?: "production" | "staging" | "all";
+                own_account?: boolean;
             };
             header?: never;
             path?: never;
@@ -2372,7 +2575,9 @@ export interface operations {
     };
     list_devices_api_devices_get: {
         parameters: {
-            query?: never;
+            query?: {
+                own_account?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2388,11 +2593,22 @@ export interface operations {
                     "application/json": components["schemas"]["DeviceOut"][];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     create_device_api_devices_post: {
         parameters: {
-            query?: never;
+            query?: {
+                own_account?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2425,7 +2641,9 @@ export interface operations {
     };
     revoke_device_api_devices__device_id__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                own_account?: boolean;
+            };
             header?: never;
             path: {
                 device_id: number;
@@ -2456,7 +2674,9 @@ export interface operations {
     };
     errors_rising_api_errors_rising_get: {
         parameters: {
-            query?: never;
+            query?: {
+                own_account?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2472,11 +2692,22 @@ export interface operations {
                     "application/json": components["schemas"]["RisingOut"][];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     list_heartbeats_api_heartbeats_get: {
         parameters: {
-            query?: never;
+            query?: {
+                own_account?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2492,11 +2723,22 @@ export interface operations {
                     "application/json": components["schemas"]["HeartbeatOut"][];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     delete_heartbeat_api_heartbeats__heartbeat_id__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                own_account?: boolean;
+            };
             header?: never;
             path: {
                 heartbeat_id: number;
@@ -2525,7 +2767,9 @@ export interface operations {
     };
     list_home_api_home_get: {
         parameters: {
-            query?: never;
+            query?: {
+                own_account?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2541,12 +2785,22 @@ export interface operations {
                     "application/json": components["schemas"]["HomeOut"][];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     list_issues_api_issues_get: {
         parameters: {
             query?: {
                 status?: "open" | "all";
+                own_account?: boolean;
             };
             header?: never;
             path?: never;
@@ -2576,7 +2830,9 @@ export interface operations {
     };
     act_on_issue_api_issues__issue_id__actions_post: {
         parameters: {
-            query?: never;
+            query?: {
+                own_account?: boolean;
+            };
             header?: never;
             path: {
                 issue_id: number;
@@ -2611,7 +2867,9 @@ export interface operations {
     };
     issue_log_api_issues__issue_id__log_get: {
         parameters: {
-            query?: never;
+            query?: {
+                own_account?: boolean;
+            };
             header?: never;
             path: {
                 issue_id: number;
@@ -2642,7 +2900,9 @@ export interface operations {
     };
     list_media_api_media_get: {
         parameters: {
-            query?: never;
+            query?: {
+                own_account?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2658,6 +2918,15 @@ export interface operations {
                     "application/json": components["schemas"]["MediaOut"][];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     media_history_api_media_history_get: {
@@ -2665,6 +2934,7 @@ export interface operations {
             query?: {
                 days?: number;
                 limit?: number;
+                own_account?: boolean;
             };
             header?: never;
             path?: never;
@@ -2697,6 +2967,7 @@ export interface operations {
             query?: {
                 status?: "all" | "failed" | "undelivered" | "attention";
                 limit?: number;
+                own_account?: boolean;
             };
             header?: never;
             path?: never;
@@ -2726,7 +2997,9 @@ export interface operations {
     };
     status_api_notifications_status_get: {
         parameters: {
-            query?: never;
+            query?: {
+                own_account?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2742,11 +3015,22 @@ export interface operations {
                     "application/json": components["schemas"]["AlertsStatusOut"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     test_push_api_notifications_test_push_post: {
         parameters: {
-            query?: never;
+            query?: {
+                own_account?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2762,11 +3046,22 @@ export interface operations {
                     "application/json": components["schemas"]["TestPushOut"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     retry_api_notifications__notification_id__retry_post: {
         parameters: {
-            query?: never;
+            query?: {
+                own_account?: boolean;
+            };
             header?: never;
             path: {
                 notification_id: number;
@@ -2795,9 +3090,117 @@ export interface operations {
             };
         };
     };
-    get_presence_api_presence_get: {
+    list_passkeys_api_passkeys_get: {
         parameters: {
             query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasskeyOut"][];
+                };
+            };
+        };
+    };
+    register_api_passkeys_register_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasskeyOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_options_api_passkeys_register_options_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChallengeOut"];
+                };
+            };
+        };
+    };
+    remove_api_passkeys__passkey_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                passkey_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_presence_api_presence_get: {
+        parameters: {
+            query?: {
+                own_account?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2813,11 +3216,22 @@ export interface operations {
                     "application/json": components["schemas"]["PresenceOut"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     set_from_console_api_presence_post: {
         parameters: {
-            query?: never;
+            query?: {
+                own_account?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2850,7 +3264,9 @@ export interface operations {
     };
     rates_api_rates_get: {
         parameters: {
-            query?: never;
+            query?: {
+                own_account?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2866,6 +3282,15 @@ export interface operations {
                     "application/json": components["schemas"]["RatesOut"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     availability_api_reports_availability_get: {
@@ -2873,6 +3298,7 @@ export interface operations {
             query?: {
                 /** @description YYYY-MM, UTC. Default: this month so far */
                 month?: string | null;
+                own_account?: boolean;
             };
             header?: never;
             path?: never;
@@ -2902,7 +3328,9 @@ export interface operations {
     };
     list_sites_api_sites_get: {
         parameters: {
-            query?: never;
+            query?: {
+                own_account?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2918,11 +3346,22 @@ export interface operations {
                     "application/json": components["schemas"]["SiteListed"][];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     create_site_api_sites_post: {
         parameters: {
-            query?: never;
+            query?: {
+                own_account?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2955,7 +3394,9 @@ export interface operations {
     };
     sites_health_api_sites_health_get: {
         parameters: {
-            query?: never;
+            query?: {
+                own_account?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2971,11 +3412,22 @@ export interface operations {
                     "application/json": components["schemas"]["SiteHealthOut"][];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     update_site_api_sites__site_id__patch: {
         parameters: {
-            query?: never;
+            query?: {
+                own_account?: boolean;
+            };
             header?: never;
             path: {
                 site_id: number;
@@ -3010,7 +3462,9 @@ export interface operations {
     };
     site_audit_api_sites__site_id__audit_get: {
         parameters: {
-            query?: never;
+            query?: {
+                own_account?: boolean;
+            };
             header?: never;
             path: {
                 site_id: number;
@@ -3041,7 +3495,9 @@ export interface operations {
     };
     rotate_secret_api_sites__site_id__rotate_secret_post: {
         parameters: {
-            query?: never;
+            query?: {
+                own_account?: boolean;
+            };
             header?: never;
             path: {
                 site_id: number;
@@ -3072,7 +3528,9 @@ export interface operations {
     };
     test_event_api_sites__site_id__test_event_post: {
         parameters: {
-            query?: never;
+            query?: {
+                own_account?: boolean;
+            };
             header?: never;
             path: {
                 site_id: number;
@@ -3103,7 +3561,9 @@ export interface operations {
     };
     list_stacks_api_stacks_get: {
         parameters: {
-            query?: never;
+            query?: {
+                own_account?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -3119,6 +3579,15 @@ export interface operations {
                     "application/json": components["schemas"]["StackOut"][];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     forget_stack_api_stacks_delete: {
@@ -3126,6 +3595,7 @@ export interface operations {
             query: {
                 site: string;
                 stack: string;
+                own_account?: boolean;
             };
             header?: never;
             path?: never;
@@ -3155,6 +3625,7 @@ export interface operations {
         parameters: {
             query?: {
                 status?: "open" | "closed" | "all";
+                own_account?: boolean;
             };
             header?: never;
             path?: never;
@@ -3184,7 +3655,9 @@ export interface operations {
     };
     create_ticket_api_tickets_post: {
         parameters: {
-            query?: never;
+            query?: {
+                own_account?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -3217,7 +3690,9 @@ export interface operations {
     };
     update_ticket_api_tickets__ticket_id__patch: {
         parameters: {
-            query?: never;
+            query?: {
+                own_account?: boolean;
+            };
             header?: never;
             path: {
                 ticket_id: number;
@@ -3252,7 +3727,9 @@ export interface operations {
     };
     list_users_api_users_get: {
         parameters: {
-            query?: never;
+            query?: {
+                own_account?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -3268,11 +3745,22 @@ export interface operations {
                     "application/json": components["schemas"]["UserOut"][];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     create_user_api_users_post: {
         parameters: {
-            query?: never;
+            query?: {
+                own_account?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -3305,7 +3793,9 @@ export interface operations {
     };
     update_user_api_users__user_id__patch: {
         parameters: {
-            query?: never;
+            query?: {
+                own_account?: boolean;
+            };
             header?: never;
             path: {
                 user_id: number;
@@ -3340,7 +3830,9 @@ export interface operations {
     };
     reset_user_api_users__user_id__reset_post: {
         parameters: {
-            query?: never;
+            query?: {
+                own_account?: boolean;
+            };
             header?: never;
             path: {
                 user_id: number;
@@ -3371,7 +3863,9 @@ export interface operations {
     };
     weather_api_weather_get: {
         parameters: {
-            query?: never;
+            query?: {
+                own_account?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -3385,6 +3879,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WeatherOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

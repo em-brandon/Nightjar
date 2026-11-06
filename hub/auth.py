@@ -227,12 +227,13 @@ async def authenticate(request: Request, db: AsyncSession) -> Who | None:
     return None
 
 
-async def require_console(request: Request, db: AsyncSession = Depends(get_session)) -> None:
-    """Dependency for every console route."""
+async def require_console(request: Request, db: AsyncSession = Depends(get_session), *, own_account: bool = False) -> None:
+    """Dependency for every console route. `own_account` is for routes about the signed-in person themselves (their
+    sessions, their passkeys): a read-only role limits what they can change in the console, not who they are."""
     who = await authenticate(request, db)
     if who is None:
         raise HTTPException(401, "authentication required")
-    if who.role == "viewer" and request.method not in SAFE_METHODS:
+    if who.role == "viewer" and request.method not in SAFE_METHODS and not own_account:
         raise HTTPException(403, "your role is read-only")
     request.state.who = who
     audit.actor_var.set(who.name)
@@ -253,7 +254,7 @@ async def require_owner(request: Request) -> None:
 
 async def require_session(request: Request, db: AsyncSession = Depends(get_session)) -> Who:
     """For routes about the signed-in account itself: a bearer token has no account behind it."""
-    await require_console(request, db)
+    await require_console(request, db, own_account=True)
     who: Who = request.state.who
     # a person's own session. A device has none of the things these routes are about (sessions, passkeys of its own).
     if who.session_id is None or who.operator_id is None:
@@ -365,6 +366,16 @@ async def _account_login(body: LoginIn, request: Request, response: Response, db
         await asyncio.sleep(0.5)
         raise HTTPException(401, "wrong username, password or code")
 
+    await open_session(db, request, response, op)
+    ip_window.clear()
+    user_window.clear()
+    return {"ok": True}
+
+
+async def open_session(db: AsyncSession, request: Request, response: Response, op: Operator, via: str = "") -> None:
+    """Start a signed-in session for an operator who has proved who they are, however they did it (password and
+    code, or a passkey). Sets the cookie and writes the audit line; the caller has already checked the proof."""
+    ip = client_ip(request)
     token, token_hash = credentials.new_session_token()
     created = _now()
     db.add(
@@ -385,10 +396,8 @@ async def _account_login(body: LoginIn, request: Request, response: Response, db
             | (ConsoleSession.revoked_at < created - timedelta(days=7))
         )
     )
-    audit.record_login(db, "login", f"from {ip}", actor=op.username)
+    audit.record_login(db, "login", f"from {ip}" + (f" ({via})" if via else ""), actor=op.username)
     await db.commit()
-    ip_window.clear()
-    user_window.clear()
 
     response.set_cookie(
         SESSION_COOKIE,
@@ -399,7 +408,23 @@ async def _account_login(body: LoginIn, request: Request, response: Response, db
         secure=_cookie_secure(request),
         path="/",
     )
-    return {"ok": True}
+
+
+async def check_password_step_up(db: AsyncSession, op: Operator, password: str, ip: str) -> bool:
+    """Ask a signed-in person for their password again before something that adds a way in. Counts toward the same
+    lock-out as the sign-in form, so a stolen session cookie cannot be used to guess the password."""
+    now = time.monotonic()
+    user_window = _account_failures[op.username]
+    if _recent(user_window, now) >= ACCOUNT_FAIL_LIMIT or _recent(_ip_failures[ip], now) >= IP_FAIL_LIMIT:
+        raise HTTPException(429, "too many failed attempts; wait a few minutes")
+    ok = await asyncio.to_thread(credentials.verify_password, password, op.password_hash)
+    if not ok:
+        user_window.append(now)
+        _ip_failures[ip].append(now)
+        audit.record_login(db, "password_check_failed", f"from {ip}", actor=op.username)
+        await db.commit()
+        await asyncio.sleep(0.5)
+    return ok
 
 
 async def _spend_code(db: AsyncSession, op: Operator, code: str) -> bool:
