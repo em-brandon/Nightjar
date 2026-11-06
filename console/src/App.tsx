@@ -3,6 +3,7 @@ import type { Alert, Deploy, Heartbeat, HomeSnapshot, Issue, MediaPlay, MediaSna
 import type { Feeds, TabId } from "./feeds.ts";
 import { isUnacknowledged } from "./alerts.ts";
 import AlertBanner from "./AlertBanner.tsx";
+import Sessions from "./Sessions.tsx";
 import Splash from "./Splash.tsx";
 import { Dot } from "./ui.tsx";
 import { demoHome } from "./home.ts";
@@ -51,7 +52,8 @@ const ICONS: Record<string, ReactElement> = {
 };
 const VIEWS: Record<Exclude<TabId, "idle">, (props: { f: Feeds }) => ReactElement | null> = { overview: Overview, incidents: Incidents, requests: Requests, deploys: Deploys, staging: Staging, media: Media, sites: Sites, alerts: Alerts, heartbeats: Heartbeats };
 
-export default function App({ onSignOut }: { onSignOut?: () => void }) {
+export default function App({ onSignOut, hasAccount = false }: { onSignOut?: () => void; hasAccount?: boolean }) {
+  const [showSessions, setShowSessions] = useState(false);
   const health = usePoll<SiteHealth[]>("/api/sites/health");
   const issues = usePoll<Issue[]>("/api/issues?status=all");
   const rising = usePoll<Rising[]>("/api/errors/rising");
@@ -71,7 +73,7 @@ export default function App({ onSignOut }: { onSignOut?: () => void }) {
   const now = useNow();
   const [tab, go] = useHashTab(TAB_IDS, "overview");
   const [idleHold, setIdleHold] = useState(false);
-  useInactivity(IDLE_AFTER_MS, () => go("idle"), tab !== "idle" && !idleHold);
+  useInactivity(IDLE_AFTER_MS, () => go("idle"), tab !== "idle" && !idleHold && !showSessions);
 
   const feeds = [health, issues, rising, tickets, deploys, attention, stacks, heartbeats, media, mediaHistory];
   const hubError = feeds.some((x) => x.error);
@@ -169,6 +171,11 @@ export default function App({ onSignOut }: { onSignOut?: () => void }) {
           </span>
           <span>{updatedAt ? `updated ${ago(updatedAt, now)}` : "waiting for data"}</span>
           <button className="side-link" onClick={() => go("idle")}>Show idle screen</button>
+          {hasAccount && (
+            <button className="side-link" onClick={() => setShowSessions(true)}>
+              Signed-in devices
+            </button>
+          )}
           {onSignOut && (
             <button className="side-link" onClick={onSignOut}>
               Sign out
@@ -176,6 +183,8 @@ export default function App({ onSignOut }: { onSignOut?: () => void }) {
           )}
         </div>
       </aside>
+
+      {showSessions && <Sessions onClose={() => setShowSessions(false)} />}
 
       <div className="main">
         {hubError && tab !== "overview" && (

@@ -60,5 +60,5 @@ export default function Root() {
       />
     );
   }
-  return <App key={session} onSignOut={required ? signOut : undefined} />;
+  return <App key={session} onSignOut={required ? signOut : undefined} hasAccount={account} />;
 }

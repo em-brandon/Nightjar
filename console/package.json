@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "tsc --noEmit && node src/promotion.test.mjs && node src/media.test.mjs && node src/weather.test.mjs && node src/home.test.mjs && node src/push.test.mjs && node src/monitoring.test.mjs && node src/snippets.test.mjs && node src/alerts.test.mjs && node src/grouping.test.mjs && node src/heartbeats.test.mjs && node src/css.test.mjs",
+    "test": "tsc --noEmit && node src/promotion.test.mjs && node src/media.test.mjs && node src/weather.test.mjs && node src/home.test.mjs && node src/push.test.mjs && node src/monitoring.test.mjs && node src/snippets.test.mjs && node src/alerts.test.mjs && node src/grouping.test.mjs && node src/heartbeats.test.mjs && node src/sessions.test.mjs && node src/css.test.mjs",
     "types": "npm --prefix ../tools/typegen install --no-audit --no-fund --silent && npm --prefix ../tools/typegen run generate --silent"
   },
   "dependencies": {
