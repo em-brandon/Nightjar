@@ -249,11 +249,27 @@ class Login(AuthTestCase):
 
 
 class StartupGuard(unittest.TestCase):
-    def test_production_without_a_token_refuses_to_start(self):
-        with patch.object(settings, "verify_signatures", True), patch.object(settings, "console_token", ""):
+    def test_production_with_accounts_off_and_no_token_refuses_to_start(self):
+        # with accounts on (the production default) no token is needed; with them turned off the console would be open
+        with patch.object(settings, "verify_signatures", True), patch.object(settings, "console_token", ""), \
+                patch.object(settings, "operator_login", False):
             with self.assertRaises(RuntimeError) as cm:
                 auth.check_config()
             self.assertIn("CONSOLE_TOKEN", str(cm.exception))
+
+    def test_production_with_accounts_needs_no_console_token(self):
+        with patch.object(settings, "verify_signatures", True), patch.object(settings, "console_token", ""), \
+                patch.object(settings, "operator_login", None), patch.object(settings, "secret_master_key", "m" * 40):
+            self.assertTrue(auth.operator_mode())
+            self.assertTrue(auth.enabled(), "auth is on without any token")
+            auth.check_config()
+
+    def test_a_leftover_console_token_in_account_mode_is_ignored_and_says_so(self):
+        with patch.object(settings, "verify_signatures", True), patch.object(settings, "console_token", TOKEN), \
+                patch.object(settings, "operator_login", None), patch.object(settings, "secret_master_key", "m" * 40):
+            with self.assertLogs("nightjar.auth", level="WARNING") as logs:
+                auth.check_config()
+            self.assertTrue(any("ignored" in line for line in logs.output))
 
     def test_production_with_a_token_and_a_master_key_starts(self):
         with patch.object(settings, "verify_signatures", True), patch.object(settings, "console_token", TOKEN),                 patch.object(settings, "secret_master_key", "m" * 40):

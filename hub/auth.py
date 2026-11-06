@@ -1,19 +1,21 @@
 """Console authentication. Guards everything under /api (the console's feeds and every write). It does NOT guard
 /ingest, which authenticates by per-site key plus HMAC, or /healthz.
 
-Two ways in, always:
-  * `Authorization: Bearer <CONSOLE_TOKEN>`, for scripts and the wall display.
+Ways in:
   * a session cookie, set by POST /api/auth/login. HttpOnly, so page JavaScript (and anything injected into it) never
     sees it; SameSite=Strict, so another site cannot make the browser send it.
+  * `Authorization: Bearer njd_...`, a device token, for a script or CI job (hub/devices.py).
+  * a wall display swaps a device token for a session cookie once (POST /api/auth/device-login) and stays signed in.
 
 What the cookie means depends on the mode (operator_mode()):
-  * account mode (production): you sign in with a username, a password and a TOTP code, and get a random session that is
-    stored hashed in the database, expires, and can be revoked on its own. The shared token cannot sign in here.
+  * account mode (production): you sign in with a username and a password plus an authenticator code or a passkey, and get
+    a random session that is stored hashed in the database, expires, and can be revoked on its own. The shared
+    CONSOLE_TOKEN does nothing here: it is retired (decision #59).
   * token mode (local development): you type CONSOLE_TOKEN and the cookie is derived from it. Simple, and not for
     anything on the internet.
 
-With CONSOLE_TOKEN unset, auth is off. That is the local-development default, and the hub refuses to start that way when
-VERIFY_SIGNATURES is on (production).
+With neither a CONSOLE_TOKEN nor account mode, auth is off. That is the local-development default, and the hub refuses
+to start that way when VERIFY_SIGNATURES is on (production).
 """
 
 import asyncio
@@ -33,7 +35,7 @@ from . import audit, credentials
 from .config import settings
 from .db import SessionLocal, get_session
 from .derive import MIN_MASTER_LEN
-from .models import ConsoleSession, Operator
+from .models import ConsoleSession, DeviceToken, Operator
 from .sources import client_ip
 
 log = logging.getLogger("nightjar.auth")
@@ -71,15 +73,13 @@ LAST_SEEN_EVERY_S = 60
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
-def enabled() -> bool:
-    return bool(settings.console_token)
-
-
 def operator_mode() -> bool:
-    """Sign in with an account (production) rather than the shared token (local development)."""
-    if not enabled():
-        return False
+    """Sign in with an account (production) rather than the shared token (local development). Needs no token at all."""
     return settings.verify_signatures if settings.operator_login is None else settings.operator_login
+
+
+def enabled() -> bool:
+    return operator_mode() or bool(settings.console_token)
 
 
 def check_config() -> None:
@@ -90,12 +90,11 @@ def check_config() -> None:
             f"CONSOLE_TOKEN is too short ({len(token)} characters). Use at least "
             f"{MIN_TOKEN_LEN}, e.g. `openssl rand -base64 32`."
         )
-    if settings.verify_signatures and not token:
+    if settings.verify_signatures and not operator_mode() and not token:
         raise RuntimeError(
-            "Refusing to start: VERIFY_SIGNATURES is on (production) but CONSOLE_TOKEN "
+            "Refusing to start: VERIFY_SIGNATURES is on (production) but OPERATOR_LOGIN is off and CONSOLE_TOKEN "
             "is not set, so the console API, including every write, would be open to "
-            "anyone who can reach it. Set CONSOLE_TOKEN in the environment, or mount it as the file "
-            "/run/secrets/console_token."
+            "anyone who can reach it. Leave OPERATOR_LOGIN unset to sign in with accounts, or set CONSOLE_TOKEN."
         )
     master = settings.secret_master_key
     if master and len(master) < MIN_MASTER_LEN:
@@ -115,8 +114,12 @@ def check_config() -> None:
             "Refusing to start: account sign-in is on but SECRET_MASTER_KEY is not set, and the two-factor code is "
             "derived from it. Set SECRET_MASTER_KEY, or set OPERATOR_LOGIN=false for local development."
         )
-    if not token:
-        log.warning("console authentication is OFF (CONSOLE_TOKEN is not set). Fine for local development only.")
+    if operator_mode() and token:
+        log.warning(
+            "CONSOLE_TOKEN is set but ignored: accounts are on, and machines use device tokens. Delete the secret."
+        )
+    if not enabled():
+        log.warning("console authentication is OFF (no CONSOLE_TOKEN and account sign-in is off). Fine for local development only.")
 
 
 def _session_value() -> str:
@@ -152,6 +155,31 @@ class Who:
         self.name = name
 
 
+def _device_valid(row: DeviceToken | None) -> bool:
+    return row is not None and row.revoked_at is None and (row.expires_at is None or row.expires_at > _now())
+
+
+def _device_who(row: DeviceToken, kind: str, session_id: int | None = None) -> Who:
+    # read is a viewer, write a maintainer. A device is never an owner: it can not create a site, rotate a secret, or
+    # make another credential, so a leaked one cannot be used to mint more access.
+    return Who(kind, session_id, None, role="viewer" if row.scope == "read" else "maintainer", name=f"device:{row.name}")
+
+
+async def _touch_device(db: AsyncSession, row: DeviceToken, ip: str) -> None:
+    now = _now()
+    if row.last_used_at is None or (now - row.last_used_at).total_seconds() > LAST_SEEN_EVERY_S:
+        row.last_used_at, row.last_ip = now, ip
+        await db.commit()
+
+
+async def _bearer_device_who(request: Request, db: AsyncSession, presented: str) -> Who | None:
+    row = await db.scalar(select(DeviceToken).where(DeviceToken.token_hash == credentials.hash_token(presented)))
+    if not _device_valid(row):
+        return None
+    await _touch_device(db, row, client_ip(request))
+    return _device_who(row, "device")
+
+
 async def _session_who(request: Request, db: AsyncSession) -> Who | None:
     raw = request.cookies.get(SESSION_COOKIE)
     if not raw or len(raw) > 200:
@@ -165,6 +193,13 @@ async def _session_who(request: Request, db: AsyncSession) -> Who | None:
     if (now - row.last_seen_at).total_seconds() > LAST_SEEN_EVERY_S:
         row.last_seen_at = now
         await db.commit()
+    if row.device_token_id is not None:
+        # a wall display: valid exactly as long as its token is
+        device = await db.get(DeviceToken, row.device_token_id)
+        if not _device_valid(device):
+            return None
+        await _touch_device(db, device, client_ip(request))
+        return _device_who(device, "device-session", row.id)
     op = await db.get(Operator, row.operator_id)
     # a disabled account, or one whose owner has reset it, stops working at once without waiting for its sessions to expire
     if op is None or op.disabled_at is not None or op.setup_token_hash is not None:
@@ -176,8 +211,14 @@ async def authenticate(request: Request, db: AsyncSession) -> Who | None:
     if not enabled():
         return Who("bearer")
     header = request.headers.get("authorization", "")
-    if header.lower().startswith("bearer ") and _matches(header[7:].strip(), settings.console_token):
-        return Who("bearer")
+    if header.lower().startswith("bearer "):
+        presented = header[7:].strip()
+        if presented.startswith(credentials.DEVICE_PREFIX):
+            return await _bearer_device_who(request, db, presented)
+        # The shared token is retired once accounts are on: it would be one secret that does everything, with no name and
+        # no way to take it back from one place.
+        if not operator_mode() and settings.console_token and _matches(presented, settings.console_token):
+            return Who("bearer")
     if operator_mode():
         return await _session_who(request, db)
     cookie = request.cookies.get(COOKIE)
@@ -214,8 +255,9 @@ async def require_session(request: Request, db: AsyncSession = Depends(get_sessi
     """For routes about the signed-in account itself: a bearer token has no account behind it."""
     await require_console(request, db)
     who: Who = request.state.who
-    if who.session_id is None:
-        raise HTTPException(403, "this needs a signed-in session, not the bearer token")
+    # a person's own session. A device has none of the things these routes are about (sessions, passkeys of its own).
+    if who.session_id is None or who.operator_id is None:
+        raise HTTPException(403, "this needs a person's signed-in session, not a token or a device")
     return who
 
 
@@ -375,6 +417,51 @@ async def _spend_code(db: AsyncSession, op: Operator, code: str) -> bool:
         audit.record_login(db, "recovery_code_used", f"{len(left)} left", actor=op.username)
         return True
     return False
+
+
+class DeviceLoginIn(BaseModel):
+    token: str = Field(max_length=200)
+
+
+@router.post("/device-login")
+async def device_login(
+    body: DeviceLoginIn, request: Request, response: Response, db: AsyncSession = Depends(get_session)
+) -> dict[str, bool]:
+    """A wall display has no keyboard for a password and a code. It swaps its device token for a session cookie once, and
+    stays signed in for as long as the token is good. Revoking the token ends the session on its next request."""
+    if not operator_mode():
+        raise HTTPException(400, "device sign-in is only used when accounts are on")
+    ip = client_ip(request)
+    window = _ip_failures[ip]
+    if _recent(window, time.monotonic()) >= IP_FAIL_LIMIT:
+        raise HTTPException(429, "too many failed attempts; wait a few minutes")
+    token = body.token.strip()
+    row = None
+    if token.startswith(credentials.DEVICE_PREFIX):
+        row = await db.scalar(select(DeviceToken).where(DeviceToken.token_hash == credentials.hash_token(token)))
+    if not _device_valid(row):
+        window.append(time.monotonic())
+        await asyncio.sleep(0.5)
+        raise HTTPException(401, "that device token is not valid")
+    created = _now()
+    expires = created + timedelta(days=settings.device_session_days)
+    if row.expires_at is not None:
+        expires = min(expires, row.expires_at)
+    raw, raw_hash = credentials.new_session_token()
+    db.add(
+        ConsoleSession(
+            token_hash=raw_hash, operator_id=None, device_token_id=row.id, created_at=created, last_seen_at=created,
+            expires_at=expires, ip=ip, user_agent=request.headers.get("user-agent", "")[:200],
+        )
+    )
+    row.last_used_at, row.last_ip = created, ip
+    audit.record_login(db, "device_signed_in", f"{row.name} from {ip}", actor=f"device:{row.name}")
+    await db.commit()
+    response.set_cookie(
+        SESSION_COOKIE, raw, max_age=int((expires - created).total_seconds()), httponly=True, samesite="strict",
+        secure=_cookie_secure(request), path="/",
+    )
+    return {"ok": True}
 
 
 @router.post("/logout")

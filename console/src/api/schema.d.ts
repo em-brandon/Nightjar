@@ -4,6 +4,27 @@
  */
 
 export interface paths {
+    "/api/auth/device-login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Device Login
+         * @description A wall display has no keyboard for a password and a code. It swaps its device token for a session cookie once, and
+         *     stays signed in for as long as the token is good. Revoking the token ends the session on its next request.
+         */
+        post: operations["device_login_api_auth_device_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/login": {
         parameters: {
             query?: never;
@@ -152,6 +173,41 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Devices */
+        get: operations["list_devices_api_devices_get"];
+        put?: never;
+        /** Create Device */
+        post: operations["create_device_api_devices_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/devices/{device_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke Device */
+        delete: operations["revoke_device_api_devices__device_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1018,6 +1074,61 @@ export interface components {
              * @enum {string}
              */
             status: "running" | "success" | "failed";
+        };
+        /** DeviceCreate */
+        DeviceCreate: {
+            /** Expires Days */
+            expires_days?: number | null;
+            /** Name */
+            name: string;
+            /**
+             * Scope
+             * @default read
+             * @enum {string}
+             */
+            scope: "read" | "write";
+        };
+        /** DeviceIssued */
+        DeviceIssued: {
+            device: components["schemas"]["DeviceOut"];
+            /** Token */
+            token: string;
+        };
+        /** DeviceLoginIn */
+        DeviceLoginIn: {
+            /** Token */
+            token: string;
+        };
+        /** DeviceOut */
+        DeviceOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string | null;
+            /** Expires At */
+            expires_at: string | null;
+            /** Id */
+            id: number;
+            /** Last Ip */
+            last_ip: string;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Name */
+            name: string;
+            /** Open Sessions */
+            open_sessions: number;
+            /** Prefix */
+            prefix: string;
+            /** Revoked At */
+            revoked_at: string | null;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "read" | "write";
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1973,6 +2084,41 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    device_login_api_auth_device_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceLoginIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     login_api_auth_login_post: {
         parameters: {
             query?: never;
@@ -2211,6 +2357,90 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeployOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_devices_api_devices_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceOut"][];
+                };
+            };
+        };
+    };
+    create_device_api_devices_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceIssued"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_device_api_devices__device_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceOut"];
                 };
             };
             /** @description Validation Error */

@@ -9,6 +9,7 @@ from .api import router as api_router
 from .browser import router as browser_router
 from .config import settings
 from .db import engine
+from .devices import router as devices_router
 from .deploys import ingest_router as deploy_ingest_router
 from .deploys import router as deploys_router
 from .heartbeats import ingest_router as heartbeat_ingest_router
@@ -71,6 +72,7 @@ app.include_router(auth.router)
 # Setting up a new account is authenticated by its one-time setup token, not by a session
 app.include_router(setup_router)
 app.include_router(users_router, dependencies=console)
+app.include_router(devices_router, dependencies=console)
 app.include_router(browser_router)
 app.include_router(ingest_router)
 app.include_router(api_router, dependencies=console)

@@ -336,6 +336,173 @@
         "title": "DeployOut",
         "type": "object"
       },
+      "DeviceCreate": {
+        "properties": {
+          "expires_days": {
+            "anyOf": [
+              {
+                "maximum": 3650.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires Days"
+          },
+          "name": {
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "scope": {
+            "default": "read",
+            "enum": [
+              "read",
+              "write"
+            ],
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "DeviceCreate",
+        "type": "object"
+      },
+      "DeviceIssued": {
+        "properties": {
+          "device": {
+            "$ref": "#/components/schemas/DeviceOut"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "device",
+          "token"
+        ],
+        "title": "DeviceIssued",
+        "type": "object"
+      },
+      "DeviceLoginIn": {
+        "properties": {
+          "token": {
+            "maxLength": 200,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "title": "DeviceLoginIn",
+        "type": "object"
+      },
+      "DeviceOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "last_ip": {
+            "title": "Last Ip",
+            "type": "string"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "open_sessions": {
+            "title": "Open Sessions",
+            "type": "integer"
+          },
+          "prefix": {
+            "title": "Prefix",
+            "type": "string"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "scope": {
+            "enum": [
+              "read",
+              "write"
+            ],
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "prefix",
+          "scope",
+          "created_by",
+          "created_at",
+          "last_used_at",
+          "last_ip",
+          "expires_at",
+          "revoked_at",
+          "open_sessions"
+        ],
+        "title": "DeviceOut",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -3274,6 +3441,52 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/auth/device-login": {
+      "post": {
+        "description": "A wall display has no keyboard for a password and a code. It swaps its device token for a session cookie once, and\nstays signed in for as long as the token is good. Revoking the token ends the session on its next request.",
+        "operationId": "device_login_api_auth_device_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceLoginIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Device Login Api Auth Device Login Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Device Login",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/auth/login": {
       "post": {
         "operationId": "login_api_auth_login_post",
@@ -3596,6 +3809,112 @@
         "summary": "List Deploys",
         "tags": [
           "deploys"
+        ]
+      }
+    },
+    "/api/devices": {
+      "get": {
+        "operationId": "list_devices_api_devices_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DeviceOut"
+                  },
+                  "title": "Response List Devices Api Devices Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Devices",
+        "tags": [
+          "devices"
+        ]
+      },
+      "post": {
+        "operationId": "create_device_api_devices_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceIssued"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Device",
+        "tags": [
+          "devices"
+        ]
+      }
+    },
+    "/api/devices/{device_id}": {
+      "delete": {
+        "operationId": "revoke_device_api_devices__device_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "title": "Device Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Device",
+        "tags": [
+          "devices"
         ]
       }
     },
