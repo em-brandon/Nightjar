@@ -101,14 +101,18 @@ class StartupGuardStillHolds(unittest.TestCase):
     def test_a_long_enough_token_from_a_file_lets_production_start(self):
         self.check(self.settings_with("a-console-token-from-a-file-0123456789\n", verify_signatures=True))
 
+    def test_production_with_accounts_starts_without_any_token_file(self):
+        self.check(self.settings_with(None, verify_signatures=True))
+
+    # With accounts turned off, a production hub still needs the shared token (accounts are the default, decision #59)
     def test_production_refuses_to_start_when_the_token_file_is_missing(self):
         with self.assertRaises(RuntimeError) as ctx:
-            self.check(self.settings_with(None, verify_signatures=True))
+            self.check(self.settings_with(None, verify_signatures=True, operator_login=False))
         self.assertIn("/run/secrets/console_token", str(ctx.exception), "the message says where the file goes")
 
     def test_production_refuses_to_start_when_the_token_file_is_empty(self):
         with self.assertRaises(RuntimeError):
-            self.check(self.settings_with("", verify_signatures=True))
+            self.check(self.settings_with("", verify_signatures=True, operator_login=False))
 
     def test_a_token_file_that_is_too_short_is_refused_even_in_development(self):
         with self.assertRaises(RuntimeError):

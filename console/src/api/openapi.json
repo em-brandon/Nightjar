@@ -207,6 +207,25 @@
         "title": "AvailabilityOut",
         "type": "object"
       },
+      "ChallengeOut": {
+        "properties": {
+          "challenge_id": {
+            "title": "Challenge Id",
+            "type": "string"
+          },
+          "options": {
+            "additionalProperties": true,
+            "title": "Options",
+            "type": "object"
+          }
+        },
+        "required": [
+          "challenge_id",
+          "options"
+        ],
+        "title": "ChallengeOut",
+        "type": "object"
+      },
       "ClientReport": {
         "properties": {
           "client_id": {
@@ -334,6 +353,173 @@
           "created_at"
         ],
         "title": "DeployOut",
+        "type": "object"
+      },
+      "DeviceCreate": {
+        "properties": {
+          "expires_days": {
+            "anyOf": [
+              {
+                "maximum": 3650.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires Days"
+          },
+          "name": {
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "scope": {
+            "default": "read",
+            "enum": [
+              "read",
+              "write"
+            ],
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "DeviceCreate",
+        "type": "object"
+      },
+      "DeviceIssued": {
+        "properties": {
+          "device": {
+            "$ref": "#/components/schemas/DeviceOut"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "device",
+          "token"
+        ],
+        "title": "DeviceIssued",
+        "type": "object"
+      },
+      "DeviceLoginIn": {
+        "properties": {
+          "token": {
+            "maxLength": 200,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "title": "DeviceLoginIn",
+        "type": "object"
+      },
+      "DeviceOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "last_ip": {
+            "title": "Last Ip",
+            "type": "string"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "open_sessions": {
+            "title": "Open Sessions",
+            "type": "integer"
+          },
+          "prefix": {
+            "title": "Prefix",
+            "type": "string"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "scope": {
+            "enum": [
+              "read",
+              "write"
+            ],
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "prefix",
+          "scope",
+          "created_by",
+          "created_at",
+          "last_used_at",
+          "last_ip",
+          "expires_at",
+          "revoked_at",
+          "open_sessions"
+        ],
+        "title": "DeviceOut",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -1399,6 +1585,63 @@
         "title": "NotificationOut",
         "type": "object"
       },
+      "PasskeyLoginIn": {
+        "properties": {
+          "challenge_id": {
+            "maxLength": 100,
+            "title": "Challenge Id",
+            "type": "string"
+          },
+          "credential": {
+            "additionalProperties": true,
+            "title": "Credential",
+            "type": "object"
+          }
+        },
+        "required": [
+          "challenge_id",
+          "credential"
+        ],
+        "title": "PasskeyLoginIn",
+        "type": "object"
+      },
+      "PasskeyOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "created_at",
+          "last_used_at"
+        ],
+        "title": "PasskeyOut",
+        "type": "object"
+      },
       "PresenceIn": {
         "properties": {
           "source": {
@@ -1581,6 +1824,39 @@
         "title": "RatesOut",
         "type": "object"
       },
+      "RegisterIn": {
+        "properties": {
+          "challenge_id": {
+            "maxLength": 100,
+            "title": "Challenge Id",
+            "type": "string"
+          },
+          "credential": {
+            "additionalProperties": true,
+            "title": "Credential",
+            "type": "object"
+          },
+          "name": {
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 200,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "challenge_id",
+          "name",
+          "password",
+          "credential"
+        ],
+        "title": "RegisterIn",
+        "type": "object"
+      },
       "RisingOut": {
         "properties": {
           "issue_id": {
@@ -1731,6 +2007,100 @@
           "current"
         ],
         "title": "SessionOut",
+        "type": "object"
+      },
+      "SetupConfirm": {
+        "properties": {
+          "code": {
+            "maxLength": 32,
+            "title": "Code",
+            "type": "string"
+          },
+          "token": {
+            "maxLength": 200,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "code"
+        ],
+        "title": "SetupConfirm",
+        "type": "object"
+      },
+      "SetupIssued": {
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "setup_token": {
+            "title": "Setup Token",
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserOut"
+          }
+        },
+        "required": [
+          "user",
+          "setup_token",
+          "expires_at"
+        ],
+        "title": "SetupIssued",
+        "type": "object"
+      },
+      "SetupStart": {
+        "properties": {
+          "password": {
+            "maxLength": 200,
+            "title": "Password",
+            "type": "string"
+          },
+          "token": {
+            "maxLength": 200,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "password"
+        ],
+        "title": "SetupStart",
+        "type": "object"
+      },
+      "SetupStarted": {
+        "properties": {
+          "recovery_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Recovery Codes",
+            "type": "array"
+          },
+          "totp_secret": {
+            "title": "Totp Secret",
+            "type": "string"
+          },
+          "totp_uri": {
+            "title": "Totp Uri",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "totp_secret",
+          "totp_uri",
+          "recovery_codes"
+        ],
+        "title": "SetupStarted",
         "type": "object"
       },
       "SiteCreated": {
@@ -2573,6 +2943,28 @@
           "required": {
             "title": "Required",
             "type": "boolean"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
           }
         },
         "required": [
@@ -2816,6 +3208,107 @@
         "title": "TicketPatch",
         "type": "object"
       },
+      "UserCreate": {
+        "properties": {
+          "role": {
+            "default": "viewer",
+            "maxLength": 12,
+            "title": "Role",
+            "type": "string"
+          },
+          "username": {
+            "maxLength": 40,
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username"
+        ],
+        "title": "UserCreate",
+        "type": "object"
+      },
+      "UserOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "disabled": {
+            "title": "Disabled",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "pending_setup": {
+            "title": "Pending Setup",
+            "type": "boolean"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "setup_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Setup Expires At"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "role",
+          "disabled",
+          "pending_setup",
+          "setup_expires_at",
+          "created_at"
+        ],
+        "title": "UserOut",
+        "type": "object"
+      },
+      "UserPatch": {
+        "properties": {
+          "disabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disabled"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "maxLength": 12,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          }
+        },
+        "title": "UserPatch",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -3057,6 +3550,52 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/auth/device-login": {
+      "post": {
+        "description": "A wall display has no keyboard for a password and a code. It swaps its device token for a session cookie once, and\nstays signed in for as long as the token is good. Revoking the token ends the session on its next request.",
+        "operationId": "device_login_api_auth_device_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceLoginIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Device Login Api Auth Device Login Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Device Login",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/auth/login": {
       "post": {
         "operationId": "login_api_auth_login_post",
@@ -3122,6 +3661,72 @@
           }
         },
         "summary": "Logout",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/passkey/login": {
+      "post": {
+        "operationId": "login_api_auth_passkey_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasskeyLoginIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Login Api Auth Passkey Login Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Login",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/passkey/options": {
+      "post": {
+        "operationId": "login_options_api_auth_passkey_options_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChallengeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Login Options",
         "tags": [
           "auth"
         ]
@@ -3223,6 +3828,92 @@
         ]
       }
     },
+    "/api/auth/setup/confirm": {
+      "post": {
+        "operationId": "setup_confirm_api_auth_setup_confirm_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupConfirm"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Setup Confirm Api Auth Setup Confirm Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Setup Confirm",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/setup/start": {
+      "post": {
+        "operationId": "setup_start_api_auth_setup_start_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupStart"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupStarted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Setup Start",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/auth/status": {
       "get": {
         "operationId": "status_api_auth_status_get",
@@ -3262,6 +3953,16 @@
               "title": "Env",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -3296,10 +3997,172 @@
         ]
       }
     },
+    "/api/devices": {
+      "get": {
+        "operationId": "list_devices_api_devices_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DeviceOut"
+                  },
+                  "title": "Response List Devices Api Devices Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Devices",
+        "tags": [
+          "devices"
+        ]
+      },
+      "post": {
+        "operationId": "create_device_api_devices_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceIssued"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Device",
+        "tags": [
+          "devices"
+        ]
+      }
+    },
+    "/api/devices/{device_id}": {
+      "delete": {
+        "operationId": "revoke_device_api_devices__device_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "title": "Device Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Device",
+        "tags": [
+          "devices"
+        ]
+      }
+    },
     "/api/errors/rising": {
       "get": {
         "description": "Open issues whose event rate over the last 30 minutes is more than double\nthe 30 minutes before it. This is a look-at-it list, not an alert: the\nspike alert stays in ingest, where it belongs.",
         "operationId": "errors_rising_api_errors_rising_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -3314,6 +4177,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Errors Rising",
@@ -3325,6 +4198,18 @@
     "/api/heartbeats": {
       "get": {
         "operationId": "list_heartbeats_api_heartbeats_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -3339,6 +4224,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "List Heartbeats",
@@ -3359,6 +4254,16 @@
             "schema": {
               "title": "Heartbeat Id",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
             }
           }
         ],
@@ -3386,6 +4291,18 @@
     "/api/home": {
       "get": {
         "operationId": "list_home_api_home_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -3400,6 +4317,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "List Home",
@@ -3424,6 +4351,16 @@
               ],
               "title": "Status",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
             }
           }
         ],
@@ -3470,6 +4407,16 @@
             "schema": {
               "title": "Issue Id",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
             }
           }
         ],
@@ -3524,6 +4471,16 @@
               "title": "Issue Id",
               "type": "integer"
             }
+          },
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -3561,6 +4518,18 @@
     "/api/media": {
       "get": {
         "operationId": "list_media_api_media_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -3575,6 +4544,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "List Media",
@@ -3608,6 +4587,16 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
             }
           }
         ],
@@ -3675,6 +4664,16 @@
               "title": "Limit",
               "type": "integer"
             }
+          },
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -3713,6 +4712,18 @@
       "get": {
         "description": "Whether the alert path can work, and what the sender is doing: the answer to \"would a P1 reach\nmy phone right now?\" without having to cause one.",
         "operationId": "status_api_notifications_status_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -3723,6 +4734,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Status",
@@ -3735,6 +4756,18 @@
       "post": {
         "description": "Send one real push through the real adapter, to prove the phone path works. It is not queued and\nbelongs to no incident, so it cannot be mistaken for an alert, and it always answers 200 with what\nhappened: the reason a push failed is the thing the screen needs to show.",
         "operationId": "test_push_api_notifications_test_push_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -3745,6 +4778,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Test Push",
@@ -3765,6 +4808,16 @@
             "schema": {
               "title": "Notification Id",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
             }
           }
         ],
@@ -3796,9 +4849,154 @@
         ]
       }
     },
+    "/api/passkeys": {
+      "get": {
+        "operationId": "list_passkeys_api_passkeys_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PasskeyOut"
+                  },
+                  "title": "Response List Passkeys Api Passkeys Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Passkeys",
+        "tags": [
+          "passkeys"
+        ]
+      }
+    },
+    "/api/passkeys/register": {
+      "post": {
+        "operationId": "register_api_passkeys_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasskeyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Register",
+        "tags": [
+          "passkeys"
+        ]
+      }
+    },
+    "/api/passkeys/register/options": {
+      "post": {
+        "operationId": "register_options_api_passkeys_register_options_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChallengeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Register Options",
+        "tags": [
+          "passkeys"
+        ]
+      }
+    },
+    "/api/passkeys/{passkey_id}": {
+      "delete": {
+        "operationId": "remove_api_passkeys__passkey_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "passkey_id",
+            "required": true,
+            "schema": {
+              "title": "Passkey Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Remove Api Passkeys  Passkey Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove",
+        "tags": [
+          "passkeys"
+        ]
+      }
+    },
     "/api/presence": {
       "get": {
         "operationId": "get_presence_api_presence_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -3809,6 +5007,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Get Presence",
@@ -3819,6 +5027,18 @@
       "post": {
         "description": "The console's own switch (behind the console token), for setting it by hand.",
         "operationId": "set_from_console_api_presence_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -3860,6 +5080,18 @@
     "/api/rates": {
       "get": {
         "operationId": "rates_api_rates_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -3870,6 +5102,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Rates",
@@ -3898,6 +5140,16 @@
               ],
               "description": "YYYY-MM, UTC. Default: this month so far",
               "title": "Month"
+            }
+          },
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
             }
           }
         ],
@@ -3932,6 +5184,18 @@
     "/api/sites": {
       "get": {
         "operationId": "list_sites_api_sites_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -3946,6 +5210,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "List Sites",
@@ -3955,6 +5229,18 @@
       },
       "post": {
         "operationId": "create_site_api_sites_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -3996,6 +5282,18 @@
     "/api/sites/health": {
       "get": {
         "operationId": "sites_health_api_sites_health_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -4010,6 +5308,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Sites Health",
@@ -4029,6 +5337,16 @@
             "schema": {
               "title": "Site Id",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
             }
           }
         ],
@@ -4082,6 +5400,16 @@
               "title": "Site Id",
               "type": "integer"
             }
+          },
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -4128,6 +5456,16 @@
               "title": "Site Id",
               "type": "integer"
             }
+          },
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -4170,6 +5508,16 @@
             "schema": {
               "title": "Site Id",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
             }
           }
         ],
@@ -4223,6 +5571,16 @@
               "title": "Stack",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -4247,6 +5605,18 @@
       },
       "get": {
         "operationId": "list_stacks_api_stacks_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -4261,6 +5631,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "List Stacks",
@@ -4286,6 +5666,16 @@
               ],
               "title": "Status",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
             }
           }
         ],
@@ -4322,6 +5712,18 @@
       },
       "post": {
         "operationId": "create_ticket_api_tickets_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -4372,6 +5774,16 @@
               "title": "Ticket Id",
               "type": "integer"
             }
+          },
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
+            }
           }
         ],
         "requestBody": {
@@ -4412,9 +5824,234 @@
         ]
       }
     },
+    "/api/users": {
+      "get": {
+        "operationId": "list_users_api_users_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/UserOut"
+                  },
+                  "title": "Response List Users Api Users Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Users",
+        "tags": [
+          "users"
+        ]
+      },
+      "post": {
+        "operationId": "create_user_api_users_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupIssued"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create User",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/users/{user_id}": {
+      "patch": {
+        "operationId": "update_user_api_users__user_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update User",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/users/{user_id}/reset": {
+      "post": {
+        "description": "For a forgotten password or a lost phone: clears the password and authenticator, ends the sessions and issues a\nnew setup token, exactly as for a new account.",
+        "operationId": "reset_user_api_users__user_id__reset_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupIssued"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reset User",
+        "tags": [
+          "users"
+        ]
+      }
+    },
     "/api/weather": {
       "get": {
         "operationId": "weather_api_weather_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "own_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Own Account",
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -4425,6 +6062,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Weather",

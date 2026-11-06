@@ -124,7 +124,7 @@ class AccountLogin(unittest.IsolatedAsyncioTestCase):
 class SignIn(AccountLogin):
     async def test_the_right_password_and_code_signs_in_with_a_hardened_cookie(self):
         async with self.client() as c:
-            self.assertEqual((await c.get("/api/auth/status")).json(), {"required": True, "authenticated": False, "account": True})
+            self.assertEqual((await c.get("/api/auth/status")).json(), {"required": True, "authenticated": False, "role": None, "username": None, "account": True})
             r = await self.login(c)
             self.assertEqual(r.status_code, 200, r.text)
             cookie = r.headers["set-cookie"]
@@ -260,14 +260,15 @@ class Sessions(AccountLogin):
             for method, path in (("GET", "/api/auth/sessions"), ("DELETE", "/api/auth/sessions/1"), ("POST", "/api/auth/sessions/revoke-others")):
                 self.assertEqual((await c.request(method, path)).status_code, 401, path)
                 bearer = await c.request(method, path, headers={"Authorization": f"Bearer {TOKEN}"})
-                self.assertEqual(bearer.status_code, 403, f"{path}: a bearer token has no account behind it")
+                self.assertEqual(bearer.status_code, 401, f"{path}: the shared token is retired")
 
 
 class Bearer(AccountLogin):
-    async def test_the_bearer_token_still_works_for_scripts_and_the_wall(self):
+    async def test_the_shared_console_token_is_retired_once_accounts_are_on(self):
+        # it used to do everything and have no name; machines use device tokens now (tests/test_devices.py)
         async with self.client() as c:
             r = await c.get("/api/errors/rising", headers={"Authorization": f"Bearer {TOKEN}"})
-            self.assertEqual(r.status_code, 200)
+            self.assertEqual(r.status_code, 401)
             self.assertEqual((await c.get("/api/errors/rising", headers={"Authorization": "Bearer nope"})).status_code, 401)
 
 
@@ -277,8 +278,6 @@ class Throttle(AccountLogin):
             for _ in range(auth.ACCOUNT_FAIL_LIMIT):
                 self.assertEqual((await self.login(c, password="wrong passphrase!!")).status_code, 401)
             self.assertEqual((await self.login(c)).status_code, 429, "a guesser gains nothing from the lock lifting on a right answer")
-            r = await c.get("/api/errors/rising", headers={"Authorization": f"Bearer {TOKEN}"})
-            self.assertEqual(r.status_code, 200, "the lock never reaches the bearer token")
 
     async def test_one_address_cannot_try_many_usernames(self):
         async with self.client() as c:
@@ -336,7 +335,9 @@ class Startup(unittest.TestCase):
             with patch.object(settings, "operator_login", False), patch.object(settings, "verify_signatures", True):
                 self.assertFalse(auth.operator_mode(), "an explicit setting wins")
         with patch.object(settings, "console_token", ""), patch.object(settings, "operator_login", True):
-            self.assertFalse(auth.operator_mode(), "no token means auth is off, whatever else is set")
+            self.assertTrue(auth.operator_mode(), "accounts need no shared token")
+        with patch.object(settings, "console_token", ""), patch.object(settings, "operator_login", None),                 patch.object(settings, "verify_signatures", False):
+            self.assertFalse(auth.operator_mode(), "local development with nothing set is open")
 
 
 if __name__ == "__main__":

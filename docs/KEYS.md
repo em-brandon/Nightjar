@@ -14,14 +14,16 @@ The diagrams are Mermaid. GitHub, Gitea and most Markdown viewers draw them.
 | **Ingest secret** (the private key) | Signs each request body with HMAC-SHA256. It is never sent | **Yes** | The site's server, CI, reporters | Report errors, deploys and stack state **as that one site** | Gitea Actions secret, then the server's `.env` |
 | **Browser public key** | A separate address for web pages. It can only report errors, only from listed origins | **No, by design.** It is in the page source | A web page | Report errors for one site, within strict limits | The page's build config |
 | **Master key** (`SECRET_MASTER_KEY`) | The one key every site's ingest secret is worked out from (below). Not in the database | **Yes, the most important one** | The hub only | Work out any site's ingest secret, so forge reports as every site | The VPS `secrets/secret_master_key` file, and a copy in your password manager |
-| **Console token** (`CONSOLE_TOKEN`) | Signs you in to the console and `/api` | **Yes** | You only | Everything: read, resolve, mute, create sites | The VPS `.env`, your password manager |
+| **Account** (password, authenticator, optional passkey) | Signs a person in to the console | **Yes** | That person | Their role: viewer reads, maintainer acts, owner also manages secrets, people and devices | Their password manager and phone |
+| **Device token** (`njd_...`) | A machine's own access: the wall display, a script | **Yes** | That one machine | Read, or read and act. Never create a site, rotate a secret or issue access | The device's settings |
+| **Console token** (`CONSOLE_TOKEN`) | Local development only. Retired once accounts are on | n/a | You | Everything, in local development | `.env` on your laptop |
 | **Presence token** (`PRESENCE_TOKEN`) | Lets the NFC tap set home or away | **Yes** | Your iPhone Shortcut | Set presence, nothing else | The VPS `.env`, the Shortcut |
 
 Two rules sit above the table:
 
-1. **The console token never goes in a client's CI, a client's server or a web page.** CI holds ingest
-   credentials only. A site's ingest credentials cannot read the console or mute an issue, because `/api`
-   needs the console token.
+1. **A console credential never goes in a client's CI, a client's server or a web page.** CI holds ingest
+   credentials only (a device token is for your own scripts). A site's ingest credentials cannot read the console or mute an issue, because `/api`
+   needs a signed-in session or a device token.
 2. **The ingest secret never goes in a web page.** A page's source is public. That is why browsers get their own,
    weaker key.
 
@@ -41,7 +43,7 @@ flowchart LR
         PAGE["Web page<br/>holds public key only"]
     end
 
-    ME["You<br/>hold the console token"]
+    ME["You<br/>hold an account"]
 
     SRV -- "signed with the secret" --> ING
     PAGE -- "no secret, Origin checked" --> BRW
@@ -107,7 +109,7 @@ proves the sender really is that site. Anyone can learn a key, since it sits in 
 fine, because a request with the right key and no valid signature is refused.
 
 **`VERIFY_SIGNATURES=false` (local development) turns the check off.** Then the key alone is enough to post
-anything. It must be `true` in production, and the hub refuses to start in that state without a console token.
+anything. It must be `true` in production, and the hub refuses to start in that state without `SECRET_MASTER_KEY` (the authenticator codes are derived from it).
 
 ## Browser reporting: web pages
 
@@ -171,11 +173,8 @@ The Origin check is a filter, not authentication. The limits are what actually p
 ### Turning it on for a site
 
 ```bash
-# 1. list the pages allowed to report. This makes the public key. Use your console token.
-curl -X PATCH https://nightjar.example/api/sites/9 \
-  -H "Authorization: Bearer $CONSOLE_TOKEN" -H "Content-Type: application/json" \
-  -d '{"allowed_origins": ["https://birdboxsystems.co.ke", "https://www.birdboxsystems.co.ke"]}'
-# the reply includes "public_key": "..."
+# 1. list the pages allowed to report. This makes the public key. Setting origins is an owner action, so do it in the
+#    console (Sites tab). A device token cannot: it is never an owner.
 ```
 
 ```ts
@@ -187,10 +186,10 @@ init({ hub: "https://nightjar.example", key: "<public_key>", release: "v1.4.2" }
 Rules for origins: scheme and host only, such as `https://example.com` or `https://example.com:8443`. No path, no
 wildcard, no `http://` except `localhost` for development. List `www` and the bare domain separately.
 
-## Signing in, and the console token
+## Signing in: accounts, roles, passkeys and device tokens
 
-In production you sign in with an account: a username, a password and an authenticator code. The console token is no longer typed
-into the page; it is a bearer token for scripts and the wall display.
+In production you sign in with an account: a username, a password and an authenticator code, or a passkey in place of all three. There
+is no shared console token any more (decision #59): machines each have a device token.
 
 ```mermaid
 sequenceDiagram
@@ -224,10 +223,26 @@ What each piece protects against:
   the audit trail without any secret in them.
 - **Recovery codes** are eight single-use codes, stored as hashes, accepted in place of an authenticator code.
 
-In local development (`VERIFY_SIGNATURES` off) nothing changes: you type `CONSOLE_TOKEN`, and the cookie is derived from it. Set
-`OPERATOR_LOGIN=true` to try accounts locally, or `false` to keep the token in production (not recommended).
+**Roles.** Viewer reads. Maintainer also acts on incidents and edits sites. Owner also creates sites, rotates secrets, sets browser keys and manages
+people and devices. Enforced by the hub on every request. The last active owner cannot be demoted or disabled.
 
-Scripts send `Authorization: Bearer <token>`. The cookie is only marked `Secure` over https, so use the console behind Caddy's TLS.
+**Bringing someone in.** An owner adds them under *People and devices* and gets a one-time setup token (valid 48 hours, stored as a hash,
+shown once). Hand it over yourself: nothing is emailed. They paste it on the sign-in page ("I have a setup token"), choose a password, add the
+secret to an authenticator app, keep the recovery codes and enter a code. Until then the account cannot sign in. *Reset* gives a new token and
+clears their password, authenticator and sessions. *Disable* ends their sessions at once.
+
+**Passkeys.** *Passkeys* in the sidebar adds a phone, laptop or security key (asks for your password again). Sign-in then needs one touch
+and no username, so it cannot be used to find out which usernames exist. Only the public key is stored. Your password and code keep
+working, so a lost phone is not a lock-out. Set `HUB_PUBLIC_URL` (or `WEBAUTHN_RP_ID` and `WEBAUTHN_ORIGINS`): a passkey is bound to the
+address it was made on, and changing the address later strands the passkeys already made.
+
+**Device tokens.** One per machine, made under *People and devices*: `read` (a wall display) or `write` (a script), with an optional expiry.
+Shown once, stored as a hash, revoked alone. A device is never an owner. A script sends `Authorization: Bearer njd_...`. A wall display
+swaps its token once for a read-only session cookie at `POST /api/auth/device-login`; revoking the token ends that session on its next request.
+
+In local development (`VERIFY_SIGNATURES` off) nothing changes: you type `CONSOLE_TOKEN`. Set `OPERATOR_LOGIN=true` to try accounts locally. With
+accounts on, a `CONSOLE_TOKEN` left in the environment is ignored and the hub says so at start. The cookie is only marked `Secure` over
+https, so use the console behind Caddy's TLS.
 
 ## Life of a site's credentials
 
@@ -269,7 +284,9 @@ database alone now holds nothing that can forge a report.
 | **Master key** | Forge reports as **every** derived site | Set a new `SECRET_MASTER_KEY`, restart, then rotate every site and give each app its new secret. Until a site is rotated its reports are refused |
 | **Ingest secret** | Post fake errors, fake deploys and fake stack reports **as that one site**. They cannot read anything, mute anything or touch another site | Rotate it (below), update the app's environment, redeploy |
 | **Browser public key** | Post error reports from `curl`, within the rate limits and new-issue cap. Cannot read, cannot reach another route, cannot be P1 | Empty `allowed_origins` to revoke it, then set them again for a new key |
-| **Console token** | Everything, including creating sites and muting issues | Change `CONSOLE_TOKEN` in the VPS `.env` and restart. Every session ends at once |
+| **Device token** | What its scope allows: read, or read and act (never owner) | *People and devices*, **Revoke** that one. Nothing else is affected |
+| **Account (password and code)** | Their role, as that person | Owner: *Disable*, then *Reset*. Or `operator_cli sign-out-everywhere` and `reset-2fa`. Remove their passkeys by disabling the account |
+| **Console token** | Local development only | Change `CONSOLE_TOKEN` in your `.env` |
 | **Presence token** | Set home or away. This can only change which channels fire, never whether something alerts | Change `PRESENCE_TOKEN` and update the Shortcut |
 
 **Rotating an ingest secret.** Use **Rotate secret** on the site's row in the console's Sites tab (or
@@ -332,14 +349,14 @@ Read this before you need it. When something leaks you will be tired and in a hu
 4. **Record.** Write down what leaked, when, how you found out, what it could do, and what you did. For a site's secret the hub already
    records the rotation (the site's **History** button); the rest is yours to write, in whatever notes you keep, within the day.
 
-Rotating **needs the console** (or the API with the console token). If the console token itself leaked, do that one first.
+Rotating **needs the console** and an owner sign-in. If a device token or an account leaked, deal with that one first.
 
 ### Ingest secret (one site)
 
 Reach: forge errors, deploys and stack state as that one site. Nothing else.
 
 1. **Revoke and rotate in one step:** Sites tab, that site, **Rotate secret**. The old secret stops working at once. (API:
-   `POST /api/sites/{id}/rotate-secret` with the console token.) The new secret is shown once, so have the next step open before you press it.
+   `POST /api/sites/{id}/rotate-secret` with an owner session; a device token cannot.) The new secret is shown once, so have the next step open before you press it.
 2. Put the new value in the Gitea Actions secret `NIGHTJAR_SECRET`, then redeploy the app (or edit its `.env` and restart it). Until you do,
    that site's reports are refused with 401, which is the intended failure: it is loud on the hub's side, not silent.
 3. **Check:** send a test event from the Sites tab (**Test**), and send one signed with the *old* secret and confirm it gets `401`.

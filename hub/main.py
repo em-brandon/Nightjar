@@ -9,6 +9,7 @@ from .api import router as api_router
 from .browser import router as browser_router
 from .config import settings
 from .db import engine
+from .devices import router as devices_router
 from .deploys import ingest_router as deploy_ingest_router
 from .deploys import router as deploys_router
 from .heartbeats import ingest_router as heartbeat_ingest_router
@@ -21,6 +22,8 @@ from .media import ingest_router as media_ingest_router
 from .media import router as media_router
 from .migrate import upgrade
 from .outbox import sender_loop
+from .passkeys import public_router as passkey_login_router
+from .passkeys import router as passkeys_router
 from .presence import public_router as presence_public_router
 from .presence import router as presence_router
 from .probe import probe_loop
@@ -32,6 +35,8 @@ from .audit import router as audit_router
 from .stacks import ingest_router as stack_ingest_router
 from .stacks import router as stacks_router
 from .tickets import router as tickets_router
+from .users import router as users_router
+from .users import setup_router
 from .weather import router as weather_router
 
 
@@ -66,6 +71,13 @@ app = FastAPI(title="incident hub", lifespan=lifespan, **docs)
 # the console reads or writes is under /api and needs the console token.
 console = [Depends(auth.require_console)]
 app.include_router(auth.router)
+# Setting up a new account is authenticated by its one-time setup token, not by a session
+app.include_router(setup_router)
+app.include_router(users_router, dependencies=console)
+app.include_router(devices_router, dependencies=console)
+# Passkeys: managing them needs a person's session (checked inside), signing in with one needs none yet
+app.include_router(passkeys_router)
+app.include_router(passkey_login_router)
 app.include_router(browser_router)
 app.include_router(ingest_router)
 app.include_router(api_router, dependencies=console)

@@ -1370,7 +1370,7 @@ or changed:
 
 ## 57. The console signs in with an account and a second factor; the shared token stays for machines
 
-**Date:** 2026-11-06. Supersedes the sign-in half of #42 (the bearer token and `/api` gating stand).
+**Date:** 2026-11-06. The shared-token half is superseded by #59. Supersedes the sign-in half of #42 (the bearer token and `/api` gating stand).
 
 **Context.** #32 and #42 settled on a single shared `CONSOLE_TOKEN`, and the cookie was `HMAC(token)`: the same fixed value for every
 login, valid for 30 days, impossible to revoke singly or to list, with one global failure counter, so a stranger's five bad guesses
@@ -1440,3 +1440,47 @@ as an alert.
 
 **Rejected.** A global switch (cannot pause one client). Weekly reports. Charts in the first version (the numbers and the outage list
 are what clients read). Putting incident titles in the report (they can carry detail the client was never meant to see).
+
+
+## 59. More than one person, roles, device tokens for machines, and passkeys
+
+**Date:** 2026-11-06. Supersedes the "shared token stays for machines" half of #57, and the "multi-user auth" exclusion for the
+console's own sign-in (not for a client-facing portal, which stays out of scope).
+
+**Context.** #57 gave the operator an account but kept one shared `CONSOLE_TOKEN` for the wall display and scripts: a secret with
+no name that could do everything, including mint more access, and that could not be revoked without breaking every machine at once.
+The operator also wanted a few other people (a second developer, someone who only looks) to have their own sign-in.
+
+**Decision.**
+- **Roles: viewer, maintainer, owner.** A viewer reads. A maintainer also acts on incidents and edits sites. An owner also creates
+  sites, rotates secrets, sets browser keys and manages people and devices. Enforced in the hub on every request, not by hiding
+  buttons. The last active owner cannot be demoted or disabled, and nobody changes their own role.
+- **People are brought in by hand.** An owner creates the account and is shown a one-time setup token (hash stored, 48 hours). The
+  person pastes it into the sign-in page, chooses a password and proves their authenticator works. Nothing is emailed: there is no
+  sender yet, and a token handed over in person is safer than one in an inbox. Accounts are disabled, never deleted, so the audit trail
+  keeps naming people.
+- **Device tokens replace the shared token.** One per machine, `njd_` plus 256 bits, stored as a hash, shown once, revocable alone,
+  optionally expiring, with last use and address recorded. Scope is `read` (acts as viewer) or `write` (acts as maintainer). **Never
+  owner**, so a leaked token can do day-to-day work but cannot create a site, rotate a secret or issue another credential. A wall
+  display swaps its token once for a read-only session cookie; revoking the token ends that session on its next request.
+- **With accounts on, the shared `CONSOLE_TOKEN` is retired.** It no longer authenticates and production no longer needs one (its
+  secrets file is no longer generated or mounted). It still signs in local development, where accounts are off.
+- **Passkeys (WebAuthn) as an addition.** Discoverable credentials with user verification required: one touch replaces the password
+  and the code, and sign-in asks for no username, so it cannot be used to find out which usernames exist. Only the public key is
+  stored. Adding one asks for the password again, so a stolen session cookie cannot quietly add a way back in. The password and
+  authenticator code remain, so losing a phone cannot lock anyone out. Challenges are single use and held in memory (the hub is one
+  process on purpose).
+- **One new dependency, on purpose:** `webauthn` (which brings `cryptography`). Credentials.py is standard library only, but the
+  signature and CBOR handling in WebAuthn is exactly what not to write by hand.
+
+**Settings.** Passkeys are bound to a site name and the exact origin. `WEBAUTHN_RP_ID` and `WEBAUTHN_ORIGINS` default from
+`HUB_PUBLIC_URL`; in local development they default to `localhost` and the Vite dev server. A passkey made for one RP ID never works
+on another, so changing it later strands the passkeys already registered.
+
+**Rejected.** Emailing setup links (no sender; a mailbox becomes a credential). Keeping the shared token "for scripts" (the very
+thing this removes). Letting a device token be an owner (a leaked CI token must not mint more access). Passkeys as the only factor
+(a lost phone must not lock the operator out). Per-site permissions (a few people and one operator do not need them yet). OAuth
+sign-in through another provider (a dependency on a third party for the one thing that must work at 2am).
+
+**Not done.** A passkey cannot yet be removed by an owner for someone else (disable the account instead). No notification when a new
+device token or passkey is added; it is in the audit trail.

@@ -131,5 +131,15 @@ def new_session_token() -> tuple[str, str]:
     return token, hash_token(token)
 
 
+DEVICE_PREFIX = "njd_"
+
+
+def new_device_token() -> tuple[str, str, str]:
+    """(token, hash for the database, prefix to show in a list). The prefix is a handful of the token's own
+    characters, enough to tell two apart and nowhere near enough to guess the rest."""
+    token = DEVICE_PREFIX + secrets.token_urlsafe(32)
+    return token, hash_token(token), token[: len(DEVICE_PREFIX) + 6]
+
+
 def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()

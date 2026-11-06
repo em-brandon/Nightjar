@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from . import auth
 from .audit import _where, record
 from .config import settings
 from .db import get_session
@@ -65,7 +66,8 @@ async def list_sites(session: AsyncSession = Depends(get_session)) -> list[SiteL
     ]
 
 
-@router.post("", response_model=SiteCreated, status_code=201)
+# Creating a site and rotating a secret hand out an ingest secret, so they are the owner's. A maintainer does the rest.
+@router.post("", response_model=SiteCreated, status_code=201, dependencies=[Depends(auth.require_owner)])
 async def create_site(body: SiteIn, session: AsyncSession = Depends(get_session)) -> SiteCreated:
     # The Staging tab pairs a staging site with its production site by name, so the
     # name has to say which one it is. Rejecting here beats a promotion that never lines up.
@@ -113,8 +115,11 @@ async def create_site(body: SiteIn, session: AsyncSession = Depends(get_session)
 
 @router.patch("/{site_id:int}", response_model=SiteOut)
 async def update_site(
-    site_id: int, body: SitePatch, session: AsyncSession = Depends(get_session)
+    site_id: int, body: SitePatch, request: Request, session: AsyncSession = Depends(get_session)
 ) -> SiteOut:
+    if body.allowed_origins is not None:
+        # turning on browser reporting issues a key, and turning it off revokes one
+        auth.ensure_role(request, "owner")
     site = await session.scalar(
         select(Site).options(selectinload(Site.client)).where(Site.id == site_id)
     )
@@ -151,7 +156,7 @@ async def _client_site(session: AsyncSession, site_id: int) -> Site:
     return site
 
 
-@router.post("/{site_id:int}/rotate-secret", response_model=SiteCreated)
+@router.post("/{site_id:int}/rotate-secret", response_model=SiteCreated, dependencies=[Depends(auth.require_owner)])
 async def rotate_secret(site_id: int, session: AsyncSession = Depends(get_session)) -> SiteCreated:
     # Replaces the hand-run UPDATE in docs/KEYS.md. Signatures made with the old secret stop
     # verifying at once, so the response is the only place the new one is ever shown.

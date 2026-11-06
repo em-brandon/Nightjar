@@ -3,6 +3,8 @@ import type { Alert, Deploy, Heartbeat, HomeSnapshot, Issue, MediaPlay, MediaSna
 import type { Feeds, TabId } from "./feeds.ts";
 import { isUnacknowledged } from "./alerts.ts";
 import AlertBanner from "./AlertBanner.tsx";
+import Access from "./Access.tsx";
+import Passkeys from "./Passkeys.tsx";
 import Sessions from "./Sessions.tsx";
 import Splash from "./Splash.tsx";
 import { Dot } from "./ui.tsx";
@@ -55,8 +57,20 @@ const ICONS: Record<string, ReactElement> = {
 };
 const VIEWS: Record<Exclude<TabId, "idle">, (props: { f: Feeds }) => ReactElement | null> = { overview: Overview, incidents: Incidents, requests: Requests, deploys: Deploys, staging: Staging, media: Media, sites: Sites, alerts: Alerts, heartbeats: Heartbeats, reports: Reports };
 
-export default function App({ onSignOut, hasAccount = false }: { onSignOut?: () => void; hasAccount?: boolean }) {
+export default function App({
+  onSignOut,
+  hasAccount = false,
+  role = null,
+  username = null,
+}: {
+  onSignOut?: () => void;
+  hasAccount?: boolean;
+  role?: string | null;
+  username?: string | null;
+}) {
   const [showSessions, setShowSessions] = useState(false);
+  const [showPasskeys, setShowPasskeys] = useState(false);
+  const [showAccess, setShowAccess] = useState(false);
   const health = usePoll<SiteHealth[]>("/api/sites/health");
   const issues = usePoll<Issue[]>("/api/issues?status=all");
   const rising = usePoll<Rising[]>("/api/errors/rising");
@@ -76,7 +90,7 @@ export default function App({ onSignOut, hasAccount = false }: { onSignOut?: () 
   const now = useNow();
   const [tab, go] = useHashTab(TAB_IDS, "overview");
   const [idleHold, setIdleHold] = useState(false);
-  useInactivity(IDLE_AFTER_MS, () => go("idle"), tab !== "idle" && !idleHold && !showSessions);
+  useInactivity(IDLE_AFTER_MS, () => go("idle"), tab !== "idle" && !idleHold && !showSessions && !showPasskeys && !showAccess);
 
   const feeds = [health, issues, rising, tickets, deploys, attention, stacks, heartbeats, media, mediaHistory];
   const hubError = feeds.some((x) => x.error);
@@ -179,6 +193,21 @@ export default function App({ onSignOut, hasAccount = false }: { onSignOut?: () 
               Signed-in devices
             </button>
           )}
+          {hasAccount && (
+            <button className="side-link" onClick={() => setShowPasskeys(true)}>
+              Passkeys
+            </button>
+          )}
+          {hasAccount && role === "owner" && (
+            <button className="side-link" onClick={() => setShowAccess(true)}>
+              People and devices
+            </button>
+          )}
+          {hasAccount && username && (
+            <span className="muted">
+              {username} · {role}
+            </span>
+          )}
           {onSignOut && (
             <button className="side-link" onClick={onSignOut}>
               Sign out
@@ -188,6 +217,8 @@ export default function App({ onSignOut, hasAccount = false }: { onSignOut?: () 
       </aside>
 
       {showSessions && <Sessions onClose={() => setShowSessions(false)} />}
+      {showPasskeys && <Passkeys onClose={() => setShowPasskeys(false)} />}
+      {showAccess && <Access me={username} onClose={() => setShowAccess(false)} />}
 
       <div className="main">
         {hubError && tab !== "overview" && (

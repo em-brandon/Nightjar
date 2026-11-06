@@ -45,11 +45,19 @@ class Settings(BaseSettings):
     console_token: str = ""
     # Who signs in to the console: an account with a password and a TOTP code (hub/operator_cli.py), instead of typing the
     # shared console token. Unset follows VERIFY_SIGNATURES, so production uses accounts and local development keeps
-    # the token. With accounts on, CONSOLE_TOKEN is only a bearer token for scripts and the wall display.
+    # the token. With accounts on, CONSOLE_TOKEN is ignored: machines use device tokens (hub/devices.py).
     operator_login: bool | None = None
     # A session ends after this long without use, and at most this long after sign-in, whichever comes first.
     session_idle_days: int = 7
     session_absolute_days: int = 30
+    # A wall display that signed in with a device token is not a person at a desk: it signs in once and stays signed
+    # in, so its session may last this long (and no longer than the token itself).
+    device_session_days: int = 365
+    # Passkeys (WebAuthn) are tied to a site name and the exact origin the console is served from. Empty: taken from
+    # hub_public_url; with that empty too (local development) localhost and the Vite dev server are used. A passkey made
+    # for one rp_id never works on another, so changing this later strands the passkeys already registered.
+    webauthn_rp_id: str = ""
+    webauthn_origins: str = ""
     # The master key each site's ingest secret is derived from (hub/derive.py), so the database holds no secret that
     # can forge a report. It lives here and never in the database; back it up apart from the database, because lose it
     # and every derived site needs a new secret. Empty means new sites keep a stored secret as before (local

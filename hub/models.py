@@ -10,6 +10,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -551,6 +552,14 @@ class Operator(Base):
     # the last 30-second step a code was accepted for, so one code cannot be used twice (replay)
     totp_last_step: Mapped[int] = mapped_column(BigInteger, default=0)
     recovery_hashes: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    # owner | maintainer | viewer (hub/auth.py ROLES). The account made from the command line is an owner.
+    role: Mapped[str] = mapped_column(String(12), default="owner", server_default="owner")
+    # A disabled account cannot sign in and its sessions are ended. Never deleted: the audit trail names people.
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # An account an owner has created but whose person has not finished setting up. The token is shown to the owner
+    # once and stored only as a hash; while it is set the account cannot sign in.
+    setup_token_hash: Mapped[str | None] = mapped_column(String(64), unique=True)
+    setup_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -563,10 +572,54 @@ class ConsoleSession(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
-    operator_id: Mapped[int] = mapped_column(ForeignKey("operators.id", ondelete="CASCADE"))
+    # A person's session has an operator. A wall display that signed in with a device token has a device token
+    # instead, and no person (hub/auth.py device-login). Exactly one of the two is set.
+    operator_id: Mapped[int | None] = mapped_column(ForeignKey("operators.id", ondelete="CASCADE"))
+    device_token_id: Mapped[int | None] = mapped_column(ForeignKey("device_tokens.id", ondelete="CASCADE"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ip: Mapped[str] = mapped_column(String(64), default="")
     user_agent: Mapped[str] = mapped_column(String(200), default="")
+
+
+class DeviceToken(Base):
+    """A credential for a machine: the wall display, a CI job, a script. Replaces the one shared console token, which
+    could do everything, had no name, never expired and could only be replaced everywhere at once (decision #59).
+
+    Stored only as a SHA-256 of a long random value, so a copy of the database cannot be used. `scope` is read (a
+    viewer) or write (a maintainer); a device is never an owner, so it can never create a site, rotate a secret or
+    make another credential."""
+
+    __tablename__ = "device_tokens"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(60))
+    # the first characters, so a list can tell two tokens apart without holding the secret
+    prefix: Mapped[str] = mapped_column(String(16))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    scope: Mapped[str] = mapped_column(String(8), default="read", server_default="read")
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("operators.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_ip: Mapped[str] = mapped_column(String(64), default="", server_default="")
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Passkey(Base):
+    """A WebAuthn credential belonging to an operator: a phone, laptop or security key that signs in without a password.
+    Only the public half is stored, so a copy of the database cannot sign anyone in."""
+
+    __tablename__ = "passkeys"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    operator_id: Mapped[int] = mapped_column(ForeignKey("operators.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(60))
+    credential_id: Mapped[bytes] = mapped_column(LargeBinary, unique=True)
+    public_key: Mapped[bytes] = mapped_column(LargeBinary)
+    # a counter that goes backwards means the credential was cloned; many authenticators always report 0
+    sign_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

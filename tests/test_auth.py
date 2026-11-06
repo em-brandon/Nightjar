@@ -137,11 +137,11 @@ class Accepts(AuthTestCase):
     async def test_the_right_bearer_token_authenticates(self):
         async with self.client() as c:
             r = await c.get("/api/auth/status", headers={"Authorization": f"Bearer {TOKEN}"})
-            self.assertEqual(r.json(), {"required": True, "authenticated": True, "account": False})
+            self.assertEqual(r.json(), {"required": True, "authenticated": True, "role": "owner", "username": "console", "account": False})
 
     async def test_login_sets_a_hardened_cookie_that_then_authenticates(self):
         async with self.client() as c:
-            self.assertEqual((await c.get("/api/auth/status")).json(), {"required": True, "authenticated": False, "account": False})
+            self.assertEqual((await c.get("/api/auth/status")).json(), {"required": True, "authenticated": False, "role": None, "username": None, "account": False})
 
             r = await c.post("/api/auth/login", json={"token": TOKEN})
             self.assertEqual(r.status_code, 200)
@@ -244,16 +244,32 @@ class Login(AuthTestCase):
     async def test_auth_off_means_open_and_login_is_a_noop(self):
         with patch.object(settings, "console_token", ""):
             async with self.client() as c:
-                self.assertEqual((await c.get("/api/auth/status")).json(), {"required": False, "authenticated": True, "account": False})
+                self.assertEqual((await c.get("/api/auth/status")).json(), {"required": False, "authenticated": True, "role": "owner", "username": "console", "account": False})
                 self.assertEqual((await c.post("/api/auth/login", json={"token": "anything"})).status_code, 200)
 
 
 class StartupGuard(unittest.TestCase):
-    def test_production_without_a_token_refuses_to_start(self):
-        with patch.object(settings, "verify_signatures", True), patch.object(settings, "console_token", ""):
+    def test_production_with_accounts_off_and_no_token_refuses_to_start(self):
+        # with accounts on (the production default) no token is needed; with them turned off the console would be open
+        with patch.object(settings, "verify_signatures", True), patch.object(settings, "console_token", ""), \
+                patch.object(settings, "operator_login", False):
             with self.assertRaises(RuntimeError) as cm:
                 auth.check_config()
             self.assertIn("CONSOLE_TOKEN", str(cm.exception))
+
+    def test_production_with_accounts_needs_no_console_token(self):
+        with patch.object(settings, "verify_signatures", True), patch.object(settings, "console_token", ""), \
+                patch.object(settings, "operator_login", None), patch.object(settings, "secret_master_key", "m" * 40):
+            self.assertTrue(auth.operator_mode())
+            self.assertTrue(auth.enabled(), "auth is on without any token")
+            auth.check_config()
+
+    def test_a_leftover_console_token_in_account_mode_is_ignored_and_says_so(self):
+        with patch.object(settings, "verify_signatures", True), patch.object(settings, "console_token", TOKEN), \
+                patch.object(settings, "operator_login", None), patch.object(settings, "secret_master_key", "m" * 40):
+            with self.assertLogs("nightjar.auth", level="WARNING") as logs:
+                auth.check_config()
+            self.assertTrue(any("ignored" in line for line in logs.output))
 
     def test_production_with_a_token_and_a_master_key_starts(self):
         with patch.object(settings, "verify_signatures", True), patch.object(settings, "console_token", TOKEN),                 patch.object(settings, "secret_master_key", "m" * 40):
