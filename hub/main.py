@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager, suppress
 
 from fastapi import Depends, FastAPI
 
-from . import auth, derive
+from . import auth, derive, logfilter
 from .alerts import router as alerts_router
 from .api import router as api_router
 from .browser import router as browser_router
@@ -44,6 +44,8 @@ from .weather import router as weather_router
 async def lifespan(app: FastAPI):
     # Refuse to run in production with the console open, before anything else.
     auth.check_config()
+    # uvicorn has set up its logging by now; keep the Pushover callback's secret out of its access log
+    logfilter.install()
 
     # Migrate on every start. Alembic runs its own event loop, so it gets a
     # thread. A database this cannot migrate raises here, and the hub refuses to

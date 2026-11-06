@@ -77,6 +77,13 @@
 
 	log {
 		output file /data/access.log
-		format json
+		# The Pushover callback has no signature, so its secret is part of the path (hub/pushover.py). Keep it out of the log.
+		# Caddy already redacts the Authorization and Cookie headers.
+		format filter {
+			wrap json
+			fields {
+				request>uri regexp "^(/pushover/ack/)[^?]*" "${1}REDACTED"
+			}
+		}
 	}
 }
