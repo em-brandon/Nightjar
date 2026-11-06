@@ -37,10 +37,10 @@ SECRET = "contract-secret"
 
 
 def captured_urllib(send):
-    """Run `send()` with urlopen replaced, and return the (headers, body) of the one request it made."""
+    """Run `send()` with the HTTP opener replaced, and return the (headers, body) of the one request it made."""
     seen = {}
 
-    def fake(req, timeout=None):
+    def fake(opener, req, data=None, timeout=None):
         seen["headers"] = {k.lower(): v for k, v in req.header_items()}
         seen["body"] = req.data
 
@@ -50,7 +50,7 @@ def captured_urllib(send):
 
         return Resp()
 
-    with patch("urllib.request.urlopen", fake):
+    with patch("urllib.request.OpenerDirector.open", fake):
         send()
     return seen["headers"], seen["body"]
 

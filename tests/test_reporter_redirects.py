@@ -20,6 +20,7 @@ sys.path.insert(0, CLIENT)
 import home_reporter  # noqa: E402
 import jellyfin_reporter  # noqa: E402
 import stack_reporter  # noqa: E402
+import thermal_probe  # noqa: E402
 
 
 class Server:
@@ -76,6 +77,14 @@ class NoRedirects(unittest.TestCase):
                 module.post(base, "KEY", "secret", {"x": 1})
             self.assertEqual(cm.exception.code, 302)
         self.assertEqual(self.reached, [], "the redirect target was never contacted")
+
+    def test_the_thermal_probe_does_not_follow_one_either(self):
+        from unittest.mock import patch
+
+        with patch.object(thermal_probe, "INGEST_URL", f"http://127.0.0.1:{self.hub.port}/ingest/K/event"):
+            with self.assertRaises(urllib.error.HTTPError):
+                thermal_probe.report("ThermalWarning", "CPU running hot", "error", {})
+        self.assertEqual(self.reached, [])
 
     def test_an_ordinary_answer_still_works(self):
         for module in (stack_reporter, home_reporter, jellyfin_reporter):

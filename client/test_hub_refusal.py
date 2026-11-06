@@ -74,7 +74,7 @@ class Refusing(unittest.TestCase):
     }
 
     def run_refused(self, module):
-        with patch.dict(os.environ, self.ENV), patch("urllib.request.urlopen") as urlopen:
+        with patch.dict(os.environ, self.ENV), patch("urllib.request.OpenerDirector.open") as urlopen:
             err = io.StringIO()
             with redirect_stderr(err):
                 module.safe_run()
@@ -94,7 +94,7 @@ class Refusing(unittest.TestCase):
 
     def test_the_thermal_probe_exits_non_zero_so_a_timer_shows_failed(self):
         with patch.object(thermal_probe, "INGEST_URL", "http://nightjar.example/ingest/K/event"), patch(
-            "urllib.request.urlopen"
+            "urllib.request.OpenerDirector.open"
         ) as urlopen:
             err = io.StringIO()
             with redirect_stderr(err), self.assertRaises(SystemExit) as raised:
@@ -105,7 +105,7 @@ class Refusing(unittest.TestCase):
 
     def test_a_good_hub_still_sends(self):
         with patch.object(thermal_probe, "INGEST_URL", "https://nightjar.example/ingest/K/event"), patch(
-            "urllib.request.urlopen"
+            "urllib.request.OpenerDirector.open"
         ) as urlopen:
             thermal_probe.report("ThermalWarning", "CPU running hot in enclosure", "error", {})
         urlopen.assert_called_once()
