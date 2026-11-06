@@ -571,10 +571,37 @@ class ConsoleSession(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
-    operator_id: Mapped[int] = mapped_column(ForeignKey("operators.id", ondelete="CASCADE"))
+    # A person's session has an operator. A wall display that signed in with a device token has a device token
+    # instead, and no person (hub/auth.py device-login). Exactly one of the two is set.
+    operator_id: Mapped[int | None] = mapped_column(ForeignKey("operators.id", ondelete="CASCADE"))
+    device_token_id: Mapped[int | None] = mapped_column(ForeignKey("device_tokens.id", ondelete="CASCADE"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ip: Mapped[str] = mapped_column(String(64), default="")
     user_agent: Mapped[str] = mapped_column(String(200), default="")
+
+
+class DeviceToken(Base):
+    """A credential for a machine: the wall display, a CI job, a script. Replaces the one shared console token, which
+    could do everything, had no name, never expired and could only be replaced everywhere at once (decision #59).
+
+    Stored only as a SHA-256 of a long random value, so a copy of the database cannot be used. `scope` is read (a
+    viewer) or write (a maintainer); a device is never an owner, so it can never create a site, rotate a secret or
+    make another credential."""
+
+    __tablename__ = "device_tokens"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(60))
+    # the first characters, so a list can tell two tokens apart without holding the secret
+    prefix: Mapped[str] = mapped_column(String(16))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    scope: Mapped[str] = mapped_column(String(8), default="read", server_default="read")
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("operators.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_ip: Mapped[str] = mapped_column(String(64), default="", server_default="")
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
