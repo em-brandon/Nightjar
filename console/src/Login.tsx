@@ -5,7 +5,7 @@ import { getPasskey, passkeyProblem, supported, type WireOptions } from "./passk
 // password and an authenticator code; in local development it asks for the shared console token. Either way the
 // browser never keeps a secret: the hub answers a successful login with an HttpOnly session cookie that page
 // JavaScript cannot read.
-export default function Login({ onSuccess, account }: { onSuccess: () => void; account: boolean }) {
+export default function Login({ onSuccess, account, onSetup }: { onSuccess: () => void; account: boolean; onSetup?: () => void }) {
   const [token, setToken] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -127,6 +127,11 @@ export default function Login({ onSuccess, account }: { onSuccess: () => void; a
         {account && supported() && (
           <button type="button" className="btn" disabled={busy} onClick={withPasskey}>
             Sign in with a passkey
+          </button>
+        )}
+        {account && onSetup && (
+          <button type="button" className="side-link" onClick={onSetup}>
+            I have a setup token
           </button>
         )}
       </form>

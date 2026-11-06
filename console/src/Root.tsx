@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import App from "./App.tsx";
 import Login from "./Login.tsx";
+import Setup from "./Setup.tsx";
 
 // Decides whether to show the console or the login. The console only mounts once
 // we are allowed in, so nothing polls the hub (and gets a wall of 401s) before then.
 export default function Root() {
-  const [phase, setPhase] = useState<"checking" | "login" | "ready">("checking");
+  const [phase, setPhase] = useState<"checking" | "login" | "setup" | "ready">("checking");
+  // who is signed in, so the console can hide what their role cannot use (the hub enforces it regardless)
+  const [role, setRole] = useState<string | null>(null);
+  const [username, setUsername] = useState<string | null>(null);
   const [required, setRequired] = useState(false);
   // true when the hub signs people in with an account (and so has sessions to list), false for the shared token
   const [account, setAccount] = useState(false);
@@ -15,7 +19,9 @@ export default function Root() {
   const check = useCallback(async () => {
     try {
       const res = await fetch("/api/auth/status");
-      const status = (await res.json()) as { required: boolean; authenticated: boolean; account?: boolean };
+      const status = (await res.json()) as { required: boolean; authenticated: boolean; account?: boolean; role?: string | null; username?: string | null };
+      setRole(status.role ?? null);
+      setUsername(status.username ?? null);
       setRequired(status.required);
       setAccount(Boolean(status.account));
       setPhase(!status.required || status.authenticated ? "ready" : "login");
@@ -48,17 +54,19 @@ export default function Root() {
 
   // Render nothing while checking, so a signed-in user does not see the login flash.
   if (phase === "checking") return null;
+  if (phase === "setup") return <Setup onBack={() => setPhase("login")} onDone={() => setPhase("login")} />;
   if (phase === "login") {
     return (
       <Login
         account={account}
-        onSuccess={() => {
+        onSetup={() => setPhase("setup")}
+        onSuccess={async () => {
           setRequired(true);
           setSession((n) => n + 1);
-          setPhase("ready");
+          await check();
         }}
       />
     );
   }
-  return <App key={session} onSignOut={required ? signOut : undefined} hasAccount={account} />;
+  return <App key={session} onSignOut={required ? signOut : undefined} hasAccount={account} role={role} username={username} />;
 }
