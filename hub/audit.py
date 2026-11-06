@@ -1,3 +1,4 @@
+from contextvars import ContextVar
 from datetime import datetime
 from urllib.parse import urlsplit
 
@@ -17,6 +18,11 @@ from .models import AuditLog, Site
 router = APIRouter(prefix="/api/sites", tags=["audit"])
 
 
+# Who is making this request, set once by the console dependency (hub/auth.py), so every audit row names the person or
+# device without each caller passing it down. "console" is what a row says when auth is off (local development).
+actor_var: ContextVar[str] = ContextVar("nightjar_actor", default="console")
+
+
 def _where(url: str | None) -> str:
     """A site's address without any userinfo or query string, either of which can carry a credential."""
     if not url:
@@ -31,12 +37,12 @@ def _where(url: str | None) -> str:
 def record(session: AsyncSession, site: Site, action: str, detail: str = "") -> None:
     """Add a row to the caller's transaction. It commits or rolls back with the change it describes,
     so the trail can neither miss a change nor describe one that did not happen."""
-    session.add(AuditLog(site_id=site.id, site_name=site.name, action=action, detail=detail[:300]))
+    session.add(AuditLog(site_id=site.id, site_name=site.name, action=action, detail=detail[:300], actor=actor_var.get()[:40]))
 
 
-def record_login(session: AsyncSession, action: str, detail: str = "", actor: str = "console") -> None:
+def record_login(session: AsyncSession, action: str, detail: str = "", actor: str | None = None) -> None:
     """Sign-in events live in the same trail but belong to no site. Never put a password, code or token in `detail`."""
-    session.add(AuditLog(site_id=None, site_name="", action=action, detail=detail[:300], actor=actor[:40]))
+    session.add(AuditLog(site_id=None, site_name="", action=action, detail=detail[:300], actor=(actor or actor_var.get())[:40]))
 
 
 class AuditOut(BaseModel):

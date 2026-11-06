@@ -124,7 +124,7 @@ class AccountLogin(unittest.IsolatedAsyncioTestCase):
 class SignIn(AccountLogin):
     async def test_the_right_password_and_code_signs_in_with_a_hardened_cookie(self):
         async with self.client() as c:
-            self.assertEqual((await c.get("/api/auth/status")).json(), {"required": True, "authenticated": False, "account": True})
+            self.assertEqual((await c.get("/api/auth/status")).json(), {"required": True, "authenticated": False, "role": None, "username": None, "account": True})
             r = await self.login(c)
             self.assertEqual(r.status_code, 200, r.text)
             cookie = r.headers["set-cookie"]

@@ -38,6 +38,13 @@ from .sources import client_ip
 
 log = logging.getLogger("nightjar.auth")
 
+# What each role may do (docs/KEYS.md). A viewer reads. A maintainer does the day-to-day work: incidents, tickets, URLs,
+# alerts. Only an owner touches anything that carries a secret or decides who gets in: creating a site, rotating a secret,
+# browser keys, users, device tokens.
+ROLES = ("viewer", "maintainer", "owner")
+_RANK = {r: i for i, r in enumerate(ROLES)}
+SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
 COOKIE = "nj_session"  # token mode: derived from CONSOLE_TOKEN
 SESSION_COOKIE = "nj_sid"  # account mode: a random token whose hash is in console_sessions
 COOKIE_MAX_AGE = 30 * 24 * 3600  # token mode only. Account mode follows settings.session_absolute_days
@@ -129,10 +136,20 @@ def _now() -> datetime:
 class Who:
     """What authenticated a request. session_id is set only for an account session."""
 
-    def __init__(self, kind: str, session_id: int | None = None, operator_id: int | None = None):
+    def __init__(
+        self,
+        kind: str,
+        session_id: int | None = None,
+        operator_id: int | None = None,
+        role: str = "owner",
+        name: str = "console",
+    ):
         self.kind = kind  # "bearer" | "token-cookie" | "session"
         self.session_id = session_id
         self.operator_id = operator_id
+        # The shared console token (local development) has always been all-powerful, so it is an owner.
+        self.role = role
+        self.name = name
 
 
 async def _session_who(request: Request, db: AsyncSession) -> Who | None:
@@ -148,7 +165,11 @@ async def _session_who(request: Request, db: AsyncSession) -> Who | None:
     if (now - row.last_seen_at).total_seconds() > LAST_SEEN_EVERY_S:
         row.last_seen_at = now
         await db.commit()
-    return Who("session", row.id, row.operator_id)
+    op = await db.get(Operator, row.operator_id)
+    # a disabled account, or one whose owner has reset it, stops working at once without waiting for its sessions to expire
+    if op is None or op.disabled_at is not None or op.setup_token_hash is not None:
+        return None
+    return Who("session", row.id, row.operator_id, role=op.role, name=op.username)
 
 
 async def authenticate(request: Request, db: AsyncSession) -> Who | None:
@@ -170,7 +191,23 @@ async def require_console(request: Request, db: AsyncSession = Depends(get_sessi
     who = await authenticate(request, db)
     if who is None:
         raise HTTPException(401, "authentication required")
+    if who.role == "viewer" and request.method not in SAFE_METHODS:
+        raise HTTPException(403, "your role is read-only")
     request.state.who = who
+    audit.actor_var.set(who.name)
+
+
+def ensure_role(request: Request, minimum: str) -> None:
+    """Refuse unless the signed-in person has at least this role. Runs after require_console, which sets request.state.who."""
+    who: Who | None = getattr(request.state, "who", None)
+    if who is None:
+        raise HTTPException(401, "authentication required")
+    if _RANK[who.role] < _RANK[minimum]:
+        raise HTTPException(403, f"this needs the {minimum} role")
+
+
+async def require_owner(request: Request) -> None:
+    ensure_role(request, "owner")
 
 
 async def require_session(request: Request, db: AsyncSession = Depends(get_session)) -> Who:
@@ -193,15 +230,21 @@ class LoginIn(BaseModel):
 class StatusOut(BaseModel):
     required: bool
     authenticated: bool
+    # who is signed in, so the console can show their role and hide what they cannot use. None when not signed in.
+    role: str | None = None
+    username: str | None = None
     # True when the sign-in form should ask for a username, password and code instead of the console token
     account: bool = False
 
 
 @router.get("/status", response_model=StatusOut)
 async def status(request: Request, db: AsyncSession = Depends(get_session)) -> StatusOut:
+    who = await authenticate(request, db)
     return StatusOut(
         required=enabled(),
-        authenticated=await authenticate(request, db) is not None,
+        authenticated=who is not None,
+        role=who.role if who else None,
+        username=who.name if who else None,
         account=operator_mode(),
     )
 
@@ -259,6 +302,9 @@ async def _account_login(body: LoginIn, request: Request, response: Response, db
 
     # The same work and the same answer whether the username exists, the password is wrong or the code is wrong.
     op = await db.scalar(select(Operator).where(Operator.username == username).with_for_update()) if username else None
+    # a disabled account, or one still waiting to be set up, answers exactly like a wrong password
+    if op is not None and (op.disabled_at is not None or op.setup_token_hash is not None):
+        op = None
     password_ok = await asyncio.to_thread(
         credentials.verify_password, body.password, op.password_hash if op else credentials.DUMMY_HASH
     )

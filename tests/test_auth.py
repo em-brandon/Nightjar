@@ -137,11 +137,11 @@ class Accepts(AuthTestCase):
     async def test_the_right_bearer_token_authenticates(self):
         async with self.client() as c:
             r = await c.get("/api/auth/status", headers={"Authorization": f"Bearer {TOKEN}"})
-            self.assertEqual(r.json(), {"required": True, "authenticated": True, "account": False})
+            self.assertEqual(r.json(), {"required": True, "authenticated": True, "role": "owner", "username": "console", "account": False})
 
     async def test_login_sets_a_hardened_cookie_that_then_authenticates(self):
         async with self.client() as c:
-            self.assertEqual((await c.get("/api/auth/status")).json(), {"required": True, "authenticated": False, "account": False})
+            self.assertEqual((await c.get("/api/auth/status")).json(), {"required": True, "authenticated": False, "role": None, "username": None, "account": False})
 
             r = await c.post("/api/auth/login", json={"token": TOKEN})
             self.assertEqual(r.status_code, 200)
@@ -244,7 +244,7 @@ class Login(AuthTestCase):
     async def test_auth_off_means_open_and_login_is_a_noop(self):
         with patch.object(settings, "console_token", ""):
             async with self.client() as c:
-                self.assertEqual((await c.get("/api/auth/status")).json(), {"required": False, "authenticated": True, "account": False})
+                self.assertEqual((await c.get("/api/auth/status")).json(), {"required": False, "authenticated": True, "role": "owner", "username": "console", "account": False})
                 self.assertEqual((await c.post("/api/auth/login", json={"token": "anything"})).status_code, 200)
 
 
