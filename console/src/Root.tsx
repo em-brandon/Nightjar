@@ -7,14 +7,17 @@ import Login from "./Login.tsx";
 export default function Root() {
   const [phase, setPhase] = useState<"checking" | "login" | "ready">("checking");
   const [required, setRequired] = useState(false);
+  // true when the hub signs people in with an account (and so has sessions to list), false for the shared token
+  const [account, setAccount] = useState(false);
   // bumped on each sign-in, so the console remounts with fresh feeds
   const [session, setSession] = useState(0);
 
   const check = useCallback(async () => {
     try {
       const res = await fetch("/api/auth/status");
-      const status = (await res.json()) as { required: boolean; authenticated: boolean };
+      const status = (await res.json()) as { required: boolean; authenticated: boolean; account?: boolean };
       setRequired(status.required);
+      setAccount(Boolean(status.account));
       setPhase(!status.required || status.authenticated ? "ready" : "login");
     } catch {
       // The hub is unreachable, so we cannot tell whether a login is needed. Show
@@ -48,6 +51,7 @@ export default function Root() {
   if (phase === "login") {
     return (
       <Login
+        account={account}
         onSuccess={() => {
           setRequired(true);
           setSession((n) => n + 1);
