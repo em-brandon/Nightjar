@@ -92,7 +92,8 @@ def totp_match(secret: bytes, code: str, last_step: int, now: float | None = Non
     """The step this code is valid for, or None. Accepts one step either side for clock drift, and never a step at or
     before `last_step`, so a code that was already used (or an older one) is refused."""
     code = code.strip().replace(" ", "")
-    if len(code) != TOTP_DIGITS or not code.isdigit():
+    # ascii first: str.isdigit() is true for digits of other scripts, and compare_digest raises (a 500) on non-ASCII text
+    if len(code) != TOTP_DIGITS or not (code.isascii() and code.isdigit()):
         return None
     current = totp_step(now)
     for step in (current - 1, current, current + 1):
