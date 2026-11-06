@@ -1409,3 +1409,34 @@ incident and rotate a client's secret.
   token for it is not built.
 - *Root on the VPS can still read the secrets and the master key,* and from the master key derive any authenticator code. This protects
   against a database copy and a stolen cookie, not against the machine.
+
+---
+
+## 58. Client availability reports: preview first, one switch per client, email later
+
+**Date:** 2026-11-06. Partly reopens the "uptime percentage charts" and "replying to clients" lines in `CLAUDE.md`'s out-of-scope list.
+
+**Context.** Maintenance guides and monitoring vendors agree on what a monthly client report holds: a plain verdict first, availability
+against a target, downtime, a short outage list, response time, and the work done. Sources: Oh Dear, the Pingdom report template,
+and several agency guides. Nightjar already stores the data (`checks`, `daily_stats`, `deploys`). It has no way to send email, and
+until now it has only ever contacted the operator.
+
+**Decision.**
+- **Build the report and its preview before any sending.** A Reports tab shows each client's month and exactly what they would
+  receive, printable as a PDF. The operator reads it first. Sending real email to a client is outward-facing and hard to undo, and
+  nothing in Nightjar yet decides whether a report is *right*.
+- **The switch is per client, off by default, and disabled** until a sender exists. One client can be on while another is paused. It is
+  shown now so the plan is visible, with the reason it cannot be turned on.
+- **Monthly**, for the previous UTC month. Weekly "all quiet" mail trains a client to stop reading it.
+- **Reports contain counts, percentages and times only** (the privacy rule in `docs/REPORTS.md`). Never an exception, a stack frame, a
+  probe error text or a full URL.
+- **The figures are honest about what was measured.** No checks is a dash, a gap in probing is stated, one failure never rounds to 100%,
+  and an outage is never stretched across a gap in the data.
+
+**When sending is built** (not now): one adapter like `notify.py` so the provider can be swapped; a report row unique on client and
+month so a retry or a restart cannot send it twice (a duplicate client email is worse than a late one); each client's first report held
+for approval; a send history in the console; SPF and DKIM on a sending domain; and a visible failure when a send fails, the same rule
+as an alert.
+
+**Rejected.** A global switch (cannot pause one client). Weekly reports. Charts in the first version (the numbers and the outage list
+are what clients read). Putting incident titles in the report (they can carry detail the client was never meant to see).

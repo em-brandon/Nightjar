@@ -381,6 +381,7 @@ hub/
   edge.py          edge-triggered issues shared by every pushed source: open once, resolve themselves
   credentials.py   password hashing (scrypt), TOTP, recovery codes, session tokens: standard library only (decision #57)
   operator_cli.py  `python -m hub.operator_cli create|passwd|reset-2fa|sign-out-everywhere`: the console account is made here, never over the network
+  reports.py       GET /api/reports/availability: a month of availability per client, for the Reports tab and the client sheet (decision #58)
   sources.py       where signed reports come from and which were refused: evidence of a leaked secret, shown in the console, never a notification (docs/KEYS.md)
   heartbeats.py    POST /ingest/{key}/heartbeat/{name}: a cron job or private app pings, and silence opens an issue (docs/CLIENT-INTEGRATION.md)
 console/           Vite + React 19 + TypeScript UI: src/views/* is one file per tab; src/api/* is generated from the hub (do not edit)
@@ -482,6 +483,7 @@ signed against a hub with `VERIFY_SIGNATURES` on.
 | `CONSOLE_TOKEN` | guards the console and `/api`. Empty = open (dev only). Required in production, min 16 chars. With accounts on it is only a bearer token |
 | `OPERATOR_LOGIN` / `SESSION_IDLE_DAYS` / `SESSION_ABSOLUTE_DAYS` | sign in with an account instead of the token (default: follows `VERIFY_SIGNATURES`), and how long a session lasts idle (7) and at most (30). Needs `SECRET_MASTER_KEY`: the authenticator code is derived from it |
 | `SECRET_MASTER_KEY` | the key each site's ingest secret is derived from (`hub/derive.py`). Required in production, min 32 chars; empty in dev keeps stored secrets. Back it up apart from the database |
+| `REPORT_UPTIME_TARGET` | the availability % a client report measures against (default 99.9, about 43 minutes down in a month) |
 | `STACK_HEALTHY_MIN` | minutes a stack problem must stay gone before it resolves itself (default 10) |
 | `MEDIA_HISTORY_DAYS` | how long the home media viewing history (personal data) is kept (default 365) |
 | `WEATHER_ENABLED` / `WEATHER_LAT` / `WEATHER_LON` / `WEATHER_NAME` / `WEATHER_TTL_MIN` | the wall's weather and altitude, from Open-Meteo (no key). Defaults to Nairobi; set the exact coordinates of the wall, since the elevation shown is the terrain model's value at that point |

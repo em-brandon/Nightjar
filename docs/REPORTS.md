@@ -1,6 +1,10 @@
 # Reports: history, trends and client summaries (planned)
 
-> **Status: planned, not started.** A spec, written so the build is a straight line. Nothing here exists yet.
+> **Status: partly built.** The daily rollup and its backfill are built (`hub/rollup.py`). The **availability report** is built:
+> `GET /api/reports/availability?month=YYYY-MM` (`hub/reports.py`) and the console's **Reports** tab, with a printable client
+> sheet (decision #58). Not built: the per-site series and charts, the time-to-acknowledge figures, the print view for several
+> months, and **sending**: the per-client email switch is shown and disabled until the hub has an email sender. The rest of this
+> page is the original spec.
 
 ## The gap
 
@@ -70,10 +74,32 @@ Rules:
 A report shows counts and percentages, never issue titles, stack frames, URLs with tokens, or `last_error` text. Those can carry
 sensitive detail (see the comment on `Check.error`). The print view reads from the same summary endpoint, which has no such fields.
 
+## Availability report (built)
+
+One month, per client, production sites that have a `url`. Per site: availability %, estimated downtime, average response time
+and the slowest day's p95, the outages of two or more failed checks in a row, deploys released, and how much of the expected
+checking actually ran (`coverage_pct`). A plain-English headline is built from those and is what the client sheet leads with.
+
+Rules, each pinned by `tests/test_reports.py`:
+
+- **Silence is not uptime.** A site with no checks has no percentage (a dash), and a month with a gap in probing says the monitoring
+  was incomplete rather than looking perfect.
+- **One failure never rounds up to 100%.** Percentages are truncated to two places.
+- **An outage is measured, not inferred.** A run of failures ends where the checks stop for more than three probe intervals, so
+  two failures with the probe off between them are not one outage that lasted the whole silence.
+- **Rolled-up days win over raw checks**, so a month reads the same before and after the raw rows are pruned. Past 100 days the
+  totals are exact and the outage list is marked as not kept.
+- **Production only; counts and times only.** No issue titles, probe error text or full URLs (a host only).
+- **Months are UTC**, the days `daily_stats` is cut on. Downtime is `failed checks x probe interval`, worded as an estimate.
+- `REPORT_UPTIME_TARGET` (default 99.9) is what the headline measures against.
+
+Open: per-client target, planned maintenance windows that should not count as downtime, tickets handled, SSL expiry, and the
+sources the research found that Nightjar cannot supply yet (backups verified, updates applied).
+
 ## Out of scope
 
 Ad hoc queries, custom panels, alerting from a chart, per-route latency, live dashboards for clients, scheduled email delivery
-(until the digest in chunk 4 exists), and Prometheus. This is history for one operator and a monthly page for each client.
+(until an email sender exists, decision #58), and Prometheus. This is history for one operator and a monthly page for each client.
 
 ## Build order
 
