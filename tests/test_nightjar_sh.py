@@ -106,6 +106,50 @@ class Script(unittest.TestCase):
             with self.assertRaises(HTTPException):
                 ingest._verify("another-secret", req["body"], h["x-hub-signature"], h["x-hub-timestamp"])
 
+    def test_every_shape_of_secret_signs_correctly(self):
+        # the script builds HMAC from plain hashes (see hmac_hex), so the edges of that are where it could be wrong:
+        # a key shorter than, exactly, and longer than the hash's 64-byte block, and one full of shell-special characters
+        for secret in ("s", "k" * 63, "k" * 64, "k" * 65, "x" * 200, 'sp ace"q$ue\\back`tick`;&|<>*?~#!'):
+            Stub.seen = []
+            self.run_script("heartbeat", "j", secret=secret)
+            req = self.sent()
+            h = {k.lower(): v for k, v in req["headers"].items()}
+            with patch.object(settings, "verify_signatures", True):
+                ingest._verify(secret, req["body"], h["x-hub-signature"], h["x-hub-timestamp"])
+
+    def test_neither_the_secret_nor_a_valid_signature_is_ever_on_a_command_line(self):
+        # `ps` shows every user on the machine each process's arguments. Put a logging shim in front of every program the
+        # script can start, run it, and read back what they were all given.
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as shims:
+            log = os.path.join(shims, "argv.log")
+            for tool in ("openssl", "curl", "od", "tr", "wc", "sed", "cat", "date", "printf", "cut", "sh", "env"):
+                real = shutil.which(tool)
+                if not real or tool == "sh":
+                    continue
+                path = os.path.join(shims, tool)
+                # forward slashes and a plain /bin/sh: the same shim works on Linux and under Git Bash on Windows
+                log_path, real_path = log.replace("\\", "/"), real.replace("\\", "/")
+                with open(path, "w", newline="\n") as f:
+                    f.write(f'#!/bin/sh\nprintf \'%s\\n\' "{tool} $*" >> "{log_path}"\nexec "{real_path}" "$@"\n')
+                os.chmod(path, 0o755)
+            env_path = shims + os.pathsep + os.environ["PATH"]
+            env = {k: v for k, v in os.environ.items() if not k.startswith("NIGHTJAR_")}
+            env.update(PATH=env_path, NIGHTJAR_URL=f"http://127.0.0.1:{self.port}", NIGHTJAR_KEY="KEY123", NIGHTJAR_SECRET=SECRET)
+            r = subprocess.run([SH, SCRIPT, "heartbeat", "j", "--every", "5m"], env=env, capture_output=True, text=True, timeout=60)
+            self.assertEqual((r.returncode, r.stderr), (0, ""))
+            req = self.sent()
+            with open(log) as f:
+                argv = f.read()
+            self.assertIn("curl ", argv, "the shims saw the script run (otherwise this proves nothing)")
+            self.assertIn("openssl ", argv)
+            self.assertNotIn(SECRET, argv)
+            h = {k.lower(): v for k, v in req["headers"].items()}
+            signature = h["x-hub-signature"].split("=", 1)[1]
+            self.assertNotIn(signature, argv, "a signature is good for five minutes: it must not sit in `ps` either")
+            self.assertNotIn("X-Hub-Signature", argv)
+
     def test_the_secret_is_never_sent(self):
         self.run_script("heartbeat", "j")
         req = self.sent()
