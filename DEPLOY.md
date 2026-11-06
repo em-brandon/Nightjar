@@ -70,7 +70,7 @@ cd /opt/nightjar
 # copy the repo up, or clone it
 cp .env.prod.example .env
 nano .env                        # set HUB_DOMAIN, and check POSTGRES_USER and POSTGRES_DB
-./deploy/make-secrets.sh         # creates ./secrets: the database password, the console token, and the other secret files
+sudo ./deploy/make-secrets.sh    # creates ./secrets: the database password, the console token, and the other secret files
 
 docker compose up -d --build     # the first build downloads Node and compiles the console, so it takes a few minutes
 docker compose logs -f caddy     # watch the certificate get issued
@@ -80,15 +80,36 @@ docker compose logs -f caddy     # watch the certificate get issued
 committed): `postgres_password`, `database_url`, `console_token`, `secret_master_key` and `pushover_callback_token` are generated, and
 `pushover_token`, `pushover_user`, `deadman_url` and `presence_token` are created empty for you to fill in. Compose mounts them under
 `/run/secrets`, so `docker inspect`, process listings and crash dumps never show them (checked: no container's environment holds a
-secret). It never overwrites a file that exists, so running it again is safe. **Back the directory up somewhere other than the
-server**: it is not in git, and the console token inside it is what you sign in with. Keep `secret_master_key` in your password manager
+secret). It never overwrites a file that exists, so running it again is safe.
+
+**Run it with `sudo`.** As root it gives each file to the one account that reads it and sets mode 400: the hub's files to the hub's
+user (uid 10001), the database password to root. Nothing is world-readable, so a loosened directory or a careless `cp -r` no longer
+exposes a secret. Without root it cannot change owners, leaves the files readable by every account on the machine, and says so. Running
+it again repairs any file that has been loosened since. `./deploy/make-secrets.sh --check` changes nothing and exits non-zero if any
+file or the directory is more open than that: run it after any restore, copy or backup job touches the directory. Root and members of
+the `docker` group can still read the files; keep that group to yourself, and encrypt the VPS disk if the provider offers it.
+ **Back the directory up somewhere other than the
+server**: it is not in git. Keep `secret_master_key` in your password manager
 too: every new site's ingest secret is worked out from it and none is stored, so a database backup alone cannot restore them (see
 `docs/KEYS.md`). The hub refuses to start in production without it.
 
 The hub migrates its own database on every start, so there is no schema step. It also refuses to start
 if the console token is missing, empty or under 16 characters, because otherwise the console API and every write
-would be open to the internet (checked: an empty `secrets/console_token` makes the hub exit with an error). Sign in at your domain with that token. The session cookie is marked
+would be open to the internet (checked: an empty `secrets/console_token` makes the hub exit with an error). The session cookie is marked
 `Secure` behind Caddy's TLS, so never use the console over plain http.
+
+**Create your console account** once the stack is up. There is no sign-up page; the account is made on the server:
+
+```bash
+docker compose exec hub python -m hub.operator_cli create --username you
+```
+
+It asks for a password (12 characters or more), then shows an authenticator secret and eight recovery codes **once**. Add the secret
+to your authenticator app, save the recovery codes in your password manager, and type the code the app shows: nothing is saved until
+that code is right, so a bad scan cannot lock you out. Then sign in at your domain with the username, password and a current code.
+The console token no longer signs in to the page; it stays as a bearer token for scripts and the wall display. `passwd`, `reset-2fa`
+and `sign-out-everywhere` do what they say, and each ends every signed-in session. Until an account exists the hub starts and logs a
+warning, and only the bearer token works.
 
 **Caddy serves the console too.** `deploy/caddy.Dockerfile` builds the console and bakes it, with the Caddyfile, into the Caddy
 image, so one hostname serves the console, the API it calls, and the endpoints other machines call (`/ingest`, `/healthz`,

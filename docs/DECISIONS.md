@@ -1365,3 +1365,78 @@ or changed:
   escalating a P1 that nobody acknowledges to a second recipient or channel.
 - **Unconfigured is loud, not quiet.** With no token every alert shows as failed with its reason, in a banner on every tab, in the
   incident log, and as a cue on the wall display.
+
+---
+
+## 57. The console signs in with an account and a second factor; the shared token stays for machines
+
+**Date:** 2026-11-06. Supersedes the sign-in half of #42 (the bearer token and `/api` gating stand).
+
+**Context.** #32 and #42 settled on a single shared `CONSOLE_TOKEN`, and the cookie was `HMAC(token)`: the same fixed value for every
+login, valid for 30 days, impossible to revoke singly or to list, with one global failure counter, so a stranger's five bad guesses
+locked the operator out, and no second factor. Fine on a laptop; not for a console on the internet that can acknowledge or mute an
+incident and rotate a client's secret.
+
+**Decision.** In production (`VERIFY_SIGNATURES` on, or `OPERATOR_LOGIN=true`) the console uses an account:
+
+- **One operator account**, with a username, a scrypt-hashed password (12+ characters) and a TOTP authenticator code. Standard library
+  only, so no new dependency in the part that must be trusted.
+- **The TOTP secret is derived from `SECRET_MASTER_KEY`, not stored**, matching decision #55's derived ingest secrets. A database copy
+  cannot make a code. The cost: a changed master key invalidates every authenticator (`reset-2fa`).
+- **Sessions are random, stored hashed, and revocable.** Idle limit 7 days, absolute 30. Logout ends them on the server.
+- **The account is made from the command line on the server** (`python -m hub.operator_cli`), never over the network. There is no
+  sign-up route to attack, and whoever can run the command already controls the machine.
+- **Failures are limited per account (10 in 15 minutes) and per address (20)**, and a wrong username, password or code gets one
+  identical answer. Sign-ins, failures, recovery-code use and revocations go in the audit trail, with no secret in any row. Failures for
+  an unknown username are deliberately not logged, so a stranger cannot fill the trail.
+- **`CONSOLE_TOKEN` stays as a bearer token** for scripts and the wall display, and still signs in during local development.
+
+**Rejected.**
+- *Passkeys (WebAuthn).* Phishing-resistant, but the wall display and the planned fingerprint reader make it more involved. Revisit.
+- *Storing the TOTP secret encrypted in the database.* Needs a cipher the standard library does not offer, or a new dependency, for no
+  gain over deriving it.
+- *Multi-user accounts.* Still out of scope. A single operator with sessions and a second factor is not multi-user auth; the table has
+  one row, and #54's step 3 is where more would be added.
+- *A web page to create the account.* An unauthenticated route that creates the first administrator is the thing to avoid.
+
+**Known limits.**
+- *The lockout can be used to stall the operator.* A stranger who keeps failing the right username locks that account's sign-in for 15
+  minutes. They never get in, and the bearer token is unaffected. Accepted: a login that cannot be locked cannot be rate limited.
+- *Failure counters are in memory,* so a restart forgives a guesser. The hub is one process on purpose (CLAUDE.md).
+- *Behind Cloudflare or Caddy the address is taken from the forwarded header* (`hub/sources.py`), so this is only as good as the hub
+  being reachable through them alone. The hub's own port is not published.
+- *The wall display signs in with the same form,* and its session ends after 30 days at most. It is signed in again by hand; a device
+  token for it is not built.
+- *Root on the VPS can still read the secrets and the master key,* and from the master key derive any authenticator code. This protects
+  against a database copy and a stolen cookie, not against the machine.
+
+---
+
+## 58. Client availability reports: preview first, one switch per client, email later
+
+**Date:** 2026-11-06. Partly reopens the "uptime percentage charts" and "replying to clients" lines in `CLAUDE.md`'s out-of-scope list.
+
+**Context.** Maintenance guides and monitoring vendors agree on what a monthly client report holds: a plain verdict first, availability
+against a target, downtime, a short outage list, response time, and the work done. Sources: Oh Dear, the Pingdom report template,
+and several agency guides. Nightjar already stores the data (`checks`, `daily_stats`, `deploys`). It has no way to send email, and
+until now it has only ever contacted the operator.
+
+**Decision.**
+- **Build the report and its preview before any sending.** A Reports tab shows each client's month and exactly what they would
+  receive, printable as a PDF. The operator reads it first. Sending real email to a client is outward-facing and hard to undo, and
+  nothing in Nightjar yet decides whether a report is *right*.
+- **The switch is per client, off by default, and disabled** until a sender exists. One client can be on while another is paused. It is
+  shown now so the plan is visible, with the reason it cannot be turned on.
+- **Monthly**, for the previous UTC month. Weekly "all quiet" mail trains a client to stop reading it.
+- **Reports contain counts, percentages and times only** (the privacy rule in `docs/REPORTS.md`). Never an exception, a stack frame, a
+  probe error text or a full URL.
+- **The figures are honest about what was measured.** No checks is a dash, a gap in probing is stated, one failure never rounds to 100%,
+  and an outage is never stretched across a gap in the data.
+
+**When sending is built** (not now): one adapter like `notify.py` so the provider can be swapped; a report row unique on client and
+month so a retry or a restart cannot send it twice (a duplicate client email is worse than a late one); each client's first report held
+for approval; a send history in the console; SPF and DKIM on a sending domain; and a visible failure when a send fails, the same rule
+as an alert.
+
+**Rejected.** A global switch (cannot pause one client). Weekly reports. Charts in the first version (the numbers and the outage list
+are what clients read). Putting incident titles in the report (they can carry detail the client was never meant to see).

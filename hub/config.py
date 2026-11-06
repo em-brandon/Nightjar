@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     probe_enabled: bool = True
     probe_interval_s: int = 60
     probe_timeout_s: float = 10.0
+    # The availability a client report measures against (hub/reports.py). 99.9% is about 43 minutes of downtime in a month.
+    report_uptime_target: float = 99.9
     # A site's outage resolves itself after this many passing checks in a row (hub/uptime.py). At the default
     # interval that is five minutes: long enough that a flapping site does not open and close an issue all day.
     uptime_recover_checks: int = 5
@@ -41,6 +43,13 @@ class Settings(BaseSettings):
     # is off (local development only); the hub refuses that when
     # VERIFY_SIGNATURES is on. Generate one with: openssl rand -base64 32
     console_token: str = ""
+    # Who signs in to the console: an account with a password and a TOTP code (hub/operator_cli.py), instead of typing the
+    # shared console token. Unset follows VERIFY_SIGNATURES, so production uses accounts and local development keeps
+    # the token. With accounts on, CONSOLE_TOKEN is only a bearer token for scripts and the wall display.
+    operator_login: bool | None = None
+    # A session ends after this long without use, and at most this long after sign-in, whichever comes first.
+    session_idle_days: int = 7
+    session_absolute_days: int = 30
     # The master key each site's ingest secret is derived from (hub/derive.py), so the database holds no secret that
     # can forge a report. It lives here and never in the database; back it up apart from the database, because lose it
     # and every derived site needs a new secret. Empty means new sites keep a stored secret as before (local

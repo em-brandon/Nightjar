@@ -4,7 +4,7 @@ import type { Alert, Deploy, Heartbeat, HomeSnapshot, Issue, MediaPlay, MediaSna
 import type { DemoHome } from "./home.ts";
 import type { DemoMedia } from "./media.ts";
 
-export type TabId = "overview" | "incidents" | "requests" | "deploys" | "staging" | "media" | "sites" | "alerts" | "heartbeats" | "idle";
+export type TabId = "overview" | "incidents" | "requests" | "deploys" | "staging" | "media" | "sites" | "alerts" | "heartbeats" | "reports" | "idle";
 
 export type Feeds = {
   sites: SiteHealth[];

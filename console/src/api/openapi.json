@@ -141,6 +141,146 @@
         "title": "AuditOut",
         "type": "object"
       },
+      "AvailabilityOut": {
+        "properties": {
+          "clients": {
+            "items": {
+              "$ref": "#/components/schemas/ClientReport"
+            },
+            "title": "Clients",
+            "type": "array"
+          },
+          "month": {
+            "title": "Month",
+            "type": "string"
+          },
+          "overall_uptime_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overall Uptime Pct"
+          },
+          "partial": {
+            "title": "Partial",
+            "type": "boolean"
+          },
+          "period_end": {
+            "format": "date-time",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "format": "date-time",
+            "title": "Period Start",
+            "type": "string"
+          },
+          "probe_interval_s": {
+            "title": "Probe Interval S",
+            "type": "integer"
+          },
+          "target_pct": {
+            "title": "Target Pct",
+            "type": "number"
+          },
+          "through": {
+            "format": "date-time",
+            "title": "Through",
+            "type": "string"
+          }
+        },
+        "required": [
+          "month",
+          "period_start",
+          "period_end",
+          "partial",
+          "through",
+          "target_pct",
+          "probe_interval_s",
+          "overall_uptime_pct",
+          "clients"
+        ],
+        "title": "AvailabilityOut",
+        "type": "object"
+      },
+      "ClientReport": {
+        "properties": {
+          "client_id": {
+            "title": "Client Id",
+            "type": "integer"
+          },
+          "contact_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Email"
+          },
+          "headline": {
+            "title": "Headline",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "not_monitored": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Not Monitored",
+            "type": "array"
+          },
+          "sites": {
+            "items": {
+              "$ref": "#/components/schemas/SiteReport"
+            },
+            "title": "Sites",
+            "type": "array"
+          },
+          "uptime_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uptime Pct"
+          },
+          "verdict": {
+            "enum": [
+              "no_data",
+              "perfect",
+              "met",
+              "below"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_id",
+          "name",
+          "contact_email",
+          "verdict",
+          "headline",
+          "uptime_pct",
+          "sites",
+          "not_monitored"
+        ],
+        "title": "ClientReport",
+        "type": "object"
+      },
       "DeployOut": {
         "properties": {
           "created_at": {
@@ -525,6 +665,43 @@
         "title": "HomeOut",
         "type": "object"
       },
+      "IncidentOut": {
+        "properties": {
+          "ended_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "minutes": {
+            "title": "Minutes",
+            "type": "integer"
+          },
+          "ongoing": {
+            "title": "Ongoing",
+            "type": "boolean"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "started_at",
+          "ended_at",
+          "minutes",
+          "ongoing"
+        ],
+        "title": "IncidentOut",
+        "type": "object"
+      },
       "IngestOut": {
         "properties": {
           "event_count": {
@@ -689,15 +866,31 @@
       },
       "LoginIn": {
         "properties": {
+          "code": {
+            "default": "",
+            "maxLength": 32,
+            "title": "Code",
+            "type": "string"
+          },
+          "password": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Password",
+            "type": "string"
+          },
           "token": {
+            "default": "",
             "maxLength": 200,
             "title": "Token",
             "type": "string"
+          },
+          "username": {
+            "default": "",
+            "maxLength": 60,
+            "title": "Username",
+            "type": "string"
           }
         },
-        "required": [
-          "token"
-        ],
         "title": "LoginIn",
         "type": "object"
       },
@@ -1494,6 +1687,52 @@
         "title": "ServiceIn",
         "type": "object"
       },
+      "SessionOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "current": {
+            "title": "Current",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "ip": {
+            "title": "Ip",
+            "type": "string"
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "title": "Last Seen At",
+            "type": "string"
+          },
+          "user_agent": {
+            "title": "User Agent",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "last_seen_at",
+          "expires_at",
+          "ip",
+          "user_agent",
+          "current"
+        ],
+        "title": "SessionOut",
+        "type": "object"
+      },
       "SiteCreated": {
         "properties": {
           "allowed_origins": {
@@ -1963,6 +2202,127 @@
         "title": "SitePatch",
         "type": "object"
       },
+      "SiteReport": {
+        "properties": {
+          "checks_ok": {
+            "title": "Checks Ok",
+            "type": "integer"
+          },
+          "checks_total": {
+            "title": "Checks Total",
+            "type": "integer"
+          },
+          "coverage_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coverage Pct"
+          },
+          "deploys": {
+            "title": "Deploys",
+            "type": "integer"
+          },
+          "downtime_minutes": {
+            "title": "Downtime Minutes",
+            "type": "integer"
+          },
+          "failed_deploys": {
+            "title": "Failed Deploys",
+            "type": "integer"
+          },
+          "host": {
+            "title": "Host",
+            "type": "string"
+          },
+          "incident_detail": {
+            "title": "Incident Detail",
+            "type": "boolean"
+          },
+          "incidents": {
+            "items": {
+              "$ref": "#/components/schemas/IncidentOut"
+            },
+            "title": "Incidents",
+            "type": "array"
+          },
+          "latency_avg_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Avg Ms"
+          },
+          "latency_peak_p95_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Peak P95 Ms"
+          },
+          "met_target": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Met Target"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "site_id": {
+            "title": "Site Id",
+            "type": "integer"
+          },
+          "uptime_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uptime Pct"
+          }
+        },
+        "required": [
+          "site_id",
+          "name",
+          "host",
+          "uptime_pct",
+          "downtime_minutes",
+          "checks_total",
+          "checks_ok",
+          "coverage_pct",
+          "latency_avg_ms",
+          "latency_peak_p95_ms",
+          "met_target",
+          "incidents",
+          "incident_detail",
+          "deploys",
+          "failed_deploys"
+        ],
+        "title": "SiteReport",
+        "type": "object"
+      },
       "SpeedPoint": {
         "properties": {
           "down_mbps": {
@@ -2197,6 +2557,29 @@
           "mem_series"
         ],
         "title": "StackOut",
+        "type": "object"
+      },
+      "StatusOut": {
+        "properties": {
+          "account": {
+            "default": false,
+            "title": "Account",
+            "type": "boolean"
+          },
+          "authenticated": {
+            "title": "Authenticated",
+            "type": "boolean"
+          },
+          "required": {
+            "title": "Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "required",
+          "authenticated"
+        ],
+        "title": "StatusOut",
         "type": "object"
       },
       "TestEventOut": {
@@ -2744,9 +3127,70 @@
         ]
       }
     },
-    "/api/auth/status": {
+    "/api/auth/sessions": {
       "get": {
-        "operationId": "status_api_auth_status_get",
+        "operationId": "list_sessions_api_auth_sessions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SessionOut"
+                  },
+                  "title": "Response List Sessions Api Auth Sessions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Sessions",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/sessions/revoke-others": {
+      "post": {
+        "operationId": "revoke_others_api_auth_sessions_revoke_others_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "integer"
+                  },
+                  "title": "Response Revoke Others Api Auth Sessions Revoke Others Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Revoke Others",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/sessions/{session_id}": {
+      "delete": {
+        "operationId": "revoke_session_api_auth_sessions__session_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -2755,8 +3199,39 @@
                   "additionalProperties": {
                     "type": "boolean"
                   },
-                  "title": "Response Status Api Auth Status Get",
+                  "title": "Response Revoke Session Api Auth Sessions  Session Id  Delete",
                   "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Session",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/status": {
+      "get": {
+        "operationId": "status_api_auth_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusOut"
                 }
               }
             },
@@ -3400,6 +3875,57 @@
         "summary": "Rates",
         "tags": [
           "rates"
+        ]
+      }
+    },
+    "/api/reports/availability": {
+      "get": {
+        "operationId": "availability_api_reports_availability_get",
+        "parameters": [
+          {
+            "description": "YYYY-MM, UTC. Default: this month so far",
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "YYYY-MM, UTC. Default: this month so far",
+              "title": "Month"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AvailabilityOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Availability",
+        "tags": [
+          "reports"
         ]
       }
     },

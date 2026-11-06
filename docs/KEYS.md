@@ -187,26 +187,47 @@ init({ hub: "https://nightjar.example", key: "<public_key>", release: "v1.4.2" }
 Rules for origins: scheme and host only, such as `https://example.com` or `https://example.com:8443`. No path, no
 wildcard, no `http://` except `localhost` for development. List `www` and the bare domain separately.
 
-## Console token and sessions
+## Signing in, and the console token
+
+In production you sign in with an account: a username, a password and an authenticator code. The console token is no longer typed
+into the page; it is a bearer token for scripts and the wall display.
 
 ```mermaid
 sequenceDiagram
     participant You
     participant Hub
+    participant DB as Database
 
-    You->>Hub: POST /api/auth/login with the token
-    alt wrong token
-        Hub-->>You: 401, and after 10 failures a minute even the right one gets 429
-    else right token
-        Hub-->>You: HttpOnly cookie holding HMAC(token, "session"), not the token
+    You->>Hub: POST /api/auth/login with username, password, code
+    Hub->>DB: the account's scrypt hash, last used code step, recovery hashes
+    alt anything wrong (user, password or code)
+        Hub-->>You: 401, the same answer for each. 10 failures an account (15 min) or 20 an address gives 429
+    else all right
+        Hub->>DB: store SHA-256 of a random session token, with expiry
+        Hub-->>You: HttpOnly, SameSite=Strict cookie holding the random token
         You->>Hub: GET /api/... with the cookie
+        Hub->>DB: find the hash, check it is neither expired, idle nor revoked
         Hub-->>You: 200
     end
-    Note over Hub: Changing CONSOLE_TOKEN signs everyone out,<br/>because the cookie value is derived from it
 ```
 
-Scripts can skip the cookie and send `Authorization: Bearer <token>`. The cookie is only marked `Secure` over
-https, so use the console behind Caddy's TLS.
+What each piece protects against:
+
+- **The password** is stored only as a salted scrypt hash. A database copy does not give it away.
+- **The authenticator secret is not in the database.** It is derived from `SECRET_MASTER_KEY` and the account's `totp_version`, the same
+  way a site's ingest secret is, so a database copy alone cannot produce a code. Anyone holding the master key can: it is already the
+  most dangerous secret here. Changing the master key breaks every authenticator, so run `reset-2fa` afterwards.
+- **A code works once.** The last accepted 30-second step is stored, so a code seen over a shoulder or in a log cannot be replayed.
+- **The session cookie is a random value; only its hash is stored.** A database copy cannot become a live session. Each session has an
+  idle limit (7 days) and an absolute one (30), and ends on the server at logout, so a copied cookie dies with it.
+- **Signed-in devices** (a link in the sidebar) lists sessions and ends one or all the others. Sign-ins, failures and revocations are in
+  the audit trail without any secret in them.
+- **Recovery codes** are eight single-use codes, stored as hashes, accepted in place of an authenticator code.
+
+In local development (`VERIFY_SIGNATURES` off) nothing changes: you type `CONSOLE_TOKEN`, and the cookie is derived from it. Set
+`OPERATOR_LOGIN=true` to try accounts locally, or `false` to keep the token in production (not recommended).
+
+Scripts send `Authorization: Bearer <token>`. The cookie is only marked `Secure` over https, so use the console behind Caddy's TLS.
 
 ## Life of a site's credentials
 
@@ -343,7 +364,9 @@ Reach: post error reports from `curl` within the rate limits and new-issue cap. 
 Reach: everything, including creating sites, rotating secrets and muting issues. This is the worst one short of the master key.
 
 1. **Revoke and rotate:** on the VPS write a new value into `secrets/console_token` (`openssl rand -base64 32 | tr -d '\n' > secrets/console_token`),
-   then `docker compose restart hub`. Every session ends at once, because the cookie is derived from the token.
+   then `docker compose restart hub`. This ends the bearer token only. **Signed-in browsers are not affected**, because their sessions
+   are separate: if the exposure might include a session, also run `docker compose exec hub python -m hub.operator_cli sign-out-everywhere --username you`
+   (in token mode, local development, the restart does end every session).
 2. Sign in with the new token and put it in your password manager.
 3. **Check:** the old token returns 401 (`curl -H "Authorization: Bearer <old>" https://<hub>/api/sites`).
 4. **Assume the attacker used it.** Open each site's **History** and look for changes you did not make (a new URL, new browser pages, a rotation).

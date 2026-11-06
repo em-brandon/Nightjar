@@ -34,6 +34,11 @@ def record(session: AsyncSession, site: Site, action: str, detail: str = "") -> 
     session.add(AuditLog(site_id=site.id, site_name=site.name, action=action, detail=detail[:300]))
 
 
+def record_login(session: AsyncSession, action: str, detail: str = "", actor: str = "console") -> None:
+    """Sign-in events live in the same trail but belong to no site. Never put a password, code or token in `detail`."""
+    session.add(AuditLog(site_id=None, site_name="", action=action, detail=detail[:300], actor=actor[:40]))
+
+
 class AuditOut(BaseModel):
     id: int
     action: str
