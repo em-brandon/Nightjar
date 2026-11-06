@@ -13,6 +13,12 @@
 		max_size 64KB
 	}
 
+	# This hostname is DNS-only, so nothing in front of Caddy ever writes these two headers: a caller did, and the hub trusts
+	# them for the address it records and for every per-address limit (hub/sources.py client_ip), including the sign-in
+	# throttles on /api. They are removed here for every route, not per handler, so a new route cannot forget.
+	request_header -CF-Connecting-IP
+	request_header -True-Client-IP
+
 	header {
 		# HSTS tells a browser to use HTTPS only, for this hostname. It is hard to undo, so it starts at one day.
 		# Raise it (to a week, then six months) once nothing has broken. No includeSubDomains and no preload until
