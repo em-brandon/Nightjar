@@ -480,14 +480,23 @@ to the app is visible there instead of looking like an app with no errors.
 
 - **A captured request can still be replayed for five minutes.** Reporters sign a timestamp and the hub refuses one older
   than `SIGNATURE_MAX_AGE_S` (300), so a capture expires, and a fresh timestamp cannot be attached to an old capture. Inside
-  the window a replay is accepted and recorded again; the damage is a duplicate row, not access. A request sent with **no**
+  the window a replay is accepted and recorded again; the damage is a duplicate row, not access. The one case that matters: a replayed
+  **heartbeat** can keep a job looking alive for up to five minutes after it has really stopped. A heartbeat interval shorter than
+  that cannot be hidden this way for long, and the silence is still found at the next missed interval. There is no nonce on purpose:
+  remembering every signature seen would be state that must survive restarts, for a window this short. A request sent with **no**
   timestamp is refused unless you turn `REQUIRE_SIGNED_TIMESTAMP` off, which would make an old capture of one replayable for ever.
 - **Keys appear in Caddy's access log**, because they are in the URL. That is acceptable for an identifier that is
-  not secret, which is why signatures matter. Never put a secret in a URL.
+  not secret, which is why signatures matter. Never put a secret in a URL. The one exception is Pushover's acknowledgement callback
+  (`/pushover/ack/<token>`), which cannot sign anything: its path is redacted in Caddy's log and in uvicorn's access log
+  (`hub/logfilter.py`), and forging an acknowledgement also needs a receipt only Pushover and the hub know.
 - **The browser limits are in memory.** A hub restart resets them. They are a brake, not an accounting system.
-- **Behind Cloudflare or Caddy the hub reads the visitor's address from a header** (`CF-Connecting-IP`, then
-  `X-Forwarded-For`). A caller can fake it to dodge the per-visitor limit, but the per-key limit and the new-issue
-  cap still hold.
+- **The hub reads the caller's address from a header** (`CF-Connecting-IP`, then `X-Forwarded-For`). The hub's hostname is
+  DNS-only, so Caddy removes `CF-Connecting-IP` and `True-Client-IP` on every route and writes `X-Forwarded-For` itself; a caller
+  cannot choose their address. If the hub is ever put behind Cloudflare, or reachable without Caddy, that stops being true and
+  the per-address sign-in limits can be dodged: see `docs/CLOUDFLARE.md` before doing either.
+- **The uptime probe stays on public addresses** (`hub/netguard.py`). It refuses private, loopback and metadata targets, including
+  through redirects, unless you list a network in `PROBE_ALLOWED_NETWORKS`. A name that changes its answer between the hub's check and
+  its request (DNS rebinding) could still get through; nothing the probe fetches is shown back to anyone.
 - **A Cloudflare Worker is the upgrade path** if browser abuse ever becomes real: the Worker holds a secret,
   signs on the page's behalf and adds its own checks, so the page never talks to the hub directly. It is not
   built because the bounds above are enough for now and a Worker is another thing to maintain.

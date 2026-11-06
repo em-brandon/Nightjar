@@ -131,6 +131,9 @@ async def record_media(
     raw = await request.body()
     site = await _load_site(session, ingest_key)
     await verify_and_note(session, request, site, raw, x_hub_signature, x_hub_timestamp)
+    # A client site's credentials are for its own errors. Media snapshots belong to the media host only.
+    if site.env != "media":
+        raise HTTPException(403, "this key is not for a media host")
     try:
         payload = MediaReportIn.model_validate_json(raw)
     except ValidationError as exc:

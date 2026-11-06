@@ -51,7 +51,8 @@ async def tap(body: PresenceIn, session: AsyncSession = Depends(get_session)) ->
     """Called by an iOS Shortcuts NFC automation. Authenticated by a shared token in the body."""
     if not settings.presence_token:
         raise HTTPException(503, "presence is not configured (set PRESENCE_TOKEN)")
-    if not body.token or not hmac.compare_digest(body.token, settings.presence_token):
+    # As bytes: compare_digest raises TypeError (a 500) on a str holding non-ASCII text, and this token comes from the caller
+    if not body.token or not hmac.compare_digest(body.token.encode(), settings.presence_token.encode()):
         raise HTTPException(401, "bad token")
     return await _set(session, body)
 

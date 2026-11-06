@@ -364,6 +364,7 @@ hub/
   main.py          app factory, lifespan (starts the probe), healthz
   api.py           read-only console feeds: issues, site health, rising errors
   probe.py         uptime checker loop, writes checks
+  netguard.py      keeps the probe on public addresses: refuses private, loopback and metadata targets, including through redirects
   incidents.py     issue actions + audit log
   sites.py         create a site, set its url: POST/PATCH /api/sites
   tickets.py       client requests
@@ -486,6 +487,7 @@ signed against a hub with `VERIFY_SIGNATURES` on.
 | `PROBE_ENABLED` | run the uptime checker (default true) |
 | `PROBE_INTERVAL_S` | seconds between rounds (default 60) |
 | `PROBE_TIMEOUT_S` | per-request timeout (default 10) |
+| `PROBE_ALLOWED_NETWORKS` | private networks the probe may visit on purpose, comma separated CIDRs (e.g. `100.64.0.0/10` for Tailscale). Everything non-public is refused, on the first request and on every redirect (`hub/netguard.py`); loopback is allowed on its own in development |
 | `CONSOLE_TOKEN` | guards the console and `/api` in local development. Empty = open (dev only). Ignored, with a warning, once accounts are on; production needs none |
 | `OPERATOR_LOGIN` / `SESSION_IDLE_DAYS` / `SESSION_ABSOLUTE_DAYS` | sign in with an account instead of the token (default: follows `VERIFY_SIGNATURES`), and how long a session lasts idle (7) and at most (30). Needs `SECRET_MASTER_KEY`: the authenticator code is derived from it |
 | `WEBAUTHN_RP_ID` / `WEBAUTHN_ORIGINS` / `DEVICE_SESSION_DAYS` | passkeys are bound to this site name and these exact origins (default: from `HUB_PUBLIC_URL`; localhost in development), and how long a wall display's session lasts (365 days, never past its token's expiry) |

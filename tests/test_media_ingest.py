@@ -145,6 +145,12 @@ class MediaIngest(unittest.IsolatedAsyncioTestCase):
         # an old snapshot must not claim someone is still watching
         self.assertEqual(m["sessions"], [])
 
+    async def test_a_client_sites_credentials_cannot_post_media_reports(self):
+        # 'shop' is a production site with its own valid key: it may report its own errors and nothing about the media host
+        r = await self.http.post("/ingest/other/media", json={"up": True, "version": "1", "sessions": []})
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(await self.sql("SELECT count(*) FROM media_reports"), [(0,)])
+
     async def test_the_media_site_is_not_a_client_site(self):
         health = (await self.http.get("/api/sites/health")).json()
         self.assertEqual([s["name"] for s in health], ["shop"])

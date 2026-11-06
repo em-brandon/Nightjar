@@ -89,6 +89,9 @@ async def record_home(
     raw = await request.body()
     site = await _load_site(session, ingest_key)
     await verify_and_note(session, request, site, raw, x_hub_signature, x_hub_timestamp)
+    # A client site's credentials are for its own errors. Home host snapshots belong to the home host only.
+    if site.env != "home":
+        raise HTTPException(403, "this key is not for the home host")
     try:
         payload = HomeReportIn.model_validate_json(raw)
     except ValidationError as exc:

@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 import httpx
 from sqlalchemy import delete, select
 
+from . import netguard
 from .config import settings
 from .db import SessionLocal
 from .heartbeats import reconcile_round as reconcile_heartbeats
@@ -27,10 +28,35 @@ SPEED_RETENTION = timedelta(days=90)
 PRESENCE_RETENTION = timedelta(days=30)
 
 
+MAX_REDIRECTS = 5
+
+
+class Blocked(Exception):
+    """The address, or a redirect target, is not one the probe may visit."""
+
+
+async def _fetch(client: httpx.AsyncClient, url: str) -> httpx.Response:
+    """GET, following redirects by hand so every hop is checked. The client must have follow_redirects off."""
+    for _ in range(MAX_REDIRECTS + 1):
+        if (reason := await netguard.problem(url)) is not None:
+            raise Blocked(reason)
+        res = await client.get(url)
+        target = res.headers.get("location")
+        if not (res.is_redirect and target):
+            return res
+        url = str(httpx.URL(url).join(target))
+        if not url.lower().startswith(("http://", "https://")):
+            raise Blocked("redirected to something that is not a web address")
+    raise Blocked("too many redirects")
+
+
 async def _probe(client: httpx.AsyncClient, site_id: int, url: str) -> Check:
     started = time.perf_counter()
     try:
-        res = await client.get(url)
+        res = await _fetch(client, url)
+    except Blocked as exc:
+        # Shown in the console as the check's error, so a bad URL is visible and not a silent gap
+        return Check(site_id=site_id, ok=False, error=f"blocked: {exc}"[:200])
     except httpx.HTTPError as exc:
         # Class name only. The message can contain the URL, and a URL can
         # carry a token.
@@ -103,7 +129,7 @@ async def probe_loop() -> None:
     a watchdog that dies quietly looks exactly like a healthy site."""
     rounds = 0
     async with httpx.AsyncClient(
-        timeout=settings.probe_timeout_s, follow_redirects=True
+        timeout=settings.probe_timeout_s, follow_redirects=False  # _fetch follows them, checking each hop
     ) as client:
         while True:
             try:

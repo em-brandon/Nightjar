@@ -4,6 +4,7 @@ import time
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -97,7 +98,11 @@ async def ingest_event(
     site = await _load_site(session, ingest_key)
     await verify_and_note(session, request, site, raw, x_hub_signature, x_hub_timestamp)
 
-    payload = EventIn.model_validate_json(raw)
+    try:
+        payload = EventIn.model_validate_json(raw)
+    except ValidationError as exc:
+        # a bad body is the reporter's mistake to read about, not a server error to retry (the other ingest routes do the same)
+        raise HTTPException(422, exc.errors(include_url=False, include_context=False, include_input=False)) from exc
     return await record_event(session, site, payload)
 
 

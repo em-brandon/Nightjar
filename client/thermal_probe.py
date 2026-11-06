@@ -90,6 +90,17 @@ def throttle_count() -> int:
     return total
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """A report is signed, and a redirect would carry its signature headers to wherever the answer points. The hub does not
+    redirect, so any redirect is wrong: refuse it and let it surface as an error."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: D401
+        return None
+
+
+_hub_opener = urllib.request.build_opener(_NoRedirect)
+
+
 def report(exception_type: str, message: str, level: str, extra: dict) -> None:
     body = json.dumps(
         {
@@ -124,7 +135,7 @@ def report(exception_type: str, message: str, level: str, extra: dict) -> None:
             "X-Hub-Signature": signature,
         },
     )
-    urllib.request.urlopen(request, timeout=5).read()
+    _hub_opener.open(request, timeout=5).read()
 
 
 def main() -> None:
