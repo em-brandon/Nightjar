@@ -94,6 +94,33 @@ class MakeSecrets(unittest.TestCase):
         self.run_script()
         self.assertEqual(stat.S_IMODE(self.dir.stat().st_mode), 0o700)
 
+    @unittest.skipIf(os.name == "nt" or (hasattr(os, "geteuid") and os.geteuid() == 0), "needs a non-root POSIX user")
+    def test_without_root_it_says_the_files_are_only_as_private_as_the_directory(self):
+        result = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("WARNING", result.stderr)
+        self.assertIn("sudo", result.stderr)
+
+    @unittest.skipIf(os.name == "nt", "file modes are not meaningful on Windows")
+    def test_check_fails_on_a_file_others_can_read_and_passes_once_it_is_private(self):
+        self.run_script()
+        loose = self.run_script("--check")
+        if (self.dir / "console_token").stat().st_mode & 0o044:
+            self.assertNotEqual(loose.returncode, 0, "644 files must fail the check")
+            self.assertIn("console_token", loose.stderr)
+        for path in self.dir.iterdir():
+            path.chmod(0o400)
+        tight = self.run_script("--check")
+        self.assertEqual(tight.returncode, 0, tight.stderr)
+
+    @unittest.skipIf(os.name == "nt", "file modes are not meaningful on Windows")
+    def test_check_changes_nothing_and_needs_no_env_file(self):
+        self.run_script()
+        before = {p.name: (p.read_bytes(), p.stat().st_mode) for p in self.dir.iterdir()}
+        (self.root / ".env").unlink()
+        self.run_script("--check")
+        self.assertEqual({p.name: (p.read_bytes(), p.stat().st_mode) for p in self.dir.iterdir()}, before)
+
     def test_it_refuses_to_guess_the_database_name_or_user(self):
         (self.root / ".env").write_text("HUB_DOMAIN=x\n", encoding="utf-8")
         result = self.run_script()
