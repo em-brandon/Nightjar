@@ -1007,3 +1007,58 @@ code { font-family: var(--mono); font-size: 0.92em; color: var(--dim); }
 .sessions-list li > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .sessions-list small { font-size: 12.5px; }
 .sessions-actions { display: flex; justify-content: space-between; gap: 12px; }
+
+/* Reports tab (views/Reports.tsx) */
+.rp-nav { margin-left: auto; display: inline-flex; gap: 6px; }
+.rp-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-bottom: 14px; }
+.rp-strip > div { background: var(--panel, #131315); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; }
+.rp-strip small { font-family: var(--mono); font-size: 12.5px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+.rp-strip b { font-size: 22px; font-weight: 700; letter-spacing: -0.4px; }
+.rp-big { font-family: var(--mono); font-size: 26px; font-weight: 700; letter-spacing: -0.5px; }
+.rp-client { margin-bottom: 14px; display: flex; flex-direction: column; gap: 12px; }
+.rp-client p { margin: 0; }
+.rp-client-head { display: flex; align-items: center; gap: 12px; }
+.rp-client-head h2 { margin: 0; font-size: 18px; }
+.rp-client-head .rp-big { margin-left: auto; }
+.rp-sites { display: flex; flex-direction: column; }
+.rp-site { display: grid; grid-template-columns: minmax(180px, 2fr) 90px minmax(110px, 1fr) 80px minmax(110px, 1fr); align-items: center; gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.rp-site-name { display: flex; align-items: baseline; gap: 8px; min-width: 0; flex-wrap: wrap; }
+.rp-pct { font-family: var(--mono); font-weight: 600; }
+.rp-pct.ok { color: var(--green); }
+.rp-pct.bad { color: var(--red); }
+.rp-pct.run { color: var(--muted); }
+.rp-warn { grid-column: 1 / -1; color: var(--amber); font-size: 13px; }
+.rp-client-foot { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding-top: 10px; border-top: 1px solid var(--line); }
+.rp-client-foot small { flex: 1 1 260px; }
+.rp-switch { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); cursor: not-allowed; }
+.rp-switch input { appearance: none; width: 34px; height: 20px; border-radius: 999px; background: var(--line-hi); position: relative; opacity: 0.6; }
+.rp-switch input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--bone); }
+
+/* the client-facing sheet: a document, so it is light on screen and on paper */
+.rp-overlay { position: fixed; inset: 0; z-index: 50; overflow: auto; display: grid; place-items: start center; padding: 32px 16px; background: rgba(10, 10, 11, 0.78); }
+.rp-sheet { width: min(760px, 100%); background: #fff; color: #17171a; border-radius: 10px; padding: 36px 40px; font-family: var(--sans); }
+.rp-sheet-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 22px; }
+.rp-sheet-bar .muted { color: #6b6b73; font-size: 13px; }
+.rp-sheet h2 { margin: 0 0 4px; font-size: 24px; letter-spacing: -0.4px; }
+.rp-sheet h3 { margin: 22px 0 8px; font-size: 15px; }
+.rp-sheet-sub { margin: 0 0 18px; color: #55555d; }
+.rp-headline { margin: 0 0 18px; padding: 12px 14px; border-radius: 8px; background: #f1f1f3; font-size: 16px; }
+.rp-headline.ok { background: #e7f4ee; }
+.rp-headline.bad { background: #fbe9e9; }
+.rp-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.rp-table th { text-align: left; font-weight: 600; color: #55555d; padding: 8px 6px; border-bottom: 2px solid #17171a; }
+.rp-table td { padding: 10px 6px; border-bottom: 1px solid #e3e3e7; vertical-align: top; }
+.rp-table td small { display: block; color: #6b6b73; }
+.rp-incidents { margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.6; }
+.rp-foot { margin: 18px 0 0; color: #6b6b73; font-size: 12.5px; line-height: 1.5; }
+.rp-sheet .btn { color: #17171a; border-color: #c9c9cf; }
+.rp-sheet .btn.pri { background: #17171a; color: #fff; border-color: #17171a; }
+
+@media print {
+  .side, .main > *:not(.rp-overlay) { display: none !important; }
+  .app { display: block; }
+  .main { padding: 0; max-width: none; }
+  .rp-overlay { position: static; display: block; padding: 0; background: none; overflow: visible; }
+  .rp-sheet { width: 100%; border-radius: 0; padding: 0; }
+  .rp-sheet-bar { display: none; }
+}

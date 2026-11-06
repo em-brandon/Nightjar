@@ -18,6 +18,7 @@ import Alerts from "./views/Alerts.tsx";
 import Incidents from "./views/Incidents.tsx";
 import Media from "./views/Media.tsx";
 import Overview from "./views/Overview.tsx";
+import Reports from "./views/Reports.tsx";
 import Requests from "./views/Requests.tsx";
 import Sites from "./views/Sites.tsx";
 import Staging from "./views/Staging.tsx";
@@ -28,6 +29,7 @@ const TABS: [Exclude<TabId, "idle">, string][] = [
   ["alerts", "Alerts"],
   ["sites", "Sites"],
   ["heartbeats", "Heartbeats"],
+  ["reports", "Reports"],
   ["requests", "Requests"],
   ["deploys", "Deploys"],
   ["staging", "Staging"],
@@ -48,9 +50,10 @@ const ICONS: Record<string, ReactElement> = {
   media: <path d="M3 4h12v10H3zM7.5 6.8v4.4L11.5 9z" />,
   sites: <path d="M3 3h12v12H3zM9 6v6M6 9h6" />,
   heartbeats: <path d="M1.5 9h3.5l2-5 3 10 2-5h4.5" />,
+  reports: <path d="M3 15V9M7 15V4M11 15V7M15 15V11M2 15.5h14" />,
   alerts: <path d="M9 2.5a4.5 4.5 0 0 0-4.5 4.5v3L3 13h12l-1.5-3V7A4.5 4.5 0 0 0 9 2.5zM7.5 15a1.5 1.5 0 0 0 3 0" />,
 };
-const VIEWS: Record<Exclude<TabId, "idle">, (props: { f: Feeds }) => ReactElement | null> = { overview: Overview, incidents: Incidents, requests: Requests, deploys: Deploys, staging: Staging, media: Media, sites: Sites, alerts: Alerts, heartbeats: Heartbeats };
+const VIEWS: Record<Exclude<TabId, "idle">, (props: { f: Feeds }) => ReactElement | null> = { overview: Overview, incidents: Incidents, requests: Requests, deploys: Deploys, staging: Staging, media: Media, sites: Sites, alerts: Alerts, heartbeats: Heartbeats, reports: Reports };
 
 export default function App({ onSignOut, hasAccount = false }: { onSignOut?: () => void; hasAccount?: boolean }) {
   const [showSessions, setShowSessions] = useState(false);
