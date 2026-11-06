@@ -96,6 +96,11 @@ def _http_url(v: str | None) -> str | None:
     v = v.strip()
     if not v.lower().startswith(("http://", "https://")) or " " in v or len(v) < 10:
         raise ValueError("url must start with http:// or https://")
+    # the probe runs on the hub's network, so an address inside it is refused here as well as when it is probed
+    from .netguard import literal_problem
+
+    if (reason := literal_problem(v)) is not None:
+        raise ValueError(f"url is not allowed: {reason}")
     return v
 
 

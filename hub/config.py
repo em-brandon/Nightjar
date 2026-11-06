@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     probe_enabled: bool = True
     probe_interval_s: int = 60
     probe_timeout_s: float = 10.0
+    # The probe refuses private, loopback and link-local addresses (hub/netguard.py). List here, comma separated, any private
+    # network you do monitor on purpose, e.g. 100.64.0.0/10 for Tailscale. Loopback is allowed on its own when signatures are off.
+    probe_allowed_networks: str = ""
     # The availability a client report measures against (hub/reports.py). 99.9% is about 43 minutes of downtime in a month.
     report_uptime_target: float = 99.9
     # A site's outage resolves itself after this many passing checks in a row (hub/uptime.py). At the default
