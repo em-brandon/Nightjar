@@ -378,6 +378,17 @@ def build_report(host: dict, net: dict | None, backup_configured: bool, backup_o
     return report
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """A report is signed, and a redirect would carry its signature headers to wherever the answer points. The hub does not
+    redirect, so any redirect is wrong: refuse it and let it surface as an error."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: D401
+        return None
+
+
+_hub_opener = urllib.request.build_opener(_NoRedirect)
+
+
 def post(base: str, key: str, secret: str | None, payload: dict) -> None:
     body = json.dumps(payload).encode()
     headers = {"Content-Type": "application/json"}
@@ -388,7 +399,7 @@ def post(base: str, key: str, secret: str | None, payload: dict) -> None:
             "sha256=" + hmac.new(secret.encode(), ts.encode() + b"." + body, hashlib.sha256).hexdigest()
         )
     req = urllib.request.Request(f"{base}/ingest/{key}/home", data=body, headers=headers)
-    urllib.request.urlopen(req, timeout=TIMEOUT).read()
+    _hub_opener.open(req, timeout=TIMEOUT).read()
 
 
 def run_once() -> None:
