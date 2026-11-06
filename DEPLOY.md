@@ -96,7 +96,8 @@ too: every new site's ingest secret is worked out from it and none is stored, so
 The hub migrates its own database on every start, so there is no schema step. It also refuses to start
 if `SECRET_MASTER_KEY` is missing (the authenticator codes are derived from it). There is no shared console token in
 production: you sign in with an account made by `python -m hub.operator_cli create`, and machines (the wall display, CI, scripts) use
-device tokens an owner creates in the console (decision #59). The session cookie is marked
+device tokens an owner creates in the console (decision #59). Passkeys are bound to the hub's address: set `HUB_PUBLIC_URL` before
+anyone registers one (or `WEBAUTHN_RP_ID` and `WEBAUTHN_ORIGINS`), and expect to register them again if it ever changes. The session cookie is marked
 `Secure` behind Caddy's TLS, so never use the console over plain http.
 
 **Create your console account** once the stack is up. There is no sign-up page; the account is made on the server:

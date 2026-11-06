@@ -34,11 +34,14 @@ Requests, Deploys, Staging, Media), an uptime probe, incident actions with an au
 trail, client-request tickets and CI deploy reports. 30-second polling. Runs
 locally against the dev database; needs no paid service.
 
-**Auth.** Everything under `/api` requires a signed-in session or the `CONSOLE_TOKEN` bearer token. In production the console signs in
-with an account (username, password, authenticator code; made on the server with `python -m hub.operator_cli create`), with random
-revocable sessions listed under *Signed-in devices*: decision #57, `docs/KEYS.md`. In local development it still takes the token
-itself, as an HttpOnly session cookie. Ingest keeps its per-site key and HMAC. With the token unset auth is off (local
-development), and the hub **refuses to start** when `VERIFY_SIGNATURES` is on without one. The cookie
+**Auth.** Everything under `/api` requires a signed-in session or a device token. In production the console signs in with an account
+(username, password, authenticator code, or a passkey instead of all three), with random revocable sessions listed under *Signed-in devices*.
+There are three roles (viewer, maintainer, owner) enforced by the hub; the first owner is made on the server with
+`python -m hub.operator_cli create` and further people by an owner under *People and devices* with a one-time setup token. Machines (the wall
+display, scripts) use **device tokens**, one each, read or write, never owner. The shared `CONSOLE_TOKEN` is retired once accounts are on:
+decisions #57 and #59, `docs/KEYS.md`. In local development it still takes `CONSOLE_TOKEN`, as an HttpOnly session cookie. Ingest keeps its
+per-site key and HMAC. With neither accounts nor a token auth is off (local development), and the hub **refuses to start** when
+`VERIFY_SIGNATURES` is on and accounts are turned off without a token. The cookie
 is only `Secure` over https, so run it behind Caddy's TLS. Still to do before internet exposure: the
 console is not in the deploy stack yet.
 
@@ -380,7 +383,10 @@ hub/
   rates.py         /api/rates: cached USD to KES rate (decoration only)
   edge.py          edge-triggered issues shared by every pushed source: open once, resolve themselves
   credentials.py   password hashing (scrypt), TOTP, recovery codes, session tokens: standard library only (decision #57)
-  operator_cli.py  `python -m hub.operator_cli create|passwd|reset-2fa|sign-out-everywhere`: the console account is made here, never over the network
+  operator_cli.py  `python -m hub.operator_cli create|passwd|reset-2fa|sign-out-everywhere`: the first owner is made here, never over the network
+  users.py         /api/users and the public /api/auth/setup: owners add people, roles, disable, reset, one-time setup tokens (decision #59)
+  devices.py       /api/devices: owner-issued tokens for machines (wall display, scripts), read or write, never owner, revocable one by one
+  passkeys.py      WebAuthn: /api/passkeys (register, list, remove) and /api/auth/passkey (sign in). The one dependency the login code does not write itself
   reports.py       GET /api/reports/availability: a month of availability per client, for the Reports tab and the client sheet (decision #58)
   sources.py       where signed reports come from and which were refused: evidence of a leaked secret, shown in the console, never a notification (docs/KEYS.md)
   heartbeats.py    POST /ingest/{key}/heartbeat/{name}: a cron job or private app pings, and silence opens an issue (docs/CLIENT-INTEGRATION.md)
@@ -409,14 +415,14 @@ is in use — that is the swap point if Pushover is ever replaced.
 ## Out of scope
 
 Named so they do not creep in: client portal with logins, SLA timers, comment
-threads, multi-user auth, replying to clients from inside the app,
+threads, a client-facing login (the console's own people and roles exist, decision #59), replying to clients from inside the app,
 request-volume graphs, uptime percentage charts, a custom SDK per language,
 Datadog, Jenkins.
 
 Each is a real feature. Each would prevent this shipping this month.
 
 These hold for the personal tool, which comes first. Decision #54 sets a direction of becoming a cheap product for other
-solo developers later, and multi-user auth, a customer-facing status page and some capture depth would then be revisited.
+solo developers later, and a customer-facing status page and some capture depth would then be revisited.
 Not before the tool works for its author and the idea has been tried on a few other people.
 
 Also out of scope: **rebuilding tools that exist.** Sentry or GlitchTip does
@@ -480,8 +486,9 @@ signed against a hub with `VERIFY_SIGNATURES` on.
 | `PROBE_ENABLED` | run the uptime checker (default true) |
 | `PROBE_INTERVAL_S` | seconds between rounds (default 60) |
 | `PROBE_TIMEOUT_S` | per-request timeout (default 10) |
-| `CONSOLE_TOKEN` | guards the console and `/api`. Empty = open (dev only). Required in production, min 16 chars. With accounts on it is only a bearer token |
+| `CONSOLE_TOKEN` | guards the console and `/api` in local development. Empty = open (dev only). Ignored, with a warning, once accounts are on; production needs none |
 | `OPERATOR_LOGIN` / `SESSION_IDLE_DAYS` / `SESSION_ABSOLUTE_DAYS` | sign in with an account instead of the token (default: follows `VERIFY_SIGNATURES`), and how long a session lasts idle (7) and at most (30). Needs `SECRET_MASTER_KEY`: the authenticator code is derived from it |
+| `WEBAUTHN_RP_ID` / `WEBAUTHN_ORIGINS` / `DEVICE_SESSION_DAYS` | passkeys are bound to this site name and these exact origins (default: from `HUB_PUBLIC_URL`; localhost in development), and how long a wall display's session lasts (365 days, never past its token's expiry) |
 | `SECRET_MASTER_KEY` | the key each site's ingest secret is derived from (`hub/derive.py`). Required in production, min 32 chars; empty in dev keeps stored secrets. Back it up apart from the database |
 | `REPORT_UPTIME_TARGET` | the availability % a client report measures against (default 99.9, about 43 minutes down in a month) |
 | `STACK_HEALTHY_MIN` | minutes a stack problem must stay gone before it resolves itself (default 10) |
