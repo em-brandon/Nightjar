@@ -94,7 +94,7 @@ def check_config() -> None:
         raise RuntimeError(
             "Refusing to start: VERIFY_SIGNATURES is on (production) but OPERATOR_LOGIN is off and CONSOLE_TOKEN "
             "is not set, so the console API, including every write, would be open to "
-            "anyone who can reach it. Leave OPERATOR_LOGIN unset to sign in with accounts, or set CONSOLE_TOKEN."
+            "anyone who can reach it. Leave OPERATOR_LOGIN unset to sign in with accounts, or set CONSOLE_TOKEN (in production a file: /run/secrets/console_token)."
         )
     master = settings.secret_master_key
     if master and len(master) < MIN_MASTER_LEN:

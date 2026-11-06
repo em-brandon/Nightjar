@@ -220,6 +220,7 @@ class ServerReporters(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         for p in (
             patch.object(settings, "console_token", ""),
+            patch.object(settings, "operator_login", False),  # the console is left open here; signatures are what is under test
             patch.object(settings, "verify_signatures", True),  # the point of this file
         ):
             p.start()
