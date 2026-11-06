@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     # A wall display that signed in with a device token is not a person at a desk: it signs in once and stays signed
     # in, so its session may last this long (and no longer than the token itself).
     device_session_days: int = 365
+    # Passkeys (WebAuthn) are tied to a site name and the exact origin the console is served from. Empty: taken from
+    # hub_public_url; with that empty too (local development) localhost and the Vite dev server are used. A passkey made
+    # for one rp_id never works on another, so changing this later strands the passkeys already registered.
+    webauthn_rp_id: str = ""
+    webauthn_origins: str = ""
     # The master key each site's ingest secret is derived from (hub/derive.py), so the database holds no secret that
     # can forge a report. It lives here and never in the database; back it up apart from the database, because lose it
     # and every derived site needs a new secret. Empty means new sites keep a stored secret as before (local
