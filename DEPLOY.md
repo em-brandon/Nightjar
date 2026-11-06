@@ -95,8 +95,21 @@ too: every new site's ingest secret is worked out from it and none is stored, so
 
 The hub migrates its own database on every start, so there is no schema step. It also refuses to start
 if the console token is missing, empty or under 16 characters, because otherwise the console API and every write
-would be open to the internet (checked: an empty `secrets/console_token` makes the hub exit with an error). Sign in at your domain with that token. The session cookie is marked
+would be open to the internet (checked: an empty `secrets/console_token` makes the hub exit with an error). The session cookie is marked
 `Secure` behind Caddy's TLS, so never use the console over plain http.
+
+**Create your console account** once the stack is up. There is no sign-up page; the account is made on the server:
+
+```bash
+docker compose exec hub python -m hub.operator_cli create --username you
+```
+
+It asks for a password (12 characters or more), then shows an authenticator secret and eight recovery codes **once**. Add the secret
+to your authenticator app, save the recovery codes in your password manager, and type the code the app shows: nothing is saved until
+that code is right, so a bad scan cannot lock you out. Then sign in at your domain with the username, password and a current code.
+The console token no longer signs in to the page; it stays as a bearer token for scripts and the wall display. `passwd`, `reset-2fa`
+and `sign-out-everywhere` do what they say, and each ends every signed-in session. Until an account exists the hub starts and logs a
+warning, and only the bearer token works.
 
 **Caddy serves the console too.** `deploy/caddy.Dockerfile` builds the console and bakes it, with the Caddyfile, into the Caddy
 image, so one hostname serves the console, the API it calls, and the endpoints other machines call (`/ingest`, `/healthz`,

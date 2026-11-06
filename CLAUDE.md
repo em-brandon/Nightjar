@@ -34,8 +34,10 @@ Requests, Deploys, Staging, Media), an uptime probe, incident actions with an au
 trail, client-request tickets and CI deploy reports. 30-second polling. Runs
 locally against the dev database; needs no paid service.
 
-**Auth.** Everything under `/api` requires `CONSOLE_TOKEN`, as an HttpOnly session cookie or a
-bearer token. Ingest keeps its per-site key and HMAC. With the token unset auth is off (local
+**Auth.** Everything under `/api` requires a signed-in session or the `CONSOLE_TOKEN` bearer token. In production the console signs in
+with an account (username, password, authenticator code; made on the server with `python -m hub.operator_cli create`), with random
+revocable sessions listed under *Signed-in devices*: decision #57, `docs/KEYS.md`. In local development it still takes the token
+itself, as an HttpOnly session cookie. Ingest keeps its per-site key and HMAC. With the token unset auth is off (local
 development), and the hub **refuses to start** when `VERIFY_SIGNATURES` is on without one. The cookie
 is only `Secure` over https, so run it behind Caddy's TLS. Still to do before internet exposure: the
 console is not in the deploy stack yet.
@@ -377,6 +379,8 @@ hub/
   uptime.py        a site that stops answering becomes an issue: P1 in production, P2 on staging, edge-triggered
   rates.py         /api/rates: cached USD to KES rate (decoration only)
   edge.py          edge-triggered issues shared by every pushed source: open once, resolve themselves
+  credentials.py   password hashing (scrypt), TOTP, recovery codes, session tokens: standard library only (decision #57)
+  operator_cli.py  `python -m hub.operator_cli create|passwd|reset-2fa|sign-out-everywhere`: the console account is made here, never over the network
   sources.py       where signed reports come from and which were refused: evidence of a leaked secret, shown in the console, never a notification (docs/KEYS.md)
   heartbeats.py    POST /ingest/{key}/heartbeat/{name}: a cron job or private app pings, and silence opens an issue (docs/CLIENT-INTEGRATION.md)
 console/           Vite + React 19 + TypeScript UI: src/views/* is one file per tab; src/api/* is generated from the hub (do not edit)
@@ -475,7 +479,8 @@ signed against a hub with `VERIFY_SIGNATURES` on.
 | `PROBE_ENABLED` | run the uptime checker (default true) |
 | `PROBE_INTERVAL_S` | seconds between rounds (default 60) |
 | `PROBE_TIMEOUT_S` | per-request timeout (default 10) |
-| `CONSOLE_TOKEN` | guards the console and `/api`. Empty = open (dev only). Required in production, min 16 chars |
+| `CONSOLE_TOKEN` | guards the console and `/api`. Empty = open (dev only). Required in production, min 16 chars. With accounts on it is only a bearer token |
+| `OPERATOR_LOGIN` / `SESSION_IDLE_DAYS` / `SESSION_ABSOLUTE_DAYS` | sign in with an account instead of the token (default: follows `VERIFY_SIGNATURES`), and how long a session lasts idle (7) and at most (30). Needs `SECRET_MASTER_KEY`: the authenticator code is derived from it |
 | `SECRET_MASTER_KEY` | the key each site's ingest secret is derived from (`hub/derive.py`). Required in production, min 32 chars; empty in dev keeps stored secrets. Back it up apart from the database |
 | `STACK_HEALTHY_MIN` | minutes a stack problem must stay gone before it resolves itself (default 10) |
 | `MEDIA_HISTORY_DAYS` | how long the home media viewing history (personal data) is kept (default 365) |
