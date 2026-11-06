@@ -160,6 +160,12 @@ keeps using `.env`.
 **Done when:** a production-shaped Compose file runs with no secret in `.env` and none visible in `docker inspect`, the hub still
 refuses to start without them, and `DEPLOY.md` says how to create the files.
 
+**Hardened, 2026-11-06.** The first version left each file mode 644 inside a 700 directory, so the directory was the only guard. Now
+`deploy/make-secrets.sh`, run as root, owns each file to the account that reads it (the hub's uid, or root for the database password) at
+mode 400, repairs loosened files on every run, and has a `--check` mode for after a restore or copy. Run without root it falls back
+to the old arrangement and says so. **Still readable by:** root, the `docker` group, code running inside the hub container, and any
+copy of the disk (so encrypt the disk, and keep `secrets/` out of unencrypted backups). Tests: `tests/test_make_secrets.py`.
+
 ### 7. An audit trail for sites and secrets (built)
 
 **Problem.** Issue actions are logged ("who muted that, and why is it quiet?"). Creating a site, changing its URL or browser origins,

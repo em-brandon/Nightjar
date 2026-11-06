@@ -70,7 +70,7 @@ cd /opt/nightjar
 # copy the repo up, or clone it
 cp .env.prod.example .env
 nano .env                        # set HUB_DOMAIN, and check POSTGRES_USER and POSTGRES_DB
-./deploy/make-secrets.sh         # creates ./secrets: the database password, the console token, and the other secret files
+sudo ./deploy/make-secrets.sh    # creates ./secrets: the database password, the console token, and the other secret files
 
 docker compose up -d --build     # the first build downloads Node and compiles the console, so it takes a few minutes
 docker compose logs -f caddy     # watch the certificate get issued
@@ -80,8 +80,16 @@ docker compose logs -f caddy     # watch the certificate get issued
 committed): `postgres_password`, `database_url`, `console_token`, `secret_master_key` and `pushover_callback_token` are generated, and
 `pushover_token`, `pushover_user`, `deadman_url` and `presence_token` are created empty for you to fill in. Compose mounts them under
 `/run/secrets`, so `docker inspect`, process listings and crash dumps never show them (checked: no container's environment holds a
-secret). It never overwrites a file that exists, so running it again is safe. **Back the directory up somewhere other than the
-server**: it is not in git, and the console token inside it is what you sign in with. Keep `secret_master_key` in your password manager
+secret). It never overwrites a file that exists, so running it again is safe.
+
+**Run it with `sudo`.** As root it gives each file to the one account that reads it and sets mode 400: the hub's files to the hub's
+user (uid 10001), the database password to root. Nothing is world-readable, so a loosened directory or a careless `cp -r` no longer
+exposes a secret. Without root it cannot change owners, leaves the files readable by every account on the machine, and says so. Running
+it again repairs any file that has been loosened since. `./deploy/make-secrets.sh --check` changes nothing and exits non-zero if any
+file or the directory is more open than that: run it after any restore, copy or backup job touches the directory. Root and members of
+the `docker` group can still read the files; keep that group to yourself, and encrypt the VPS disk if the provider offers it.
+ **Back the directory up somewhere other than the
+server**: it is not in git. Keep `secret_master_key` in your password manager
 too: every new site's ingest secret is worked out from it and none is stored, so a database backup alone cannot restore them (see
 `docs/KEYS.md`). The hub refuses to start in production without it.
 
