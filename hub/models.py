@@ -531,3 +531,42 @@ class DailyStat(Base):
     alerts_sent: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     alerts_failed: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     p1_expired: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+
+
+class Operator(Base):
+    """The person who signs in to the console. One today, but a row of its own so a session, a password and a second
+    factor belong to someone rather than to a shared string. Made only from the command line on the server
+    (hub/operator_cli.py), never over the network, so there is no sign-up route to attack.
+
+    The password is stored as a salted scrypt hash. The TOTP secret is NOT stored: it is derived from SECRET_MASTER_KEY
+    and totp_version, the same way a site's ingest secret is (hub/derive.py), so a copy of the database alone cannot
+    produce a login code. Recovery codes are stored only as hashes and each works once."""
+
+    __tablename__ = "operators"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    username: Mapped[str] = mapped_column(String(60), unique=True)
+    password_hash: Mapped[str] = mapped_column(String(300))
+    totp_version: Mapped[int] = mapped_column(Integer, default=1)
+    # the last 30-second step a code was accepted for, so one code cannot be used twice (replay)
+    totp_last_step: Mapped[int] = mapped_column(BigInteger, default=0)
+    recovery_hashes: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ConsoleSession(Base):
+    """A signed-in browser. The cookie holds a random token; only its SHA-256 is stored, so a copy of the database
+    cannot be turned into a live session. Each row can be listed and revoked on its own."""
+
+    __tablename__ = "console_sessions"
+    __table_args__ = (Index("ix_console_sessions_operator", "operator_id", "revoked_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    operator_id: Mapped[int] = mapped_column(ForeignKey("operators.id", ondelete="CASCADE"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ip: Mapped[str] = mapped_column(String(64), default="")
+    user_agent: Mapped[str] = mapped_column(String(200), default="")
