@@ -159,18 +159,26 @@ class AvailabilityOut(BaseModel):
 
 # --------------------------------------------------------------------------------------------- queries
 # Runs of failed checks, two or more in a row (the same rule that opens an outage, hub/uptime.py): one failure is a blip
-# and counts toward the totals but is not an incident. Gaps and islands: the difference of two row numbers is constant
-# within a run.
+# and counts toward the totals but is not an incident. A run also ends where the checks stop for a while (:gap seconds):
+# two failures with the probe off between them are two sightings, not one outage that lasted the whole silence.
+# Gaps and islands: a running count of "a new run started here" labels each run.
 _OUTAGES = text(
     """
-    SELECT site_id, min(checked_at) AS first_fail, max(checked_at) AS last_fail, count(*) AS checks
-    FROM (
+    WITH c AS (
         SELECT site_id, checked_at, ok,
-               row_number() OVER (PARTITION BY site_id ORDER BY checked_at)
-             - row_number() OVER (PARTITION BY site_id, ok ORDER BY checked_at) AS run
+               lag(ok) OVER w AS prev_ok, lag(checked_at) OVER w AS prev_at
         FROM checks
         WHERE site_id = ANY(:ids) AND checked_at >= :start AND checked_at < :end
-    ) c
+        WINDOW w AS (PARTITION BY site_id ORDER BY checked_at)
+    ), g AS (
+        SELECT site_id, checked_at, ok,
+               sum(CASE WHEN prev_at IS NULL OR prev_ok IS DISTINCT FROM ok
+                          OR checked_at - prev_at > make_interval(secs => CAST(:gap AS double precision))
+                        THEN 1 ELSE 0 END) OVER (PARTITION BY site_id ORDER BY checked_at) AS run
+        FROM c
+    )
+    SELECT site_id, min(checked_at) AS first_fail, max(checked_at) AS last_fail, count(*) AS checks
+    FROM g
     WHERE NOT ok
     GROUP BY site_id, run
     HAVING count(*) >= 2
@@ -273,7 +281,7 @@ async def availability(
     detail = start >= now - RETENTION
     if ids:
         if detail:
-            for r in (await session.execute(_OUTAGES, {"ids": ids, "start": start, "end": end})).mappings():
+            for r in (await session.execute(_OUTAGES, {"ids": ids, "start": start, "end": end, "gap": max(180, 3 * settings.probe_interval_s)})).mappings():
                 outages[r["site_id"]].append(dict(r))
         for r in (await session.execute(_LAST_CHECK, {"ids": ids})).mappings():
             last_check[r["site_id"]] = r["last_at"]

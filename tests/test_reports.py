@@ -197,6 +197,16 @@ class Endpoint(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(site["downtime_minutes"], 1)
         self.assertLess(site["uptime_pct"], 100.0)
 
+    async def test_failures_either_side_of_a_gap_in_probing_are_not_one_long_outage(self):
+        sid = await self.seed_site()
+        lm = self.last_month().replace(day=3, hour=10, minute=0)
+        # two failures, then the probe is off for five hours, then two more: that is two short sightings, not 5 hours down
+        await self.seed_checks(sid, lm, [True] * 20 + [False] * 2)
+        await self.seed_checks(sid, lm + timedelta(hours=5), [False] * 2 + [True] * 20)
+        site = (await self.get(lm.strftime("%Y-%m"))).json()["clients"][0]["sites"][0]
+        self.assertEqual(len(site["incidents"]), 2)
+        self.assertEqual(sorted(i["minutes"] for i in site["incidents"]), [2, 2])
+
     async def test_a_site_that_was_never_checked_has_no_number_and_is_not_called_available(self):
         await self.seed_site()
         body = (await self.get()).json()
