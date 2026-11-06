@@ -44,6 +44,7 @@ async def lifespan(app: FastAPI):
     # start: better than serving requests against the wrong schema.
     await asyncio.to_thread(upgrade)
     await derive.check_database()
+    await auth.check_operators()
     prober = asyncio.create_task(probe_loop()) if settings.probe_enabled else None
     # The alert sender. Alerts are queued whether or not this runs; it only delivers them.
     sender = asyncio.create_task(sender_loop()) if settings.outbox_enabled else None

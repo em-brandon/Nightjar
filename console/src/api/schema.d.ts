@@ -38,6 +38,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Sessions */
+        get: operations["list_sessions_api_auth_sessions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/sessions/revoke-others": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke Others */
+        post: operations["revoke_others_api_auth_sessions_revoke_others_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke Session */
+        delete: operations["revoke_session_api_auth_sessions__session_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/status": {
         parameters: {
             query?: never;
@@ -969,8 +1020,26 @@ export interface components {
         };
         /** LoginIn */
         LoginIn: {
-            /** Token */
+            /**
+             * Code
+             * @default
+             */
+            code: string;
+            /**
+             * Password
+             * @default
+             */
+            password: string;
+            /**
+             * Token
+             * @default
+             */
             token: string;
+            /**
+             * Username
+             * @default
+             */
+            username: string;
         };
         /** MediaAck */
         MediaAck: {
@@ -1221,6 +1290,32 @@ export interface components {
              */
             state: "running" | "stopped" | "unhealthy";
         };
+        /** SessionOut */
+        SessionOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Current */
+            current: boolean;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Id */
+            id: number;
+            /** Ip */
+            ip: string;
+            /**
+             * Last Seen At
+             * Format: date-time
+             */
+            last_seen_at: string;
+            /** User Agent */
+            user_agent: string;
+        };
         /** SiteCreated */
         SiteCreated: {
             /**
@@ -1428,6 +1523,18 @@ export interface components {
              * @enum {string}
              */
             state: "running" | "stopped" | "degraded";
+        };
+        /** StatusOut */
+        StatusOut: {
+            /**
+             * Account
+             * @default false
+             */
+            account: boolean;
+            /** Authenticated */
+            authenticated: boolean;
+            /** Required */
+            required: boolean;
         };
         /**
          * TestEventOut
@@ -1640,7 +1747,27 @@ export interface operations {
             };
         };
     };
-    status_api_auth_status_get: {
+    list_sessions_api_auth_sessions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionOut"][];
+                };
+            };
+        };
+    };
+    revoke_others_api_auth_sessions_revoke_others_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -1656,8 +1783,61 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        [key: string]: number;
+                    };
+                };
+            };
+        };
+    };
+    revoke_session_api_auth_sessions__session_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
                         [key: string]: boolean;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    status_api_auth_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusOut"];
                 };
             };
         };

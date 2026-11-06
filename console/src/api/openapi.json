@@ -689,15 +689,31 @@
       },
       "LoginIn": {
         "properties": {
+          "code": {
+            "default": "",
+            "maxLength": 32,
+            "title": "Code",
+            "type": "string"
+          },
+          "password": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Password",
+            "type": "string"
+          },
           "token": {
+            "default": "",
             "maxLength": 200,
             "title": "Token",
             "type": "string"
+          },
+          "username": {
+            "default": "",
+            "maxLength": 60,
+            "title": "Username",
+            "type": "string"
           }
         },
-        "required": [
-          "token"
-        ],
         "title": "LoginIn",
         "type": "object"
       },
@@ -1494,6 +1510,52 @@
         "title": "ServiceIn",
         "type": "object"
       },
+      "SessionOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "current": {
+            "title": "Current",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "ip": {
+            "title": "Ip",
+            "type": "string"
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "title": "Last Seen At",
+            "type": "string"
+          },
+          "user_agent": {
+            "title": "User Agent",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "last_seen_at",
+          "expires_at",
+          "ip",
+          "user_agent",
+          "current"
+        ],
+        "title": "SessionOut",
+        "type": "object"
+      },
       "SiteCreated": {
         "properties": {
           "allowed_origins": {
@@ -2199,6 +2261,29 @@
         "title": "StackOut",
         "type": "object"
       },
+      "StatusOut": {
+        "properties": {
+          "account": {
+            "default": false,
+            "title": "Account",
+            "type": "boolean"
+          },
+          "authenticated": {
+            "title": "Authenticated",
+            "type": "boolean"
+          },
+          "required": {
+            "title": "Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "required",
+          "authenticated"
+        ],
+        "title": "StatusOut",
+        "type": "object"
+      },
       "TestEventOut": {
         "description": "What the hub did with the console's test event, so \"wired correctly\" is a fact.",
         "properties": {
@@ -2744,9 +2829,70 @@
         ]
       }
     },
-    "/api/auth/status": {
+    "/api/auth/sessions": {
       "get": {
-        "operationId": "status_api_auth_status_get",
+        "operationId": "list_sessions_api_auth_sessions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SessionOut"
+                  },
+                  "title": "Response List Sessions Api Auth Sessions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Sessions",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/sessions/revoke-others": {
+      "post": {
+        "operationId": "revoke_others_api_auth_sessions_revoke_others_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "integer"
+                  },
+                  "title": "Response Revoke Others Api Auth Sessions Revoke Others Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Revoke Others",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/sessions/{session_id}": {
+      "delete": {
+        "operationId": "revoke_session_api_auth_sessions__session_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -2755,8 +2901,39 @@
                   "additionalProperties": {
                     "type": "boolean"
                   },
-                  "title": "Response Status Api Auth Status Get",
+                  "title": "Response Revoke Session Api Auth Sessions  Session Id  Delete",
                   "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Session",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/status": {
+      "get": {
+        "operationId": "status_api_auth_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusOut"
                 }
               }
             },
