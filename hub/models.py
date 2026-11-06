@@ -551,6 +551,14 @@ class Operator(Base):
     # the last 30-second step a code was accepted for, so one code cannot be used twice (replay)
     totp_last_step: Mapped[int] = mapped_column(BigInteger, default=0)
     recovery_hashes: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    # owner | maintainer | viewer (hub/auth.py ROLES). The account made from the command line is an owner.
+    role: Mapped[str] = mapped_column(String(12), default="owner", server_default="owner")
+    # A disabled account cannot sign in and its sessions are ended. Never deleted: the audit trail names people.
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # An account an owner has created but whose person has not finished setting up. The token is shown to the owner
+    # once and stored only as a hash; while it is set the account cannot sign in.
+    setup_token_hash: Mapped[str | None] = mapped_column(String(64), unique=True)
+    setup_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
