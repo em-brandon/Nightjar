@@ -45,6 +45,34 @@ json_str() {
     { gsub(/\\/, "\\\\"); gsub(/"/, "\\\""); gsub(/\t/, "\\t"); gsub(/\r/, "\\r"); if (NR > 1) printf "\\n"; print }'
 }
 
+# HMAC-SHA256 of standard input, as lowercase hex, keyed by $1.
+#
+# `openssl dgst -hmac "$key"` would put the secret on a command line, where every user on the machine can read it with `ps`
+# (or /proc/<pid>/cmdline) for as long as the command runs. openssl has no way to take an HMAC key from a file or a pipe, so
+# this builds HMAC from plain hashes instead (RFC 2104: H((K xor opad) || H((K xor ipad) || message))). The key only ever
+# travels through shell variables, printf (a builtin in every shell that matters, so it is never an argv) and pipes.
+hmac_hex() {
+  key="$1"
+  if [ "$(printf '%s' "$key" | wc -c)" -gt 64 ]; then
+    keyhex="$(printf '%s' "$key" | openssl dgst -sha256 -binary | od -An -v -tx1 | tr -d ' \n')"  # a long key is hashed first
+  else
+    keyhex="$(printf '%s' "$key" | od -An -v -tx1 | tr -d ' \n')"
+  fi
+  # Plain shell arithmetic and parameter expansion, no process per byte: a signature should not cost hundreds of forks.
+  ipad=""; opad=""; i=0; rest="$keyhex"
+  while [ "$i" -lt 64 ]; do
+    b="${rest%"${rest#??}"}"  # the next two hex digits, or nothing once the key is used up
+    rest="${rest#??}"
+    [ -n "$b" ] || b=00  # a short key is padded with zero bytes
+    v=$((0x$b ^ 0x36)); ipad="$ipad\\$((v / 64))$((v / 8 % 8))$((v % 8))"
+    v=$((0x$b ^ 0x5c)); opad="$opad\\$((v / 64))$((v / 8 % 8))$((v % 8))"
+    i=$((i + 1))
+  done
+  # straight down the pipe, never into a variable: the inner hash is binary and may contain a NUL byte
+  { printf "$ipad"; cat; } | openssl dgst -sha256 -binary | { printf "$opad"; cat; } | openssl dgst -sha256 -hex | sed 's/^.* //'
+  unset key keyhex ipad opad b i v rest
+}
+
 command -v curl >/dev/null 2>&1 || bail "curl is not installed"
 [ -n "${NIGHTJAR_URL:-}" ] || bail "NIGHTJAR_URL is not set"
 [ -n "${NIGHTJAR_KEY:-}" ] || bail "NIGHTJAR_KEY is not set"
@@ -57,17 +85,22 @@ case "$base" in
 esac
 
 # POST a JSON body to a path, signed when there is a secret.
+#
+# The signature headers go to curl on standard input (`-K -`), not on its command line: a signature is good for five minutes,
+# and a command line is readable by every user on the machine. The body stays on the command line; it holds a job name or a
+# short message, not a secret.
 post() {
-  path="$1"; body="$2"
+  path="$1"; body="$2"; config=""
   set -- -sS -o /dev/null -w '%{http_code}' --max-time 10 -X POST "$base$path" -H 'Content-Type: application/json'
   if [ -n "${NIGHTJAR_SECRET:-}" ]; then
     command -v openssl >/dev/null 2>&1 || bail "openssl is needed to sign (or unset NIGHTJAR_SECRET for a dev hub)"
+    for tool in od wc tr sed; do command -v "$tool" >/dev/null 2>&1 || bail "$tool is needed to sign"; done
     ts="$(date +%s)"
     # The timestamp is inside the signature, so a captured request cannot be replayed later.
-    mac="$(printf '%s.%s' "$ts" "$body" | openssl dgst -sha256 -hmac "$NIGHTJAR_SECRET" | sed 's/^.* //')"
-    set -- "$@" -H "X-Hub-Timestamp: $ts" -H "X-Hub-Signature: sha256=$mac"
+    mac="$(printf '%s.%s' "$ts" "$body" | hmac_hex "$NIGHTJAR_SECRET")"
+    config="$(printf 'header = "X-Hub-Timestamp: %s"\nheader = "X-Hub-Signature: sha256=%s"' "$ts" "$mac")"
   fi
-  code="$(curl "$@" -d "$body" 2>/dev/null)" || bail "could not reach the hub"
+  code="$(printf '%s\n' "$config" | curl "$@" -K - -d "$body" 2>/dev/null)" || bail "could not reach the hub"
   case "$code" in
     2??) ;;
     401) bail "the hub refused the signature (HTTP 401): check NIGHTJAR_SECRET, and that the clock is right" ;;
